@@ -25,6 +25,18 @@ import {
   linkMemoryToCategories,
   type SummaryCategory,
 } from './services/summaries.js';
+import {
+  processMemoryForBeliefs,
+  getAllBeliefs,
+  getBelief,
+  getBeliefEvidence,
+  getBeliefStats,
+  getUnresolvedConflicts,
+  isValidBeliefType,
+  BELIEF_TYPES,
+  getBeliefTypeDescription,
+  type BeliefType,
+} from './services/beliefs.js';
 import { pool, checkConnection, closePool } from './db/pool.js';
 import { checkEmbeddingHealth } from './providers/embeddings.js';
 import { checkLLMHealth, getLLMInfo } from './providers/llm.js';
@@ -70,6 +82,23 @@ program
         await linkMemoryToCategories(memory.id, classifications);
         const categories = classifications.map((c) => c.category).join(', ');
         console.log(`  Categories: ${categories}`);
+      }
+
+      // Extract beliefs from memory
+      const beliefResult = await processMemoryForBeliefs(memory.id, content);
+      if (beliefResult.created.length > 0 || beliefResult.reinforced.length > 0) {
+        const parts: string[] = [];
+        if (beliefResult.created.length > 0) {
+          parts.push(`${beliefResult.created.length} new`);
+        }
+        if (beliefResult.reinforced.length > 0) {
+          parts.push(`${beliefResult.reinforced.length} reinforced`);
+        }
+        console.log(`  Beliefs: ${parts.join(', ')}`);
+
+        if (beliefResult.conflicts.length > 0) {
+          console.log(`  ⚠ ${beliefResult.conflicts.length} belief conflict(s) detected`);
+        }
       }
     } catch (error) {
       console.error('Failed to store memory:', error);
@@ -881,6 +910,150 @@ program
       console.log('');
     } catch (error) {
       console.error('Backfill failed:', error);
+      process.exit(1);
+    } finally {
+      await closePool();
+    }
+  });
+
+/**
+ * beliefs - List all beliefs
+ */
+program
+  .command('beliefs')
+  .description('List extracted beliefs')
+  .option('-t, --type <type>', 'Filter by belief type')
+  .option('-l, --limit <limit>', 'Maximum number to show', '20')
+  .option('--conflicts', 'Show unresolved conflicts only')
+  .action(async (options: { type?: string; limit: string; conflicts?: boolean }) => {
+    try {
+      // Show conflicts if requested
+      if (options.conflicts) {
+        const conflicts = await getUnresolvedConflicts();
+
+        console.log(`\nUnresolved Belief Conflicts (${conflicts.length})\n`);
+
+        if (conflicts.length === 0) {
+          console.log('No unresolved conflicts.');
+        } else {
+          for (const c of conflicts) {
+            console.log(`[${c.id.substring(0, 8)}] ${c.conflict_type}`);
+            console.log(`  A: "${c.belief_a_content}"`);
+            console.log(`  B: "${c.belief_b_content}"`);
+            if (c.conflict_description) {
+              console.log(`  ${c.conflict_description}`);
+            }
+            console.log('');
+          }
+        }
+        return;
+      }
+
+      // Validate type if provided
+      if (options.type && !isValidBeliefType(options.type)) {
+        console.log(`\nInvalid belief type: ${options.type}`);
+        console.log(`Valid types: ${BELIEF_TYPES.join(', ')}`);
+        return;
+      }
+
+      const limit = parseInt(options.limit, 10);
+      const beliefs = await getAllBeliefs({
+        type: options.type as BeliefType | undefined,
+        limit,
+      });
+
+      const stats = await getBeliefStats();
+
+      console.log('\nBeliefs\n');
+      console.log(`  Total: ${stats.total} | Active: ${stats.active} | Conflicted: ${stats.conflicted}`);
+      if (stats.unresolvedConflicts > 0) {
+        console.log(`  ⚠ ${stats.unresolvedConflicts} unresolved conflict(s)`);
+      }
+      console.log('');
+
+      if (beliefs.length === 0) {
+        console.log('No beliefs extracted yet.');
+        console.log('Beliefs are extracted automatically when you observe memories.');
+      } else {
+        for (const b of beliefs) {
+          const conf = (b.confidence * 100).toFixed(0);
+          const status = b.status !== 'active' ? ` [${b.status}]` : '';
+          console.log(`[${b.id.substring(0, 8)}] ${b.belief_type}${status}`);
+          console.log(`  "${b.content}"`);
+          console.log(`  confidence: ${conf}% | sources: ${b.source_memory_count} | reinforced: ${b.reinforcement_count}x`);
+          console.log('');
+        }
+      }
+
+      if (options.type) {
+        console.log(`Showing ${options.type} beliefs only. Remove --type to see all.`);
+      }
+      console.log('');
+    } catch (error) {
+      console.error('Failed to list beliefs:', error);
+      process.exit(1);
+    } finally {
+      await closePool();
+    }
+  });
+
+/**
+ * belief - Show a specific belief with evidence
+ */
+program
+  .command('belief')
+  .description('Show a specific belief with its evidence')
+  .argument('<id>', 'Belief ID (can be partial)')
+  .action(async (id: string) => {
+    try {
+      // Try to find by partial ID
+      let belief = await getBelief(id);
+
+      if (!belief && id.length < 36) {
+        // Search for partial match
+        const all = await getAllBeliefs({ limit: 100 });
+        const match = all.find(b => b.id.startsWith(id));
+        if (match) {
+          belief = match;
+        }
+      }
+
+      if (!belief) {
+        console.log(`\nBelief not found: ${id}`);
+        console.log('Use `squire beliefs` to see available beliefs.');
+        return;
+      }
+
+      const evidence = await getBeliefEvidence(belief.id);
+
+      console.log(`\nBelief: ${belief.id}`);
+      console.log(`${'─'.repeat(50)}`);
+      console.log(`"${belief.content}"`);
+      console.log('');
+      console.log(`  Type: ${belief.belief_type} (${getBeliefTypeDescription(belief.belief_type)})`);
+      console.log(`  Status: ${belief.status}`);
+      console.log(`  Confidence: ${(belief.confidence * 100).toFixed(0)}%`);
+      console.log(`  Reinforced: ${belief.reinforcement_count} times`);
+      console.log(`  First seen: ${belief.first_extracted_at.toLocaleString()}`);
+      if (belief.last_reinforced_at) {
+        console.log(`  Last reinforced: ${belief.last_reinforced_at.toLocaleString()}`);
+      }
+      console.log('');
+
+      if (evidence.length > 0) {
+        console.log(`Evidence (${evidence.length} memories):`);
+        for (const e of evidence) {
+          const strength = (e.support_strength * 100).toFixed(0);
+          const preview = e.memory_content.length > 60
+            ? e.memory_content.substring(0, 60) + '...'
+            : e.memory_content;
+          console.log(`  [${e.memory_id.substring(0, 8)}] ${e.evidence_type} (${strength}%)`);
+          console.log(`    ${preview}`);
+        }
+      }
+      console.log('');
+    } catch (error) {
+      console.error('Failed to get belief:', error);
       process.exit(1);
     } finally {
       await closePool();

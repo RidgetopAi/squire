@@ -6,6 +6,7 @@ import contextRouter from './routes/context.js';
 import entitiesRouter from './routes/entities.js';
 import consolidationRouter from './routes/consolidation.js';
 import summariesRouter from './routes/summaries.js';
+import beliefsRouter from './routes/beliefs.js';
 
 const app = express();
 
@@ -19,6 +20,7 @@ app.use('/api/context', contextRouter);
 app.use('/api/entities', entitiesRouter);
 app.use('/api/consolidation', consolidationRouter);
 app.use('/api/summaries', summariesRouter);
+app.use('/api/beliefs', beliefsRouter);
 
 // 404 handler
 app.use((_req, res) => {
