@@ -37,6 +37,16 @@ import {
   getBeliefTypeDescription,
   type BeliefType,
 } from './services/beliefs.js';
+import {
+  getAllPatterns,
+  getPattern,
+  getPatternEvidence,
+  getPatternStats,
+  isValidPatternType,
+  PATTERN_TYPES,
+  getPatternTypeDescription,
+  type PatternType,
+} from './services/patterns.js';
 import { pool, checkConnection, closePool } from './db/pool.js';
 import { checkEmbeddingHealth } from './providers/embeddings.js';
 import { checkLLMHealth, getLLMInfo } from './providers/llm.js';
@@ -430,6 +440,10 @@ program
       console.log(`  Edges created: ${result.edgesCreated}`);
       console.log(`  Edges reinforced: ${result.edgesReinforced}`);
       console.log(`  Edges pruned: ${result.edgesPruned}`);
+      console.log(`  Patterns: ${result.patternsCreated} new, ${result.patternsReinforced} reinforced`);
+      if (result.patternsDormant > 0) {
+        console.log(`  Patterns dormant: ${result.patternsDormant}`);
+      }
       console.log(`  Duration: ${result.durationMs}ms`);
 
       if (options.verbose) {
@@ -467,6 +481,9 @@ program
       console.log(`  Processed ${result.memoriesProcessed} memories`);
       console.log(`  ${result.memoriesDecayed} faded, ${result.memoriesStrengthened} strengthened`);
       console.log(`  ${result.edgesCreated} new connections formed`);
+      if (result.patternsCreated > 0 || result.patternsReinforced > 0) {
+        console.log(`  ${result.patternsCreated} patterns discovered, ${result.patternsReinforced} reinforced`);
+      }
 
       if (options.verbose) {
         console.log(`  ${result.edgesReinforced} connections reinforced`);
@@ -1007,9 +1024,11 @@ program
   .action(async (id: string) => {
     try {
       // Try to find by partial ID
-      let belief = await getBelief(id);
+      let belief = null;
 
-      if (!belief && id.length < 36) {
+      if (id.length === 36) {
+        belief = await getBelief(id);
+      } else {
         // Search for partial match
         const all = await getAllBeliefs({ limit: 100 });
         const match = all.find(b => b.id.startsWith(id));
@@ -1054,6 +1073,139 @@ program
       console.log('');
     } catch (error) {
       console.error('Failed to get belief:', error);
+      process.exit(1);
+    } finally {
+      await closePool();
+    }
+  });
+
+/**
+ * patterns - List all patterns
+ */
+program
+  .command('patterns')
+  .description('List detected patterns')
+  .option('-t, --type <type>', 'Filter by pattern type')
+  .option('-l, --limit <limit>', 'Maximum number to show', '20')
+  .option('--dormant', 'Include dormant patterns')
+  .action(async (options: { type?: string; limit: string; dormant?: boolean }) => {
+    try {
+      // Validate type if provided
+      if (options.type && !isValidPatternType(options.type)) {
+        console.log(`\nInvalid pattern type: ${options.type}`);
+        console.log(`Valid types: ${PATTERN_TYPES.join(', ')}`);
+        return;
+      }
+
+      const limit = parseInt(options.limit, 10);
+      const patterns = await getAllPatterns({
+        type: options.type as PatternType | undefined,
+        status: options.dormant ? undefined : 'active',
+        limit,
+      });
+
+      const stats = await getPatternStats();
+
+      console.log('\nPatterns\n');
+      console.log(`  Total: ${stats.total} | Active: ${stats.active} | Dormant: ${stats.dormant}`);
+      console.log(`  Avg confidence: ${(stats.avgConfidence * 100).toFixed(0)}% | Avg frequency: ${(stats.avgFrequency * 100).toFixed(0)}%`);
+      console.log('');
+
+      if (patterns.length === 0) {
+        console.log('No patterns detected yet.');
+        console.log('Patterns are detected during consolidation. Run `squire consolidate`.');
+      } else {
+        for (const p of patterns) {
+          const conf = (p.confidence * 100).toFixed(0);
+          const freq = (p.frequency * 100).toFixed(0);
+          const status = p.status !== 'active' ? ` [${p.status}]` : '';
+          const time = p.time_of_day ? ` (${p.time_of_day})` : '';
+          const day = p.day_of_week ? ` (${p.day_of_week})` : '';
+          console.log(`[${p.id.substring(0, 8)}] ${p.pattern_type}${status}`);
+          console.log(`  "${p.content}"`);
+          console.log(`  confidence: ${conf}% | frequency: ${freq}% | sources: ${p.source_memory_count}${time}${day}`);
+          console.log('');
+        }
+      }
+
+      if (options.type) {
+        console.log(`Showing ${options.type} patterns only. Remove --type to see all.`);
+      }
+      console.log('');
+    } catch (error) {
+      console.error('Failed to list patterns:', error);
+      process.exit(1);
+    } finally {
+      await closePool();
+    }
+  });
+
+/**
+ * pattern - Show a specific pattern with evidence
+ */
+program
+  .command('pattern')
+  .description('Show a specific pattern with its evidence')
+  .argument('<id>', 'Pattern ID (can be partial)')
+  .action(async (id: string) => {
+    try {
+      // Try to find by partial ID
+      let pattern = null;
+
+      if (id.length === 36) {
+        pattern = await getPattern(id);
+      } else {
+        // Search for partial match
+        const all = await getAllPatterns({ limit: 100 });
+        const match = all.find(p => p.id.startsWith(id));
+        if (match) {
+          pattern = match;
+        }
+      }
+
+      if (!pattern) {
+        console.log(`\nPattern not found: ${id}`);
+        console.log('Use `squire patterns` to see available patterns.');
+        return;
+      }
+
+      const evidence = await getPatternEvidence(pattern.id);
+
+      console.log(`\nPattern: ${pattern.id}`);
+      console.log(`${'─'.repeat(50)}`);
+      console.log(`"${pattern.content}"`);
+      console.log('');
+      console.log(`  Type: ${pattern.pattern_type} (${getPatternTypeDescription(pattern.pattern_type)})`);
+      console.log(`  Status: ${pattern.status}`);
+      console.log(`  Confidence: ${(pattern.confidence * 100).toFixed(0)}%`);
+      console.log(`  Frequency: ${(pattern.frequency * 100).toFixed(0)}%`);
+      console.log(`  Observed: ${pattern.observation_count} times`);
+      console.log(`  First seen: ${pattern.first_detected_at.toLocaleString()}`);
+      if (pattern.last_observed_at) {
+        console.log(`  Last observed: ${pattern.last_observed_at.toLocaleString()}`);
+      }
+      if (pattern.time_of_day) {
+        console.log(`  Time of day: ${pattern.time_of_day}`);
+      }
+      if (pattern.day_of_week) {
+        console.log(`  Day of week: ${pattern.day_of_week}`);
+      }
+      console.log('');
+
+      if (evidence.length > 0) {
+        console.log(`Evidence (${evidence.length} memories):`);
+        for (const e of evidence) {
+          const strength = (e.evidence_strength * 100).toFixed(0);
+          const preview = e.memory_content.length > 60
+            ? e.memory_content.substring(0, 60) + '...'
+            : e.memory_content;
+          console.log(`  [${e.memory_id.substring(0, 8)}] ${e.evidence_type} (${strength}%)`);
+          console.log(`    ${preview}`);
+        }
+      }
+      console.log('');
+    } catch (error) {
+      console.error('Failed to get pattern:', error);
       process.exit(1);
     } finally {
       await closePool();

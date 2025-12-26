@@ -6,6 +6,10 @@ import {
   getPendingConsolidationSessions,
   updateConsolidationStatus,
 } from './sessions.js';
+import {
+  processMemoryForPatterns,
+  markStalePatternsDormant,
+} from './patterns.js';
 
 /**
  * Consolidation Configuration
@@ -60,6 +64,9 @@ export interface ConsolidationResult {
   edgesCreated: number;
   edgesReinforced: number;
   edgesPruned: number;
+  patternsCreated: number;
+  patternsReinforced: number;
+  patternsDormant: number;
   durationMs: number;
 }
 
@@ -278,6 +285,48 @@ async function processEdgeDecay(): Promise<{ pruned: number }> {
 }
 
 /**
+ * Process memories for pattern detection
+ *
+ * Finds memories that haven't been analyzed for patterns yet
+ * and runs pattern extraction on them.
+ */
+async function processPatterns(limit: number = 10): Promise<{
+  created: number;
+  reinforced: number;
+}> {
+  let created = 0;
+  let reinforced = 0;
+
+  // Find memories without pattern evidence (not yet analyzed)
+  const result = await pool.query<{ id: string; content: string; created_at: Date }>(
+    `SELECT m.id, m.content, m.created_at
+     FROM memories m
+     WHERE NOT EXISTS (
+       SELECT 1 FROM pattern_evidence pe WHERE pe.memory_id = m.id
+     )
+     ORDER BY m.created_at DESC
+     LIMIT $1`,
+    [limit]
+  );
+
+  for (const memory of result.rows) {
+    try {
+      const patternResult = await processMemoryForPatterns(
+        memory.id,
+        memory.content,
+        memory.created_at
+      );
+      created += patternResult.created.length;
+      reinforced += patternResult.reinforced.length;
+    } catch (error) {
+      console.error(`Pattern extraction failed for memory ${memory.id}:`, error);
+    }
+  }
+
+  return { created, reinforced };
+}
+
+/**
  * Run consolidation for a specific session
  */
 export async function consolidateSession(session: Session): Promise<ConsolidationResult> {
@@ -295,6 +344,12 @@ export async function consolidateSession(session: Session): Promise<Consolidatio
 
     // 3. Process edge decay
     const decayResult = await processEdgeDecay();
+
+    // 4. Process patterns (detect new patterns from unanalyzed memories)
+    const patternResult = await processPatterns(10);
+
+    // 5. Mark stale patterns as dormant
+    const dormantCount = await markStalePatternsDormant(30);
 
     // Count total memories processed
     const countResult = await pool.query(`SELECT COUNT(*) as count FROM memories`);
@@ -319,6 +374,9 @@ export async function consolidateSession(session: Session): Promise<Consolidatio
       edgesCreated: edgeResult.created,
       edgesReinforced: edgeResult.reinforced,
       edgesPruned: decayResult.pruned,
+      patternsCreated: patternResult.created,
+      patternsReinforced: patternResult.reinforced,
+      patternsDormant: dormantCount,
       durationMs: Date.now() - startTime,
     };
   } catch (error) {
@@ -343,6 +401,12 @@ export async function consolidateAll(): Promise<ConsolidationResult> {
   // 3. Process edge decay
   const decayResult = await processEdgeDecay();
 
+  // 4. Process patterns (detect new patterns from unanalyzed memories)
+  const patternResult = await processPatterns(10);
+
+  // 5. Mark stale patterns as dormant
+  const dormantCount = await markStalePatternsDormant(30);
+
   // Count total memories processed
   const countResult = await pool.query(`SELECT COUNT(*) as count FROM memories`);
   const memoriesProcessed = parseInt(countResult.rows[0]?.count ?? '0', 10);
@@ -354,6 +418,9 @@ export async function consolidateAll(): Promise<ConsolidationResult> {
     edgesCreated: edgeResult.created,
     edgesReinforced: edgeResult.reinforced,
     edgesPruned: decayResult.pruned,
+    patternsCreated: patternResult.created,
+    patternsReinforced: patternResult.reinforced,
+    patternsDormant: dormantCount,
     durationMs: Date.now() - startTime,
   };
 }
