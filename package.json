@@ -1,0 +1,50 @@
+{
+  "name": "squier",
+  "version": "0.1.0",
+  "description": "AI memory system - memory that knows the user",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "squier": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "dev:api": "tsx watch src/api/server.ts",
+    "start": "node dist/index.js",
+    "start:api": "node dist/api/server.js",
+    "cli": "tsx src/cli.ts",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:logs": "docker compose logs -f postgres",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "ai",
+    "memory",
+    "context",
+    "llm"
+  ],
+  "author": "RidgetopAI",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^12.1.0",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "pg": "^8.13.1",
+    "uuid": "^11.0.3"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.2",
+    "@types/pg": "^8.11.10",
+    "@types/uuid": "^10.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
