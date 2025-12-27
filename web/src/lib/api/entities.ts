@@ -5,9 +5,45 @@
 import { apiGet } from './client';
 import type { Entity, EntityType } from '@/lib/types';
 
-// API Response types
+// ============================================
+// DATA TYPE MAPPING
+// ============================================
+// Backend → Frontend field mapping:
+// - entity_type → type
+// - first_seen_at → first_seen
+// - last_seen_at → last_seen
+// - attributes → metadata
+
+interface BackendEntity {
+  id: string;
+  name: string;
+  entity_type: EntityType;
+  aliases?: string[];
+  mention_count: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  attributes?: Record<string, unknown>;
+}
+
+/**
+ * Transform backend entity to frontend Entity type
+ */
+function transformEntity(backend: BackendEntity): Entity {
+  return {
+    id: backend.id,
+    name: backend.name,
+    type: backend.entity_type,
+    aliases: backend.aliases,
+    mention_count: backend.mention_count,
+    first_seen: backend.first_seen_at,
+    last_seen: backend.last_seen_at,
+    metadata: backend.attributes,
+  };
+}
+
+// API Response types (using backend types)
 interface EntitiesListResponse {
-  entities: Entity[];
+  entities: BackendEntity[];
   counts: Record<EntityType, number>;
   total: number;
   limit: number;
@@ -16,7 +52,7 @@ interface EntitiesListResponse {
 
 interface EntitySearchResponse {
   query: string;
-  entities: Entity[];
+  entities: BackendEntity[];
   count: number;
 }
 
@@ -40,7 +76,7 @@ export async function fetchEntities(options: FetchEntitiesOptions = {}): Promise
     params: { type, limit, offset, search },
   });
   return {
-    entities: response.entities,
+    entities: response.entities.map(transformEntity),
     counts: response.counts,
     total: response.total,
   };
@@ -50,7 +86,8 @@ export async function fetchEntities(options: FetchEntitiesOptions = {}): Promise
  * Fetch a single entity by ID
  */
 export async function fetchEntity(id: string): Promise<Entity> {
-  return apiGet<Entity>(`/api/entities/${id}`);
+  const response = await apiGet<BackendEntity>(`/api/entities/${id}`);
+  return transformEntity(response);
 }
 
 /**
@@ -63,7 +100,7 @@ export async function searchEntities(
   const response = await apiGet<EntitySearchResponse>('/api/entities/search', {
     params: { query, type },
   });
-  return response.entities;
+  return response.entities.map(transformEntity);
 }
 
 /**
@@ -77,8 +114,9 @@ export async function fetchTopEntities(limit = 12): Promise<{
     params: { limit },
   });
 
-  // Sort by mention count descending
-  const sorted = response.entities.sort((a, b) => b.mention_count - a.mention_count);
+  // Transform and sort by mention count descending
+  const transformed = response.entities.map(transformEntity);
+  const sorted = transformed.sort((a, b) => b.mention_count - a.mention_count);
 
   return {
     entities: sorted,

@@ -795,6 +795,208 @@ export async function getMemorySubgraph(
 }
 
 // =============================================================================
+// FULL GRAPH VISUALIZATION
+// =============================================================================
+
+export interface VisualizationOptions {
+  nodeLimit?: number;      // Max total nodes (default 100)
+  entityLimit?: number;    // Max entities to include (default 30)
+  memoryLimit?: number;    // Max memories to include (default 70)
+  minSalience?: number;    // Minimum salience for memories (default 0)
+  entityTypes?: string[];  // Filter to specific entity types
+  includeEdges?: boolean;  // Include memory-memory edges (default true)
+}
+
+/**
+ * Get a full graph visualization with top entities and connected memories
+ * Designed for initial overview without requiring entity selection
+ */
+export async function getFullGraphVisualization(
+  options: VisualizationOptions = {}
+): Promise<Subgraph> {
+  const {
+    nodeLimit = 100,
+    entityLimit = 30,
+    memoryLimit = 70,
+    minSalience = 0,
+    entityTypes,
+    includeEdges = true,
+  } = options;
+
+  const nodes: GraphNode[] = [];
+  const edges: GraphEdge[] = [];
+  const nodeIds = new Set<string>();
+
+  // 1. Get top entities by mention count
+  let entityQuery = `
+    SELECT * FROM entities
+    WHERE is_merged = FALSE
+  `;
+  const entityParams: (string | number | string[])[] = [];
+  let paramIndex = 1;
+
+  if (entityTypes && entityTypes.length > 0) {
+    entityQuery += ` AND entity_type = ANY($${paramIndex}::text[])`;
+    entityParams.push(entityTypes);
+    paramIndex++;
+  }
+
+  entityQuery += ` ORDER BY mention_count DESC LIMIT $${paramIndex}`;
+  entityParams.push(entityLimit);
+
+  const entitiesResult = await pool.query(entityQuery, entityParams);
+
+  for (const row of entitiesResult.rows) {
+    const entity = row as Entity;
+    nodes.push({
+      id: entity.id,
+      type: 'entity',
+      label: entity.name,
+      attributes: {
+        entity_type: entity.entity_type,
+        mention_count: entity.mention_count,
+      },
+    });
+    nodeIds.add(entity.id);
+  }
+
+  const entityIds = entitiesResult.rows.map((r) => r.id);
+
+  // 2. Get high-salience memories connected to these entities
+  if (entityIds.length > 0) {
+    const memoriesResult = await pool.query(
+      `SELECT DISTINCT m.*
+       FROM memories m
+       JOIN entity_mentions em ON em.memory_id = m.id
+       WHERE em.entity_id = ANY($1)
+         AND m.salience_score >= $2
+       ORDER BY m.salience_score DESC, m.created_at DESC
+       LIMIT $3`,
+      [entityIds, minSalience, memoryLimit]
+    );
+
+    for (const row of memoriesResult.rows) {
+      const memory = row as Memory;
+      nodes.push({
+        id: memory.id,
+        type: 'memory',
+        label: memory.content.slice(0, 50) + '...',
+        attributes: {
+          salience: memory.salience_score,
+          created_at: memory.created_at,
+        },
+      });
+      nodeIds.add(memory.id);
+    }
+
+    const memoryIds = memoriesResult.rows.map((r) => r.id);
+
+    // 3. Get entity-memory MENTIONS edges
+    if (memoryIds.length > 0) {
+      const mentionsResult = await pool.query(
+        `SELECT entity_id, memory_id, mention_text
+         FROM entity_mentions
+         WHERE entity_id = ANY($1) AND memory_id = ANY($2)`,
+        [entityIds, memoryIds]
+      );
+
+      for (const row of mentionsResult.rows) {
+        edges.push({
+          source: row.entity_id,
+          target: row.memory_id,
+          type: 'MENTIONS',
+          weight: 1.0,
+          attributes: { mention_text: row.mention_text },
+        });
+      }
+
+      // 4. Optionally get memory-memory edges (SIMILAR, etc.)
+      if (includeEdges && memoryIds.length > 1) {
+        const memoryEdgesResult = await pool.query(
+          `SELECT * FROM memory_edges
+           WHERE source_memory_id = ANY($1) AND target_memory_id = ANY($1)`,
+          [memoryIds]
+        );
+
+        for (const edge of memoryEdgesResult.rows) {
+          edges.push({
+            source: edge.source_memory_id,
+            target: edge.target_memory_id,
+            type: edge.edge_type,
+            weight: edge.weight,
+            attributes: { similarity: edge.similarity },
+          });
+        }
+      }
+    }
+
+    // 5. Add CO_OCCURS edges between entities that share memories
+    // Build a map of which entities share which memories
+    const entityMemoryMap = new Map<string, Set<string>>();
+    for (const edge of edges) {
+      if (edge.type === 'MENTIONS') {
+        if (!entityMemoryMap.has(edge.source)) {
+          entityMemoryMap.set(edge.source, new Set());
+        }
+        entityMemoryMap.get(edge.source)!.add(edge.target);
+      }
+    }
+
+    // Find entity pairs that share memories
+    const entityPairs = new Map<string, number>();
+    for (const [entity1, mems1] of entityMemoryMap) {
+      for (const [entity2, mems2] of entityMemoryMap) {
+        if (entity1 >= entity2) continue; // Avoid duplicates and self-loops
+        const shared = [...mems1].filter((m) => mems2.has(m)).length;
+        if (shared > 0) {
+          const key = `${entity1}-${entity2}`;
+          entityPairs.set(key, shared);
+        }
+      }
+    }
+
+    // Add CO_OCCURS edges between entities
+    for (const [key, count] of entityPairs) {
+      const parts = key.split('-');
+      const sourceId = parts[0];
+      const targetId = parts[1];
+      if (sourceId && targetId) {
+        edges.push({
+          source: sourceId,
+          target: targetId,
+          type: 'CO_OCCURS',
+          weight: Math.min(count / 5, 1), // Normalize weight
+          attributes: { shared_memory_count: count },
+        });
+      }
+    }
+  }
+
+  // Limit total nodes if exceeded
+  if (nodes.length > nodeLimit) {
+    // Keep all entities, trim memories
+    const entityNodes = nodes.filter((n) => n.type === 'entity');
+    const memoryNodes = nodes.filter((n) => n.type === 'memory');
+    const keptMemories = memoryNodes.slice(0, nodeLimit - entityNodes.length);
+
+    // Filter edges to only include kept nodes
+    const keptNodeIds = new Set([
+      ...entityNodes.map((n) => n.id),
+      ...keptMemories.map((n) => n.id),
+    ]);
+
+    return {
+      nodes: [...entityNodes, ...keptMemories],
+      edges: edges.filter(
+        (e) => keptNodeIds.has(e.source) && keptNodeIds.has(e.target)
+      ),
+    };
+  }
+
+  return { nodes, edges };
+}
+
+// =============================================================================
 // STATISTICS
 // =============================================================================
 

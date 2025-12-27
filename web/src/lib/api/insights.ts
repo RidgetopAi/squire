@@ -5,18 +5,69 @@
 import { apiGet } from './client';
 import type { Insight, InsightType } from '@/lib/types';
 
+// ============================================
+// DATA TYPE MAPPING
+// ============================================
+// Backend → Frontend field mapping:
+// - insight_type → type
+// - status 'active' → 'new'
+// - status 'stale' → 'reviewed'
+
 // Extended types for API
 type InsightPriority = 'low' | 'medium' | 'high' | 'critical';
 type InsightStatus = 'new' | 'reviewed' | 'actioned' | 'dismissed';
+type BackendInsightStatus = 'active' | 'stale' | 'actioned' | 'dismissed';
 
-// API Response types
+interface BackendInsight {
+  id: string;
+  content: string;
+  insight_type: InsightType;
+  priority: InsightPriority;
+  status: BackendInsightStatus;
+  created_at: string;
+}
+
+/**
+ * Map backend status to frontend status
+ */
+function mapInsightStatus(backendStatus: BackendInsightStatus): InsightStatus {
+  switch (backendStatus) {
+    case 'active':
+      return 'new';
+    case 'stale':
+      return 'reviewed';
+    case 'actioned':
+      return 'actioned';
+    case 'dismissed':
+      return 'dismissed';
+    default:
+      return 'new';
+  }
+}
+
+/**
+ * Transform backend insight to frontend Insight type
+ */
+function transformInsight(backend: BackendInsight): Insight {
+  return {
+    id: backend.id,
+    content: backend.content,
+    type: backend.insight_type,
+    priority: backend.priority,
+    status: mapInsightStatus(backend.status),
+    source_memories: [], // Sources fetched separately via /api/insights/:id/sources
+    created_at: backend.created_at,
+  };
+}
+
+// API Response types (using backend types)
 interface InsightsListResponse {
-  insights: Insight[];
+  insights: BackendInsight[];
   count: number;
 }
 
 interface InsightResponse {
-  insight: Insight;
+  insight: BackendInsight;
 }
 
 interface InsightStatsResponse {
@@ -44,16 +95,18 @@ export interface FetchInsightsOptions {
  */
 export async function fetchInsights(options: FetchInsightsOptions = {}): Promise<Insight[]> {
   const { type, status, priority, minConfidence, limit = 50 } = options;
+  // Map frontend status to backend status for filtering
+  const backendStatus = status === 'new' ? 'active' : status === 'reviewed' ? 'stale' : status;
   const response = await apiGet<InsightsListResponse>('/api/insights', {
     params: {
       type,
-      status,
+      status: backendStatus,
       priority,
       minConfidence,
       limit,
     },
   });
-  return response.insights;
+  return response.insights.map(transformInsight);
 }
 
 /**
@@ -61,7 +114,7 @@ export async function fetchInsights(options: FetchInsightsOptions = {}): Promise
  */
 export async function fetchInsight(id: string): Promise<Insight> {
   const response = await apiGet<InsightResponse>(`/api/insights/${id}`);
-  return response.insight;
+  return transformInsight(response.insight);
 }
 
 /**
@@ -77,15 +130,16 @@ export async function fetchInsightStats(): Promise<InsightStatsResponse['stats']
  */
 export async function fetchInsightsByType(type: InsightType): Promise<Insight[]> {
   const response = await apiGet<InsightsListResponse>(`/api/insights/type/${type}`);
-  return response.insights;
+  return response.insights.map(transformInsight);
 }
 
 /**
  * Fetch new/unreviewed insights for dashboard
  */
 export async function fetchNewInsights(limit = 6): Promise<Insight[]> {
+  // Backend uses 'active' for what frontend calls 'new'
   const response = await apiGet<InsightsListResponse>('/api/insights', {
-    params: { status: 'new', limit },
+    params: { status: 'active', limit },
   });
-  return response.insights;
+  return response.insights.map(transformInsight);
 }

@@ -38,3 +38,10 @@ export {
   useInsightsByType,
   useNewInsights,
 } from './useInsights';
+export {
+  useGraphStats,
+  useEntitySubgraph,
+  useMemorySubgraph,
+  useEntityNeighbors,
+  useGraphVisualization,
+} from './useGraphData';

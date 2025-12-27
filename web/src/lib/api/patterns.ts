@@ -5,14 +5,48 @@
 import { apiGet } from './client';
 import type { Pattern, PatternType } from '@/lib/types';
 
-// API Response types
+// ============================================
+// DATA TYPE MAPPING
+// ============================================
+// Backend → Frontend field mapping:
+// - content → description
+// - pattern_type → type
+// - first_detected_at → first_detected
+// - last_observed_at → last_detected
+
+interface BackendPattern {
+  id: string;
+  content: string;
+  pattern_type: PatternType;
+  frequency: number;
+  confidence: number;
+  first_detected_at: string;
+  last_observed_at: string | null;
+}
+
+/**
+ * Transform backend pattern to frontend Pattern type
+ */
+function transformPattern(backend: BackendPattern): Pattern {
+  return {
+    id: backend.id,
+    description: backend.content,
+    type: backend.pattern_type,
+    frequency: backend.frequency,
+    confidence: backend.confidence,
+    first_detected: backend.first_detected_at,
+    last_detected: backend.last_observed_at || backend.first_detected_at,
+  };
+}
+
+// API Response types (using backend types)
 interface PatternsListResponse {
-  patterns: Pattern[];
+  patterns: BackendPattern[];
   count: number;
 }
 
 interface PatternResponse {
-  pattern: Pattern;
+  pattern: BackendPattern;
 }
 
 interface PatternStatsResponse {
@@ -51,7 +85,7 @@ export async function fetchPatterns(options: FetchPatternsOptions = {}): Promise
       limit,
     },
   });
-  return response.patterns;
+  return response.patterns.map(transformPattern);
 }
 
 /**
@@ -59,7 +93,7 @@ export async function fetchPatterns(options: FetchPatternsOptions = {}): Promise
  */
 export async function fetchPattern(id: string): Promise<Pattern> {
   const response = await apiGet<PatternResponse>(`/api/patterns/${id}`);
-  return response.pattern;
+  return transformPattern(response.pattern);
 }
 
 /**
@@ -75,5 +109,5 @@ export async function fetchPatternStats(): Promise<PatternStatsResponse['stats']
  */
 export async function fetchPatternsByType(type: PatternType): Promise<Pattern[]> {
   const response = await apiGet<PatternsListResponse>(`/api/patterns/type/${type}`);
-  return response.patterns;
+  return response.patterns.map(transformPattern);
 }

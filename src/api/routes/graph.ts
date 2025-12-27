@@ -9,6 +9,7 @@ import {
   getEntitySubgraph,
   getMemorySubgraph,
   getGraphStats,
+  getFullGraphVisualization,
   type EntityNeighbor,
 } from '../../services/graph.js';
 import { getEntity } from '../../services/entities.js';
@@ -31,6 +32,63 @@ router.get('/stats', async (_req: Request, res: Response) => {
   } catch (error) {
     console.error('Error getting graph stats:', error);
     res.status(500).json({ error: 'Failed to get graph statistics' });
+  }
+});
+
+// =============================================================================
+// VISUALIZATION
+// =============================================================================
+
+/**
+ * GET /api/graph/visualization
+ * Get full graph visualization data for react-force-graph
+ *
+ * Query params:
+ * - nodeLimit: Max total nodes (default 100)
+ * - entityLimit: Max entities (default 30)
+ * - memoryLimit: Max memories (default 70)
+ * - minSalience: Min memory salience (default 0)
+ * - entityTypes: Comma-separated entity types to include
+ * - includeEdges: Whether to include memory-memory edges (default true)
+ */
+router.get('/visualization', async (req: Request, res: Response) => {
+  try {
+    const nodeLimit = req.query.nodeLimit
+      ? parseInt(req.query.nodeLimit as string, 10)
+      : 100;
+    const entityLimit = req.query.entityLimit
+      ? parseInt(req.query.entityLimit as string, 10)
+      : 30;
+    const memoryLimit = req.query.memoryLimit
+      ? parseInt(req.query.memoryLimit as string, 10)
+      : 70;
+    const minSalience = req.query.minSalience
+      ? parseFloat(req.query.minSalience as string)
+      : 0;
+    const entityTypesParam = req.query.entityTypes as string | undefined;
+    const entityTypes = entityTypesParam
+      ? entityTypesParam.split(',')
+      : undefined;
+    const includeEdges = req.query.includeEdges !== 'false';
+
+    const subgraph = await getFullGraphVisualization({
+      nodeLimit,
+      entityLimit,
+      memoryLimit,
+      minSalience,
+      entityTypes,
+      includeEdges,
+    });
+
+    res.json({
+      nodeCount: subgraph.nodes.length,
+      edgeCount: subgraph.edges.length,
+      nodes: subgraph.nodes,
+      edges: subgraph.edges,
+    });
+  } catch (error) {
+    console.error('Error getting graph visualization:', error);
+    res.status(500).json({ error: 'Failed to get graph visualization' });
   }
 });
 

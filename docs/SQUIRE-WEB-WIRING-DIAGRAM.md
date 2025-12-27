@@ -56,7 +56,7 @@ Update this as we build - it's our source of truth for what's wired and what's n
 | `/api/chat/simple` | POST | ✅ Exists | ChatPage | Quick chat without context |
 | `/api/chat/health` | GET | ✅ Exists | StatusIndicator | LLM health check |
 | `/api/chat/stream` | WS | 🆕 Needed | ChatPage | Stream LLM response |
-| `/api/graph/visualization` | GET | 🆕 Needed | GraphPage | Full graph data for viz |
+| `/api/graph/visualization` | GET | ✅ Exists | GraphPage | Full graph data for viz |
 
 ---
 
@@ -146,9 +146,9 @@ Update this as we build - it's our source of truth for what's wired and what's n
 
 | Component | API Dependencies | Status |
 |-----------|------------------|--------|
-| `GraphPage` | `/api/graph/visualization` (new) | ⬜ |
-| `MemoryGraphView` | Props from GraphPage | ⬜ |
-| `GraphControls` | Local state, triggers refetch | ⬜ |
+| `GraphPage` | `/api/graph/stats`, `/api/graph/visualization`, `/api/graph/entities/:id/subgraph` | ✅ Wired |
+| `MemoryGraphView` | Props from GraphPage (react-force-graph) | 🔧 Integrated into GraphPage |
+| `GraphControls` | Local state, triggers refetch | 🔧 Basic zoom controls in GraphPage |
 | `SelectionDetailsPanel` | `/api/entities/:id`, `/api/memories/:id` | ⬜ |
 
 ## Shared Components
@@ -189,7 +189,11 @@ Update this as we build - it's our source of truth for what's wired and what's n
 | `['patterns', filters]` | `/api/patterns` | PatternsPanel |
 | `['insights', filters]` | `/api/insights` | InsightsPanel |
 | `['summaries']` | `/api/summaries` | LivingSummaryPanel |
-| `['graph', 'visualization', filters]` | `/api/graph/visualization` | GraphPage |
+| `['graph', 'stats']` | `/api/graph/stats` | GraphPage |
+| `['graph', 'visualization', options]` | `/api/graph/visualization` | GraphPage |
+| `['graph', 'entity-subgraph', id]` | `/api/graph/entities/:id/subgraph` | GraphPage |
+| `['graph', 'memory-subgraph', id]` | `/api/graph/memories/:id/subgraph` | GraphPage (future) |
+| `['graph', 'entity-neighbors', id]` | `/api/graph/entities/:id/neighbors` | GraphPage (future) |
 
 ---
 
@@ -309,13 +313,60 @@ Update this as we build - it's our source of truth for what's wired and what's n
 
 | Backend Field | Frontend Field | Transform | Notes |
 |---------------|----------------|-----------|-------|
-| TBD | TBD | TBD | Need to verify |
+| `entity_type` | `type` | Direct copy | EntityType enum |
+| `first_seen_at` | `first_seen` | Direct copy | ISO string |
+| `last_seen_at` | `last_seen` | Direct copy | ISO string |
+| `attributes` | `metadata` | Direct copy | Record<string, unknown> |
+| `id` | `id` | Direct copy | UUID |
+| `name` | `name` | Direct copy | |
+| `aliases` | `aliases` | Direct copy | string[] |
+| `mention_count` | `mention_count` | Direct copy | |
 
-## Belief/Pattern/Insight Type Mapping
+**Transformer**: `transformEntity()` in `lib/api/entities.ts`
+
+## Belief Type Mapping
 
 | Backend Field | Frontend Field | Transform | Notes |
 |---------------|----------------|-----------|-------|
-| TBD | TBD | TBD | Need to verify |
+| `content` | `statement` | Direct copy | Belief text |
+| `belief_type` | `category` | Direct copy | BeliefCategory enum |
+| `source_memory_count` | `evidence_count` | Direct copy | Number |
+| `first_extracted_at` | `first_observed` | Direct copy | ISO string |
+| `last_reinforced_at` | `last_reinforced` | Fallback to first_extracted_at | Can be null |
+| `status` | `status` | 'superseded' → 'deprecated' | Enum mapping |
+| `id` | `id` | Direct copy | UUID |
+| `confidence` | `confidence` | Direct copy | 0-1 scale |
+
+**Transformer**: `transformBelief()` in `lib/api/beliefs.ts`
+
+## Pattern Type Mapping
+
+| Backend Field | Frontend Field | Transform | Notes |
+|---------------|----------------|-----------|-------|
+| `content` | `description` | Direct copy | Pattern text |
+| `pattern_type` | `type` | Direct copy | PatternType enum |
+| `first_detected_at` | `first_detected` | Direct copy | ISO string |
+| `last_observed_at` | `last_detected` | Fallback to first_detected_at | Can be null |
+| `id` | `id` | Direct copy | UUID |
+| `frequency` | `frequency` | Direct copy | 0-1 scale |
+| `confidence` | `confidence` | Direct copy | 0-1 scale |
+
+**Transformer**: `transformPattern()` in `lib/api/patterns.ts`
+
+## Insight Type Mapping
+
+| Backend Field | Frontend Field | Transform | Notes |
+|---------------|----------------|-----------|-------|
+| `insight_type` | `type` | Direct copy | InsightType enum |
+| `status` | `status` | 'active' → 'new', 'stale' → 'reviewed' | Enum mapping |
+| `id` | `id` | Direct copy | UUID |
+| `content` | `content` | Direct copy | |
+| `priority` | `priority` | Direct copy | low/medium/high/critical |
+| `created_at` | `created_at` | Direct copy | ISO string |
+| N/A | `source_memories` | Empty array | Fetched via /api/insights/:id/sources |
+
+**Transformer**: `transformInsight()` in `lib/api/insights.ts`
+**Helper**: `mapInsightStatus()` for status enum mapping
 
 ---
 
@@ -341,7 +392,11 @@ Track implementation status of API client wrappers:
 | `fetchInsights()` | `lib/api/insights.ts` | ✅ | GET /api/insights |
 | `dismissInsight()` | `lib/api/insights.ts` | ⬜ | POST /api/insights/:id/dismiss |
 | `fetchSummaries()` | `lib/api/summaries.ts` | ✅ | GET /api/summaries |
-| `fetchGraphVisualization()` | `lib/api/graph.ts` | ⬜ | GET /api/graph/visualization |
+| `fetchGraphStats()` | `lib/api/graph.ts` | ✅ | GET /api/graph/stats |
+| `fetchGraphVisualization()` | `lib/api/graph.ts` | ✅ | GET /api/graph/visualization |
+| `fetchEntitySubgraph()` | `lib/api/graph.ts` | ✅ | GET /api/graph/entities/:id/subgraph |
+| `fetchMemorySubgraph()` | `lib/api/graph.ts` | ✅ | GET /api/graph/memories/:id/subgraph |
+| `fetchEntityNeighbors()` | `lib/api/graph.ts` | ✅ | GET /api/graph/entities/:id/neighbors |
 
 ---
 
@@ -363,7 +418,11 @@ Track implementation status of React hooks:
 | `useInsights()` | `lib/hooks/useInsights.ts` | ✅ | fetchInsights |
 | `useSummaries()` | `lib/hooks/useSummaries.ts` | ✅ | fetchSummaries |
 | `useRecentMemories()` | `lib/hooks/useDashboard.ts` | ✅ | fetchRecentHighSalienceMemories |
-| `useGraphData()` | `lib/hooks/useGraphData.ts` | ⬜ | fetchGraphVisualization |
+| `useGraphStats()` | `lib/hooks/useGraphData.ts` | ✅ | fetchGraphStats |
+| `useGraphVisualization()` | `lib/hooks/useGraphData.ts` | ✅ | fetchGraphVisualization |
+| `useEntitySubgraph()` | `lib/hooks/useGraphData.ts` | ✅ | fetchEntitySubgraph |
+| `useMemorySubgraph()` | `lib/hooks/useGraphData.ts` | ✅ | fetchMemorySubgraph |
+| `useEntityNeighbors()` | `lib/hooks/useGraphData.ts` | ✅ | fetchEntityNeighbors |
 | `useSpeechRecognition()` | `lib/hooks/useSpeechRecognition.ts` | ✅ | Web Speech API |
 | `useWebSocket()` | `lib/hooks/useWebSocket.ts` | ⬜ | Socket.IO |
 
@@ -398,6 +457,9 @@ Track changes to wiring as we implement:
 | 2025-12-27 | P4-T5 | Animations | Framer Motion staggered entrance |
 | 2025-12-27 | P4-T6 | Deep linking | URL params ?memory=id, focus/highlight |
 | 2025-12-27 | FIX | Data type mapping | Added transformMemory() for backend→frontend field mapping |
+| 2025-12-27 | AUDIT | Complete data mapping | Added transformers for Entity, Belief, Pattern, Insight APIs |
+| 2025-12-27 | P5-T1 | GraphPage with react-force-graph | GraphPage, lib/api/graph.ts, lib/hooks/useGraphData.ts |
+| 2025-12-27 | P5-T2 | Graph visualization endpoint | /api/graph/visualization, fetchGraphVisualization, useGraphVisualization, GraphPage full view |
 
 ---
 
