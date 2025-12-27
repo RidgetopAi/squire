@@ -98,6 +98,28 @@ import {
   getGraphStats,
 } from './services/graph.js';
 import { getEntity, searchEntities } from './services/entities.js';
+import {
+  createObject,
+  getObjectById,
+  listObjects,
+  deleteObject,
+  linkToMemory,
+  unlinkFromMemory,
+  linkToEntity,
+  addTag,
+  removeTag,
+  getObjectTags,
+  getAllTags,
+  createCollection,
+  getCollectionById,
+  listCollections,
+  addToCollection,
+  removeFromCollection,
+  getCollectionObjects,
+  getObjectStats,
+  OBJECT_TYPES,
+  type ObjectType,
+} from './services/objects.js';
 import { pool, checkConnection, closePool } from './db/pool.js';
 import { checkEmbeddingHealth } from './providers/embeddings.js';
 import { checkLLMHealth, getLLMInfo } from './providers/llm.js';
@@ -2115,6 +2137,464 @@ program
       }
     } catch (error) {
       console.error('Failed to get network:', error);
+      process.exit(1);
+    } finally {
+      await closePool();
+    }
+  });
+
+// ============================================================================
+// OBJECT STORAGE COMMANDS
+// ============================================================================
+
+/**
+ * Helper to format file size
+ */
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
+}
+
+/**
+ * objects - List stored objects
+ */
+program
+  .command('objects')
+  .description('List stored objects (files, images, documents)')
+  .option('-l, --limit <limit>', 'Maximum number to show', '20')
+  .option('-t, --type <type>', 'Filter by type (image, document, audio, video, archive, other)')
+  .option('--tag <tag>', 'Filter by tag')
+  .option('-s, --search <query>', 'Search by name or description')
+  .action(async (options: { limit: string; type?: string; tag?: string; search?: string }) => {
+    try {
+      const limit = parseInt(options.limit, 10);
+
+      if (options.type && !OBJECT_TYPES.includes(options.type as ObjectType)) {
+        console.log(`\nInvalid type: ${options.type}`);
+        console.log(`Valid types: ${OBJECT_TYPES.join(', ')}`);
+        return;
+      }
+
+      const objects = await listObjects({
+        limit,
+        objectType: options.type as ObjectType | undefined,
+        tag: options.tag,
+        search: options.search,
+      });
+
+      const stats = await getObjectStats();
+
+      console.log(`\nObjects (${objects.length} of ${stats.total})\n`);
+
+      if (objects.length === 0) {
+        console.log('No objects found.');
+        console.log('Use `squire upload <file>` to store a file.');
+      } else {
+        for (const obj of objects) {
+          const date = new Date(obj.created_at).toLocaleDateString();
+          const size = formatBytes(obj.size_bytes);
+          const icon = obj.object_type === 'image' ? '🖼️' :
+                       obj.object_type === 'document' ? '📄' :
+                       obj.object_type === 'audio' ? '🎵' :
+                       obj.object_type === 'video' ? '🎬' :
+                       obj.object_type === 'archive' ? '📦' : '📎';
+
+          console.log(`${icon} [${obj.id.substring(0, 8)}] ${obj.name}`);
+          console.log(`   ${obj.object_type} | ${size} | ${date}`);
+          if (obj.description) {
+            const desc = obj.description.length > 50
+              ? obj.description.substring(0, 50) + '...'
+              : obj.description;
+            console.log(`   "${desc}"`);
+          }
+          console.log('');
+        }
+      }
+
+      // Show summary
+      console.log('Summary:');
+      console.log(`  Images: ${stats.by_type.image} | Documents: ${stats.by_type.document} | Audio: ${stats.by_type.audio}`);
+      console.log(`  Video: ${stats.by_type.video} | Archives: ${stats.by_type.archive} | Other: ${stats.by_type.other}`);
+      console.log(`  Total size: ${formatBytes(stats.total_size_bytes)}`);
+      console.log('');
+    } catch (error) {
+      console.error('Failed to list objects:', error);
+      process.exit(1);
+    } finally {
+      await closePool();
+    }
+  });
+
+/**
+ * object - Show object details
+ */
+program
+  .command('object')
+  .description('Show object details')
+  .argument('<id>', 'Object ID (partial or full)')
+  .option('--link-memory <memoryId>', 'Link to a memory')
+  .option('--unlink-memory <memoryId>', 'Unlink from a memory')
+  .option('--link-entity <entityId>', 'Link to an entity')
+  .option('--add-tag <tag>', 'Add a tag')
+  .option('--remove-tag <tag>', 'Remove a tag')
+  .option('--delete', 'Delete this object')
+  .action(async (idArg: string, options: {
+    linkMemory?: string;
+    unlinkMemory?: string;
+    linkEntity?: string;
+    addTag?: string;
+    removeTag?: string;
+    delete?: boolean;
+  }) => {
+    try {
+      // Find object - support partial IDs
+      let object = null;
+
+      // Only try UUID lookup if it looks like a full UUID
+      if (idArg.length === 36 && idArg.includes('-')) {
+        object = await getObjectById(idArg);
+      }
+
+      if (!object) {
+        // Try partial ID match
+        const allObjects = await listObjects({ limit: 100 });
+        const match = allObjects.find(o => o.id.startsWith(idArg));
+        if (match) {
+          object = match;
+        }
+      }
+
+      if (!object) {
+        console.log(`\nObject not found: ${idArg}`);
+        return;
+      }
+
+      // Handle operations
+      if (options.delete) {
+        await deleteObject(object.id);
+        console.log(`\nObject deleted: ${object.name}`);
+        return;
+      }
+
+      if (options.linkMemory) {
+        await linkToMemory(object.id, options.linkMemory);
+        console.log(`Linked to memory: ${options.linkMemory.substring(0, 8)}`);
+      }
+
+      if (options.unlinkMemory) {
+        await unlinkFromMemory(object.id, options.unlinkMemory);
+        console.log(`Unlinked from memory: ${options.unlinkMemory.substring(0, 8)}`);
+      }
+
+      if (options.linkEntity) {
+        await linkToEntity(object.id, options.linkEntity);
+        console.log(`Linked to entity: ${options.linkEntity.substring(0, 8)}`);
+      }
+
+      if (options.addTag) {
+        await addTag(object.id, options.addTag);
+        console.log(`Added tag: ${options.addTag}`);
+      }
+
+      if (options.removeTag) {
+        await removeTag(object.id, options.removeTag);
+        console.log(`Removed tag: ${options.removeTag}`);
+      }
+
+      // Re-fetch object if modified
+      if (options.linkMemory || options.unlinkMemory || options.linkEntity || options.addTag || options.removeTag) {
+        object = await getObjectById(object.id);
+        if (!object) return;
+      }
+
+      // Display object details
+      const icon = object.object_type === 'image' ? '🖼️' :
+                   object.object_type === 'document' ? '📄' :
+                   object.object_type === 'audio' ? '🎵' :
+                   object.object_type === 'video' ? '🎬' :
+                   object.object_type === 'archive' ? '📦' : '📎';
+
+      console.log(`\n${icon} ${object.name}\n`);
+      console.log(`ID: ${object.id}`);
+      console.log(`Type: ${object.object_type}`);
+      console.log(`Filename: ${object.filename}`);
+      console.log(`Size: ${formatBytes(object.size_bytes)}`);
+      console.log(`MIME: ${object.mime_type}`);
+      console.log(`Status: ${object.status}`);
+      console.log(`Processing: ${object.processing_status}`);
+      console.log(`Created: ${new Date(object.created_at).toLocaleString()}`);
+      console.log(`Source: ${object.source}`);
+
+      if (object.description) {
+        console.log(`\nDescription: ${object.description}`);
+      }
+
+      if (object.extracted_text) {
+        const preview = object.extracted_text.length > 100
+          ? object.extracted_text.substring(0, 100) + '...'
+          : object.extracted_text;
+        console.log(`\nExtracted text: ${preview}`);
+      }
+
+      // Show tags
+      const tags = await getObjectTags(object.id);
+      if (tags.length > 0) {
+        console.log(`\nTags: ${tags.map(t => t.tag).join(', ')}`);
+      }
+      console.log('');
+    } catch (error) {
+      console.error('Failed to get object:', error);
+      process.exit(1);
+    } finally {
+      await closePool();
+    }
+  });
+
+/**
+ * upload - Upload a file
+ */
+program
+  .command('upload')
+  .description('Upload a file as an object')
+  .argument('<file>', 'Path to file')
+  .option('-n, --name <name>', 'Display name (defaults to filename)')
+  .option('-d, --description <desc>', 'Description')
+  .option('-t, --tags <tags>', 'Comma-separated tags')
+  .option('-m, --memory <memoryId>', 'Link to a memory')
+  .option('-e, --entity <entityId>', 'Link to an entity')
+  .action(async (filePath: string, options: {
+    name?: string;
+    description?: string;
+    tags?: string;
+    memory?: string;
+    entity?: string;
+  }) => {
+    try {
+      // Read file
+      const data = readFileSync(filePath);
+      const filename = filePath.split('/').pop() || filePath;
+
+      // Detect MIME type from extension
+      const ext = filename.split('.').pop()?.toLowerCase() || '';
+      const mimeTypes: Record<string, string> = {
+        'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'gif': 'image/gif',
+        'webp': 'image/webp', 'svg': 'image/svg+xml',
+        'pdf': 'application/pdf', 'doc': 'application/msword',
+        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'txt': 'text/plain', 'md': 'text/markdown',
+        'mp3': 'audio/mpeg', 'wav': 'audio/wav', 'ogg': 'audio/ogg',
+        'mp4': 'video/mp4', 'webm': 'video/webm', 'mov': 'video/quicktime',
+        'zip': 'application/zip', 'tar': 'application/x-tar', 'gz': 'application/gzip',
+        'json': 'application/json', 'xml': 'application/xml',
+      };
+      const mimeType = mimeTypes[ext] || 'application/octet-stream';
+
+      const tags = options.tags?.split(',').map(t => t.trim()).filter(Boolean);
+
+      const result = await createObject({
+        name: options.name || filename,
+        filename,
+        mimeType,
+        data,
+        description: options.description,
+        tags,
+      });
+
+      if (result.isDuplicate) {
+        console.log(`\nFile already exists (duplicate detected)`);
+        console.log(`Existing ID: ${result.object.id}`);
+      } else {
+        console.log(`\nFile uploaded successfully!`);
+        console.log(`ID: ${result.object.id}`);
+        console.log(`Type: ${result.object.object_type}`);
+        console.log(`Size: ${formatBytes(result.object.size_bytes)}`);
+
+        // Link to memory if specified
+        if (options.memory) {
+          await linkToMemory(result.object.id, options.memory);
+          console.log(`Linked to memory: ${options.memory.substring(0, 8)}`);
+        }
+
+        // Link to entity if specified
+        if (options.entity) {
+          await linkToEntity(result.object.id, options.entity);
+          console.log(`Linked to entity: ${options.entity.substring(0, 8)}`);
+        }
+
+        if (result.tags.length > 0) {
+          console.log(`Tags: ${result.tags.map(t => t.tag).join(', ')}`);
+        }
+      }
+      console.log('');
+    } catch (error) {
+      console.error('Failed to upload file:', error);
+      process.exit(1);
+    } finally {
+      await closePool();
+    }
+  });
+
+/**
+ * tags - List all object tags
+ */
+program
+  .command('tags')
+  .description('List all object tags with counts')
+  .action(async () => {
+    try {
+      const tags = await getAllTags();
+
+      console.log(`\nObject Tags (${tags.length})\n`);
+
+      if (tags.length === 0) {
+        console.log('No tags found.');
+        console.log('Use `squire upload <file> -t tag1,tag2` or `squire object <id> --add-tag <tag>`');
+      } else {
+        for (const t of tags) {
+          console.log(`  ${t.tag} (${t.count})`);
+        }
+      }
+      console.log('');
+    } catch (error) {
+      console.error('Failed to list tags:', error);
+      process.exit(1);
+    } finally {
+      await closePool();
+    }
+  });
+
+/**
+ * collections - List object collections
+ */
+program
+  .command('collections')
+  .description('List object collections')
+  .action(async () => {
+    try {
+      const collections = await listCollections();
+
+      console.log(`\nCollections (${collections.length})\n`);
+
+      if (collections.length === 0) {
+        console.log('No collections found.');
+        console.log('Use `squire collection-create <name>` to create one.');
+      } else {
+        for (const c of collections) {
+          const date = new Date(c.updated_at).toLocaleDateString();
+          console.log(`📁 [${c.id.substring(0, 8)}] ${c.name}`);
+          console.log(`   ${c.object_count} objects | updated: ${date}`);
+          if (c.description) {
+            console.log(`   ${c.description}`);
+          }
+          console.log('');
+        }
+      }
+    } catch (error) {
+      console.error('Failed to list collections:', error);
+      process.exit(1);
+    } finally {
+      await closePool();
+    }
+  });
+
+/**
+ * collection - Show collection details
+ */
+program
+  .command('collection')
+  .description('Show collection details and contents')
+  .argument('<id>', 'Collection ID (partial or full)')
+  .option('--add <objectId>', 'Add object to collection')
+  .option('--remove <objectId>', 'Remove object from collection')
+  .action(async (idArg: string, options: { add?: string; remove?: string }) => {
+    try {
+      // Find collection - support partial IDs
+      let collection = null;
+
+      // Only try UUID lookup if it looks like a full UUID
+      if (idArg.length === 36 && idArg.includes('-')) {
+        collection = await getCollectionById(idArg);
+      }
+
+      if (!collection) {
+        const allCollections = await listCollections();
+        const match = allCollections.find(c => c.id.startsWith(idArg));
+        if (match) {
+          collection = match;
+        }
+      }
+
+      if (!collection) {
+        console.log(`\nCollection not found: ${idArg}`);
+        return;
+      }
+
+      // Handle operations
+      if (options.add) {
+        await addToCollection(collection.id, options.add);
+        console.log(`Added object: ${options.add.substring(0, 8)}`);
+        // Re-fetch
+        collection = await getCollectionById(collection.id);
+        if (!collection) return;
+      }
+
+      if (options.remove) {
+        await removeFromCollection(collection.id, options.remove);
+        console.log(`Removed object: ${options.remove.substring(0, 8)}`);
+        // Re-fetch
+        collection = await getCollectionById(collection.id);
+        if (!collection) return;
+      }
+
+      console.log(`\n📁 ${collection.name}\n`);
+      console.log(`ID: ${collection.id}`);
+      console.log(`Objects: ${collection.object_count}`);
+      console.log(`Updated: ${new Date(collection.updated_at).toLocaleString()}`);
+      if (collection.description) {
+        console.log(`Description: ${collection.description}`);
+      }
+
+      const objects = await getCollectionObjects(collection.id);
+      if (objects.length > 0) {
+        console.log(`\nContents:\n`);
+        for (const obj of objects) {
+          const icon = obj.object_type === 'image' ? '🖼️' :
+                       obj.object_type === 'document' ? '📄' :
+                       obj.object_type === 'audio' ? '🎵' :
+                       obj.object_type === 'video' ? '🎬' :
+                       obj.object_type === 'archive' ? '📦' : '📎';
+          console.log(`  ${icon} [${obj.id.substring(0, 8)}] ${obj.name}`);
+        }
+      }
+      console.log('');
+    } catch (error) {
+      console.error('Failed to get collection:', error);
+      process.exit(1);
+    } finally {
+      await closePool();
+    }
+  });
+
+/**
+ * collection-create - Create a new collection
+ */
+program
+  .command('collection-create')
+  .description('Create a new object collection')
+  .argument('<name>', 'Collection name')
+  .option('-d, --description <desc>', 'Description')
+  .action(async (name: string, options: { description?: string }) => {
+    try {
+      const collection = await createCollection(name, options.description);
+      console.log(`\nCollection created!`);
+      console.log(`ID: ${collection.id}`);
+      console.log(`Name: ${collection.name}`);
+      console.log('');
+    } catch (error) {
+      console.error('Failed to create collection:', error);
       process.exit(1);
     } finally {
       await closePool();
