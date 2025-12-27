@@ -112,10 +112,12 @@ export type InsightType =
 
 // Summary Types
 export interface LivingSummary {
+  id: string;
   category: SummaryCategory;
   content: string;
-  updated_at: string;
   version: number;
+  memory_count: number;
+  last_updated: string;
 }
 
 export type SummaryCategory =
@@ -127,15 +129,48 @@ export type SummaryCategory =
   | 'health'
   | 'daily';
 
+// Scored Memory (from context service)
+export interface ScoredMemory {
+  id: string;
+  content: string;
+  created_at: string;
+  salience_score: number;
+  current_strength: number;
+  similarity?: number;
+  recency_score: number;
+  final_score: number;
+  token_estimate: number;
+  category: 'high_salience' | 'relevant' | 'recent';
+}
+
+// Entity Summary (from context service)
+export interface EntitySummary {
+  id: string;
+  name: string;
+  type: EntityType;
+  mention_count: number;
+}
+
+// Summary Snapshot (from context service)
+export interface SummarySnapshot {
+  category: string;
+  content: string;
+  version: number;
+  memory_count: number;
+}
+
 // Context Package (returned by /api/context)
 export interface ContextPackage {
-  memories: Memory[];
-  entities: Entity[];
-  summaries: LivingSummary[];
-  beliefs?: Belief[];
-  patterns?: Pattern[];
-  token_budget: number;
-  tokens_used: number;
+  generated_at: string;
+  profile: string;
+  query?: string;
+  memories: ScoredMemory[];
+  entities: EntitySummary[];
+  summaries: SummarySnapshot[];
+  token_count: number;
+  disclosure_id: string;
+  markdown: string;
+  json: object;
 }
 
 // Chat Types

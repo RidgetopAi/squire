@@ -3,7 +3,11 @@
 // ============================================
 // Base fetch wrapper for backend API
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+// Use relative URLs in browser (goes through Next.js proxy)
+// Use absolute URL only for SSR or when explicitly set
+const API_BASE_URL = typeof window === 'undefined'
+  ? (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000')
+  : '';
 
 export class ApiError extends Error {
   constructor(
@@ -46,17 +50,24 @@ function buildUrl(
   endpoint: string,
   params?: Record<string, string | number | boolean | undefined>
 ): string {
-  const url = new URL(endpoint, API_BASE_URL);
+  // For relative URLs (browser), just use the endpoint directly
+  // For absolute URLs (SSR), prepend the base
+  let urlString = API_BASE_URL ? `${API_BASE_URL}${endpoint}` : endpoint;
 
   if (params) {
+    const searchParams = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined) {
-        url.searchParams.append(key, String(value));
+        searchParams.append(key, String(value));
       }
     });
+    const queryString = searchParams.toString();
+    if (queryString) {
+      urlString += `?${queryString}`;
+    }
   }
 
-  return url.toString();
+  return urlString;
 }
 
 export async function apiGet<T>(

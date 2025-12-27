@@ -52,7 +52,9 @@ Update this as we build - it's our source of truth for what's wired and what's n
 
 | Endpoint | Method | Status | Frontend Consumer | Purpose |
 |----------|--------|--------|-------------------|---------|
-| `/api/chat` | POST | 🆕 Needed | ChatPage | Send message, get LLM response |
+| `/api/chat` | POST | ✅ Exists | ChatPage | Send message, get LLM response |
+| `/api/chat/simple` | POST | ✅ Exists | ChatPage | Quick chat without context |
+| `/api/chat/health` | GET | ✅ Exists | StatusIndicator | LLM health check |
 | `/api/chat/stream` | WS | 🆕 Needed | ChatPage | Stream LLM response |
 | `/api/graph/visualization` | GET | 🆕 Needed | GraphPage | Full graph data for viz |
 
@@ -97,11 +99,11 @@ Update this as we build - it's our source of truth for what's wired and what's n
 | Component | API Dependencies | Status |
 |-----------|------------------|--------|
 | `ChatPage` | `/api/chat`, `/api/context`, WS events | ⬜ |
-| `ChatWindow` | ChatStore (local) | ⬜ |
-| `MessageList` | ChatStore (local) | ⬜ |
-| `MessageBubble` | None | ⬜ |
-| `ChatInputBar` | `/api/chat` via ChatStore | ⬜ |
-| `STTButton` | Web Speech API (browser) | ⬜ |
+| `ChatWindow` | useChatStore → `/api/chat` | ✅ Wired |
+| `MessageList` | useChatStore | ✅ Wired |
+| `MessageBubble` | None | ✅ Built |
+| `ChatInputBar` | useChatStore → `/api/chat` | ✅ Wired |
+| `STTButton` | Web Speech API (browser) | ✅ Wired |
 | `ContextualMemoryOverlayStack` | OverlayStore (from context response) | ⬜ |
 
 ## Card Components
@@ -162,7 +164,7 @@ Update this as we build - it's our source of truth for what's wired and what's n
 
 | Store | Purpose | Status |
 |-------|---------|--------|
-| `chatStore` | Messages, conversationId, loading state | ⬜ |
+| `chatStore` | Messages, conversationId, loading state | ✅ Implemented |
 | `overlayStore` | Active memory cards, push/dismiss | ⬜ |
 | `uiStore` | Theme, sidebar state, selected profile | ⬜ |
 
@@ -292,7 +294,7 @@ Track implementation status of API client wrappers:
 | `createMemory()` | `lib/api/memories.ts` | ⬜ | POST /api/memories |
 | `fetchContextPackage()` | `lib/api/context.ts` | ⬜ | POST /api/context |
 | `fetchProfiles()` | `lib/api/context.ts` | ⬜ | GET /api/context/profiles |
-| `sendChatMessage()` | `lib/api/chat.ts` | ⬜ | POST /api/chat |
+| `sendChatMessage()` | `lib/api/chat.ts` | ✅ | POST /api/chat |
 | `fetchEntities()` | `lib/api/entities.ts` | ⬜ | GET /api/entities |
 | `getEntity()` | `lib/api/entities.ts` | ⬜ | GET /api/entities/:id |
 | `fetchBeliefs()` | `lib/api/beliefs.ts` | ⬜ | GET /api/beliefs |
@@ -320,7 +322,7 @@ Track implementation status of React hooks:
 | `useInsights()` | `lib/hooks/useInsights.ts` | ⬜ | fetchInsights |
 | `useSummaries()` | `lib/hooks/useSummaries.ts` | ⬜ | fetchSummaries |
 | `useGraphData()` | `lib/hooks/useGraphData.ts` | ⬜ | fetchGraphVisualization |
-| `useSpeechRecognition()` | `lib/hooks/useSpeechRecognition.ts` | ⬜ | Web Speech API |
+| `useSpeechRecognition()` | `lib/hooks/useSpeechRecognition.ts` | ✅ | Web Speech API |
 | `useWebSocket()` | `lib/hooks/useWebSocket.ts` | ⬜ | Socket.IO |
 
 ---
@@ -331,8 +333,13 @@ Track changes to wiring as we implement:
 
 | Date | Phase | Change | Components Affected |
 |------|-------|--------|---------------------|
-| TBD | P0 | Initial scaffolding | All |
-| | | | |
+| 2025-12-27 | P0 | Initial scaffolding complete | All structure |
+| 2025-12-27 | P1-T1 | Layout shell built | AppLayout, HeaderBar, SideNav |
+| 2025-12-27 | P1-T2 | Chat UI components built | ChatWindow, MessageList, MessageBubble, ChatInputBar |
+| 2025-12-27 | P1-T3 | useChatStore implemented | lib/stores/chatStore.ts |
+| 2025-12-27 | P1-T4 | /api/chat endpoint created | Backend routes/chat.ts, services/chat.ts |
+| 2025-12-27 | P1-T5 | Frontend wired to backend API | lib/api/chat.ts, chatStore updated |
+| 2025-12-27 | P1-T6 | STT Button implemented | STTButton, useSpeechRecognition hook |
 | | | | |
 
 ---

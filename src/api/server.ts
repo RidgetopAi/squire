@@ -12,6 +12,7 @@ import insightsRouter from './routes/insights.js';
 import researchRouter from './routes/research.js';
 import graphRouter from './routes/graph.js';
 import objectsRouter from './routes/objects.js';
+import chatRouter from './routes/chat.js';
 
 const app = express();
 
@@ -31,6 +32,7 @@ app.use('/api/insights', insightsRouter);
 app.use('/api/research', researchRouter);
 app.use('/api/graph', graphRouter);
 app.use('/api/objects', objectsRouter);
+app.use('/api/chat', chatRouter);
 
 // 404 handler
 app.use((_req, res) => {
