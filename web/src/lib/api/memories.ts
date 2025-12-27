@@ -25,6 +25,15 @@ export interface FetchMemoriesOptions {
   source?: string;
 }
 
+export interface MemoriesPage {
+  memories: Memory[];
+  total: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+  nextOffset: number | null;
+}
+
 /**
  * Fetch memories with optional filters
  */
@@ -39,6 +48,27 @@ export async function fetchMemories(options: FetchMemoriesOptions = {}): Promise
   return {
     memories: response.memories,
     total: response.total,
+  };
+}
+
+/**
+ * Fetch memories page for infinite scroll
+ */
+export async function fetchMemoriesPage(options: FetchMemoriesOptions = {}): Promise<MemoriesPage> {
+  const { limit = 30, offset = 0, source } = options;
+  const response = await apiGet<MemoriesListResponse>('/api/memories', {
+    params: { limit, offset, source },
+  });
+
+  const hasMore = offset + response.memories.length < response.total;
+
+  return {
+    memories: response.memories,
+    total: response.total,
+    offset,
+    limit,
+    hasMore,
+    nextOffset: hasMore ? offset + limit : null,
   };
 }
 

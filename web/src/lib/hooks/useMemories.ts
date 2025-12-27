@@ -1,12 +1,14 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 import {
   fetchMemories,
+  fetchMemoriesPage,
   fetchRecentHighSalienceMemories,
   fetchMemory,
   searchMemories,
   type FetchMemoriesOptions,
+  type MemoriesPage,
 } from '@/lib/api/memories';
 import type { Memory } from '@/lib/types';
 
@@ -62,6 +64,23 @@ export function useMemorySearch(
     queryKey: ['memories', 'search', query, limit, minSimilarity],
     queryFn: () => searchMemories(query, { limit, minSimilarity }),
     enabled: query.length > 2,
+    staleTime: 1000 * 60 * 2, // 2 minutes
+    refetchOnWindowFocus: false,
+  });
+}
+
+/**
+ * Hook for infinite scroll pagination of memories
+ */
+export function useInfiniteMemories(options: { pageSize?: number; source?: string } = {}) {
+  const { pageSize = 30, source } = options;
+
+  return useInfiniteQuery<MemoriesPage>({
+    queryKey: ['memories', 'infinite', { pageSize, source }],
+    queryFn: ({ pageParam = 0 }) =>
+      fetchMemoriesPage({ limit: pageSize, offset: pageParam as number, source }),
+    getNextPageParam: (lastPage) => lastPage.nextOffset,
+    initialPageParam: 0,
     staleTime: 1000 * 60 * 2, // 2 minutes
     refetchOnWindowFocus: false,
   });
