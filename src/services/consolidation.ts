@@ -10,6 +10,9 @@ import {
   processMemoryForPatterns,
   markStalePatternsDormant,
 } from './patterns.js';
+import {
+  processInsightsForConsolidation,
+} from './insights.js';
 
 /**
  * Consolidation Configuration
@@ -67,6 +70,9 @@ export interface ConsolidationResult {
   patternsCreated: number;
   patternsReinforced: number;
   patternsDormant: number;
+  insightsCreated: number;
+  insightsValidated: number;
+  insightsStale: number;
   durationMs: number;
 }
 
@@ -351,6 +357,9 @@ export async function consolidateSession(session: Session): Promise<Consolidatio
     // 5. Mark stale patterns as dormant
     const dormantCount = await markStalePatternsDormant(30);
 
+    // 6. Process insights (cross-analyze beliefs, patterns, memories)
+    const insightResult = await processInsightsForConsolidation();
+
     // Count total memories processed
     const countResult = await pool.query(`SELECT COUNT(*) as count FROM memories`);
     const memoriesProcessed = parseInt(countResult.rows[0]?.count ?? '0', 10);
@@ -377,6 +386,9 @@ export async function consolidateSession(session: Session): Promise<Consolidatio
       patternsCreated: patternResult.created,
       patternsReinforced: patternResult.reinforced,
       patternsDormant: dormantCount,
+      insightsCreated: insightResult.created.length,
+      insightsValidated: insightResult.validated.length,
+      insightsStale: insightResult.staleMarked,
       durationMs: Date.now() - startTime,
     };
   } catch (error) {
@@ -407,6 +419,9 @@ export async function consolidateAll(): Promise<ConsolidationResult> {
   // 5. Mark stale patterns as dormant
   const dormantCount = await markStalePatternsDormant(30);
 
+  // 6. Process insights (cross-analyze beliefs, patterns, memories)
+  const insightResult = await processInsightsForConsolidation();
+
   // Count total memories processed
   const countResult = await pool.query(`SELECT COUNT(*) as count FROM memories`);
   const memoriesProcessed = parseInt(countResult.rows[0]?.count ?? '0', 10);
@@ -421,6 +436,9 @@ export async function consolidateAll(): Promise<ConsolidationResult> {
     patternsCreated: patternResult.created,
     patternsReinforced: patternResult.reinforced,
     patternsDormant: dormantCount,
+    insightsCreated: insightResult.created.length,
+    insightsValidated: insightResult.validated.length,
+    insightsStale: insightResult.staleMarked,
     durationMs: Date.now() - startTime,
   };
 }

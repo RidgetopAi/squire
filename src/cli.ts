@@ -47,6 +47,22 @@ import {
   getPatternTypeDescription,
   type PatternType,
 } from './services/patterns.js';
+import {
+  getAllInsights,
+  getInsight,
+  getInsightSources,
+  getInsightStats,
+  dismissInsight,
+  actionInsight,
+  isValidInsightType,
+  INSIGHT_TYPES,
+  INSIGHT_PRIORITIES,
+  getInsightTypeDescription,
+  getInsightTypeEmoji,
+  getPriorityEmoji,
+  type InsightType,
+  type InsightPriority,
+} from './services/insights.js';
 import { pool, checkConnection, closePool } from './db/pool.js';
 import { checkEmbeddingHealth } from './providers/embeddings.js';
 import { checkLLMHealth, getLLMInfo } from './providers/llm.js';
@@ -444,6 +460,10 @@ program
       if (result.patternsDormant > 0) {
         console.log(`  Patterns dormant: ${result.patternsDormant}`);
       }
+      console.log(`  Insights: ${result.insightsCreated} new, ${result.insightsValidated} validated`);
+      if (result.insightsStale > 0) {
+        console.log(`  Insights stale: ${result.insightsStale}`);
+      }
       console.log(`  Duration: ${result.durationMs}ms`);
 
       if (options.verbose) {
@@ -483,6 +503,9 @@ program
       console.log(`  ${result.edgesCreated} new connections formed`);
       if (result.patternsCreated > 0 || result.patternsReinforced > 0) {
         console.log(`  ${result.patternsCreated} patterns discovered, ${result.patternsReinforced} reinforced`);
+      }
+      if (result.insightsCreated > 0 || result.insightsValidated > 0) {
+        console.log(`  ${result.insightsCreated} insights generated, ${result.insightsValidated} validated`);
       }
 
       if (options.verbose) {
@@ -1206,6 +1229,170 @@ program
       console.log('');
     } catch (error) {
       console.error('Failed to get pattern:', error);
+      process.exit(1);
+    } finally {
+      await closePool();
+    }
+  });
+
+/**
+ * insights - List all insights
+ */
+program
+  .command('insights')
+  .description('List generated insights')
+  .option('-t, --type <type>', 'Filter by insight type (connection, contradiction, opportunity, warning)')
+  .option('-p, --priority <priority>', 'Filter by priority (low, medium, high, critical)')
+  .option('-l, --limit <limit>', 'Maximum number to show', '20')
+  .option('--all', 'Include dismissed and actioned insights')
+  .action(async (options: { type?: string; priority?: string; limit: string; all?: boolean }) => {
+    try {
+      // Validate type if provided
+      if (options.type && !isValidInsightType(options.type)) {
+        console.log(`\nInvalid insight type: ${options.type}`);
+        console.log(`Valid types: ${INSIGHT_TYPES.join(', ')}`);
+        return;
+      }
+
+      // Validate priority if provided
+      if (options.priority && !INSIGHT_PRIORITIES.includes(options.priority as InsightPriority)) {
+        console.log(`\nInvalid priority: ${options.priority}`);
+        console.log(`Valid priorities: ${INSIGHT_PRIORITIES.join(', ')}`);
+        return;
+      }
+
+      const limit = parseInt(options.limit, 10);
+      const insights = await getAllInsights({
+        type: options.type as InsightType | undefined,
+        priority: options.priority as InsightPriority | undefined,
+        status: options.all ? undefined : 'active',
+        limit,
+      });
+
+      const stats = await getInsightStats();
+
+      console.log('\nInsights\n');
+      console.log(`  Total: ${stats.total} | Active: ${stats.active} | Actioned: ${stats.actioned} | Dismissed: ${stats.dismissed}`);
+      console.log(`  Avg confidence: ${(stats.avgConfidence * 100).toFixed(0)}%`);
+      console.log('');
+
+      if (insights.length === 0) {
+        console.log('No insights generated yet.');
+        console.log('Insights are generated during consolidation. Run `squire consolidate`.');
+      } else {
+        for (const i of insights) {
+          const conf = (i.confidence * 100).toFixed(0);
+          const status = i.status !== 'active' ? ` [${i.status}]` : '';
+          const emoji = getInsightTypeEmoji(i.insight_type);
+          const priorityEmoji = getPriorityEmoji(i.priority);
+          console.log(`${priorityEmoji} [${i.id.substring(0, 8)}] ${emoji} ${i.insight_type}${status}`);
+          console.log(`  "${i.content}"`);
+          console.log(`  priority: ${i.priority} | confidence: ${conf}% | validated: ${i.validation_count}x`);
+          console.log('');
+        }
+      }
+
+      if (options.type) {
+        console.log(`Showing ${options.type} insights only. Remove --type to see all.`);
+      }
+      console.log('');
+    } catch (error) {
+      console.error('Failed to list insights:', error);
+      process.exit(1);
+    } finally {
+      await closePool();
+    }
+  });
+
+/**
+ * insight - Show a specific insight with sources
+ */
+program
+  .command('insight')
+  .description('Show a specific insight with its sources')
+  .argument('<id>', 'Insight ID (can be partial)')
+  .option('--dismiss [reason]', 'Dismiss this insight')
+  .option('--action', 'Mark this insight as actioned')
+  .action(async (id: string, options: { dismiss?: string | boolean; action?: boolean }) => {
+    try {
+      // Try to find by partial ID
+      let insight = null;
+
+      if (id.length === 36) {
+        insight = await getInsight(id);
+      } else {
+        // Search for partial match
+        const all = await getAllInsights({ limit: 100 });
+        const match = all.find(i => i.id.startsWith(id));
+        if (match) {
+          insight = match;
+        }
+      }
+
+      if (!insight) {
+        console.log(`\nInsight not found: ${id}`);
+        console.log('Use `squire insights` to see available insights.');
+        return;
+      }
+
+      // Handle dismiss action
+      if (options.dismiss !== undefined) {
+        const reason = typeof options.dismiss === 'string' ? options.dismiss : undefined;
+        await dismissInsight(insight.id, reason);
+        console.log(`\nInsight dismissed: ${insight.id.substring(0, 8)}`);
+        if (reason) {
+          console.log(`  Reason: ${reason}`);
+        }
+        return;
+      }
+
+      // Handle action
+      if (options.action) {
+        await actionInsight(insight.id);
+        console.log(`\nInsight marked as actioned: ${insight.id.substring(0, 8)}`);
+        return;
+      }
+
+      const sources = await getInsightSources(insight.id);
+
+      const emoji = getInsightTypeEmoji(insight.insight_type);
+      console.log(`\n${emoji} Insight: ${insight.id}`);
+      console.log(`${'─'.repeat(50)}`);
+      console.log(`"${insight.content}"`);
+      console.log('');
+      console.log(`  Type: ${insight.insight_type} (${getInsightTypeDescription(insight.insight_type)})`);
+      console.log(`  Priority: ${insight.priority}`);
+      console.log(`  Status: ${insight.status}`);
+      console.log(`  Confidence: ${(insight.confidence * 100).toFixed(0)}%`);
+      console.log(`  Validated: ${insight.validation_count} times`);
+      console.log(`  Created: ${insight.created_at.toLocaleString()}`);
+      if (insight.actioned_at) {
+        console.log(`  Actioned: ${insight.actioned_at.toLocaleString()}`);
+      }
+      console.log('');
+
+      if (sources.length > 0) {
+        console.log(`Sources (${sources.length}):`);
+        for (const s of sources) {
+          const strength = (s.contribution_strength * 100).toFixed(0);
+          const preview = s.source_content
+            ? (s.source_content.length > 50 ? s.source_content.substring(0, 50) + '...' : s.source_content)
+            : '(content unavailable)';
+          console.log(`  [${s.source_type}] ${s.source_id.substring(0, 8)} - ${s.contribution_type} (${strength}%)`);
+          console.log(`    ${preview}`);
+          if (s.explanation) {
+            console.log(`    ${s.explanation}`);
+          }
+        }
+      }
+
+      console.log('');
+      console.log('Actions:');
+      console.log(`  squire insight ${insight.id.substring(0, 8)} --dismiss "reason"  # Mark as not relevant`);
+      console.log(`  squire insight ${insight.id.substring(0, 8)} --action           # Mark as acted upon`);
+      console.log('');
+    } catch (error) {
+      console.error('Failed to get insight:', error);
       process.exit(1);
     } finally {
       await closePool();

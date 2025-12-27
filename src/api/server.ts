@@ -8,6 +8,7 @@ import consolidationRouter from './routes/consolidation.js';
 import summariesRouter from './routes/summaries.js';
 import beliefsRouter from './routes/beliefs.js';
 import patternsRouter from './routes/patterns.js';
+import insightsRouter from './routes/insights.js';
 
 const app = express();
 
@@ -23,6 +24,7 @@ app.use('/api/consolidation', consolidationRouter);
 app.use('/api/summaries', summariesRouter);
 app.use('/api/beliefs', beliefsRouter);
 app.use('/api/patterns', patternsRouter);
+app.use('/api/insights', insightsRouter);
 
 // 404 handler
 app.use((_req, res) => {
