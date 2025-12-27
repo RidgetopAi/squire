@@ -3,9 +3,15 @@
 // ============================================
 
 // Relative time formatting
-export function formatRelativeTime(date: string | Date): string {
+export function formatRelativeTime(date: string | Date | null | undefined): string {
+  if (!date) return '—';
+
   const now = new Date();
   const then = new Date(date);
+
+  // Check for invalid date
+  if (isNaN(then.getTime())) return '—';
+
   const diffMs = now.getTime() - then.getTime();
   const diffSeconds = Math.floor(diffMs / 1000);
   const diffMinutes = Math.floor(diffSeconds / 60);
@@ -34,8 +40,11 @@ export function formatDate(date: string | Date): string {
 }
 
 // Date with time
-export function formatDateTime(date: string | Date): string {
-  return new Date(date).toLocaleDateString('en-US', {
+export function formatDateTime(date: string | Date | null | undefined): string {
+  if (!date) return '—';
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -71,7 +80,8 @@ export function formatPercent(value: number, decimals = 0): string {
 }
 
 // Format salience as display string
-export function formatSalience(salience: number): string {
+export function formatSalience(salience: number | null | undefined): string {
+  if (salience == null || isNaN(salience)) return '—';
   const level = Math.round(salience * 10);
   return `${level}/10`;
 }

@@ -1,6 +1,8 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { motion } from 'framer-motion';
 import { useInfiniteMemories, useMemorySearch } from '@/lib/hooks/useMemories';
 import {
   TimelineFilters,
@@ -10,6 +12,8 @@ import {
   getDateRangeBounds,
   type TimelineFilterState,
 } from '@/components/timeline';
+import { DetailModal } from '@/components/dashboard';
+import { useOpenMemoryDetail } from '@/lib/stores';
 import type { Memory, MemorySource } from '@/lib/types';
 
 // Icons as simple SVG components
@@ -68,9 +72,15 @@ const sourceConfig: Record<MemorySource, { icon: React.ReactNode; color: string;
 };
 
 // Format relative time
-function formatRelativeTime(date: string): string {
+function formatRelativeTime(date: string | null | undefined): string {
+  if (!date) return '—';
+
   const now = new Date();
   const then = new Date(date);
+
+  // Check for invalid date
+  if (isNaN(then.getTime())) return '—';
+
   const diffMs = now.getTime() - then.getTime();
   const diffMins = Math.floor(diffMs / (1000 * 60));
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
@@ -134,7 +144,7 @@ function applyFilters(memories: Memory[], filters: TimelineFilterState): Memory[
 
   // Filter by salience
   if (filters.minSalience > 0) {
-    filtered = filtered.filter(m => m.salience >= filters.minSalience);
+    filtered = filtered.filter(m => (m.salience ?? 0) >= filters.minSalience);
   }
 
   return filtered;
@@ -210,17 +220,61 @@ function NoResultsState({ isSearch }: { isSearch: boolean }) {
   );
 }
 
+// Chevron icon for expand/collapse
+const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
+  <svg
+    className={`w-4 h-4 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+    fill="none"
+    stroke="currentColor"
+    viewBox="0 0 24 24"
+  >
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+  </svg>
+);
+
+// Animation variants for staggered entrance
+const cardVariants = {
+  hidden: { opacity: 0, x: -20 },
+  visible: (index: number) => ({
+    opacity: 1,
+    x: 0,
+    transition: {
+      delay: index * 0.05, // 50ms stagger
+      duration: 0.3,
+      ease: [0, 0, 0.2, 1] as const, // ease-out cubic bezier
+    },
+  }),
+};
+
 // Memory card component
 interface MemoryCardProps {
   memory: Memory;
   isLast: boolean;
+  isExpanded: boolean;
+  isFocused: boolean;
+  animationIndex: number;
   onClick?: (memory: Memory) => void;
+  onToggleExpand?: (memoryId: string) => void;
   searchQuery?: string;
 }
 
-function MemoryCard({ memory, isLast, onClick, searchQuery }: MemoryCardProps) {
+function MemoryCard({ memory, isLast, isExpanded, isFocused, animationIndex, onClick, onToggleExpand, searchQuery }: MemoryCardProps) {
+  const cardRef = useRef<HTMLDivElement>(null);
   const config = sourceConfig[memory.source] || sourceConfig.system;
-  const isHighSalience = memory.salience >= 7;
+  const salience = memory.salience ?? 0;
+  const isHighSalience = salience >= 7;
+
+  // Check if content is long enough to need expansion
+  const isLongContent = memory.content.length > 200;
+  const hasMoreEntities = memory.entities && memory.entities.length > 3;
+  const isExpandable = isLongContent || hasMoreEntities;
+
+  // Scroll into view when focused
+  useEffect(() => {
+    if (isFocused && cardRef.current) {
+      cardRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [isFocused]);
 
   // Highlight search terms in content
   const highlightContent = (content: string, query: string) => {
@@ -240,10 +294,22 @@ function MemoryCard({ memory, isLast, onClick, searchQuery }: MemoryCardProps) {
     );
   };
 
+  // Handle expand toggle (prevent card click)
+  const handleExpandClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onToggleExpand?.(memory.id);
+  };
+
   return (
-    <div
+    <motion.div
+      ref={cardRef}
       className="flex gap-4 group"
       onClick={() => onClick?.(memory)}
+      variants={cardVariants}
+      initial="hidden"
+      animate="visible"
+      custom={animationIndex}
+      layout
     >
       {/* Timeline connector */}
       <div className="flex flex-col items-center">
@@ -267,12 +333,17 @@ function MemoryCard({ memory, isLast, onClick, searchQuery }: MemoryCardProps) {
       </div>
 
       {/* Memory card */}
-      <div
+      <motion.div
         className={`
-          flex-1 mb-4 bg-surface-elevated rounded-lg p-4 border border-border/50
-          hover:border-border hover:bg-surface-hover transition-all duration-200
+          flex-1 mb-4 bg-surface-elevated rounded-lg p-4 border transition-all duration-200
+          hover:border-border hover:bg-surface-hover
           ${onClick ? 'cursor-pointer' : ''}
+          ${isFocused
+            ? 'border-accent-primary ring-2 ring-accent-primary/30 bg-accent-primary/5'
+            : 'border-border/50'}
         `}
+        layout
+        transition={{ duration: 0.2 }}
       >
         {/* Header row */}
         <div className="flex items-center gap-2 mb-2">
@@ -296,7 +367,7 @@ function MemoryCard({ memory, isLast, onClick, searchQuery }: MemoryCardProps) {
           {isHighSalience && (
             <span className="flex items-center gap-1 text-xs text-accent-gold">
               <span className="w-1.5 h-1.5 rounded-full bg-accent-gold" />
-              {memory.salience.toFixed(1)}
+              {salience.toFixed(1)}
             </span>
           )}
 
@@ -304,17 +375,28 @@ function MemoryCard({ memory, isLast, onClick, searchQuery }: MemoryCardProps) {
           <span className="text-xs text-foreground-muted ml-auto">
             {formatRelativeTime(memory.created_at)}
           </span>
+
+          {/* Expand/collapse button */}
+          {isExpandable && (
+            <button
+              onClick={handleExpandClick}
+              className="p-1 -m-1 rounded hover:bg-surface transition-colors text-foreground-muted hover:text-foreground"
+              title={isExpanded ? 'Collapse' : 'Expand'}
+            >
+              <ChevronIcon expanded={isExpanded} />
+            </button>
+          )}
         </div>
 
         {/* Content */}
-        <p className="text-sm text-foreground leading-relaxed line-clamp-3">
+        <p className={`text-sm text-foreground leading-relaxed ${isExpanded ? '' : 'line-clamp-3'}`}>
           {searchQuery ? highlightContent(memory.content, searchQuery) : memory.content}
         </p>
 
         {/* Entities preview (if any) */}
         {memory.entities && memory.entities.length > 0 && (
           <div className="flex gap-1.5 mt-3 flex-wrap">
-            {memory.entities.slice(0, 3).map((entity) => (
+            {(isExpanded ? memory.entities : memory.entities.slice(0, 3)).map((entity) => (
               <span
                 key={entity.id}
                 className="px-2 py-0.5 text-xs rounded-full bg-surface border border-border text-foreground-muted"
@@ -322,15 +404,30 @@ function MemoryCard({ memory, isLast, onClick, searchQuery }: MemoryCardProps) {
                 {entity.name}
               </span>
             ))}
-            {memory.entities.length > 3 && (
+            {!isExpanded && memory.entities.length > 3 && (
               <span className="px-2 py-0.5 text-xs text-foreground-muted">
                 +{memory.entities.length - 3}
               </span>
             )}
           </div>
         )}
-      </div>
-    </div>
+
+        {/* Expanded footer with action hint */}
+        {isExpanded && (
+          <div className="mt-3 pt-3 border-t border-border/50 flex items-center justify-between">
+            <span className="text-xs text-foreground-muted">
+              Click to view full details
+            </span>
+            <button
+              onClick={handleExpandClick}
+              className="text-xs text-accent-primary hover:underline"
+            >
+              Collapse
+            </button>
+          </div>
+        )}
+      </motion.div>
+    </motion.div>
   );
 }
 
@@ -338,19 +435,27 @@ function MemoryCard({ memory, isLast, onClick, searchQuery }: MemoryCardProps) {
 interface DateSectionProps {
   date: string;
   memories: Memory[];
+  expandedIds: Set<string>;
+  focusedId: string | null;
   onMemoryClick?: (memory: Memory) => void;
+  onToggleExpand?: (memoryId: string) => void;
   searchQuery?: string;
 }
 
-function DateSection({ date, memories, onMemoryClick, searchQuery }: DateSectionProps) {
+function DateSection({ date, memories, expandedIds, focusedId, onMemoryClick, onToggleExpand, searchQuery }: DateSectionProps) {
   return (
     <div className="mb-8">
       {/* Date header */}
-      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 mb-4">
+      <motion.div
+        className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 mb-4"
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+      >
         <h3 className="text-sm font-semibold text-foreground-muted">
           {formatDateHeader(date)}
         </h3>
-      </div>
+      </motion.div>
 
       {/* Memories */}
       <div className="pl-2">
@@ -359,7 +464,11 @@ function DateSection({ date, memories, onMemoryClick, searchQuery }: DateSection
             key={memory.id}
             memory={memory}
             isLast={idx === memories.length - 1}
+            isExpanded={expandedIds.has(memory.id)}
+            isFocused={focusedId === memory.id}
+            animationIndex={idx}
             onClick={onMemoryClick}
+            onToggleExpand={onToggleExpand}
             searchQuery={searchQuery}
           />
         ))}
@@ -368,9 +477,32 @@ function DateSection({ date, memories, onMemoryClick, searchQuery }: DateSection
   );
 }
 
-export default function TimelinePage() {
+function TimelineContent() {
+  // URL search params for deep linking
+  const searchParams = useSearchParams();
+  const memoryParam = searchParams.get('memory');
+
   // Filter state
   const [filters, setFilters] = useState<TimelineFilterState>(defaultFilters);
+
+  // Expanded cards state
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  // Focused memory state (from URL param)
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+
+  // Detail modal action
+  const openMemory = useOpenMemoryDetail();
+
+  // Handle URL param for deep linking
+  useEffect(() => {
+    if (memoryParam) {
+      setFocusedId(memoryParam);
+      // Clear focus highlight after 3 seconds
+      const timer = setTimeout(() => setFocusedId(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [memoryParam]);
 
   // Check if searching (semantic search mode)
   const isSearchMode = filters.searchQuery.length >= 3;
@@ -428,11 +560,23 @@ export default function TimelinePage() {
     [displayMemories]
   );
 
-  // Handle memory click
-  const handleMemoryClick = (memory: Memory) => {
-    console.log('Memory clicked:', memory.id);
-    // TODO: Wire to detail modal in P4-T4
-  };
+  // Handle memory click - opens detail modal
+  const handleMemoryClick = useCallback((memory: Memory) => {
+    openMemory(memory);
+  }, [openMemory]);
+
+  // Handle expand/collapse toggle
+  const handleToggleExpand = useCallback((memoryId: string) => {
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(memoryId)) {
+        next.delete(memoryId);
+      } else {
+        next.add(memoryId);
+      }
+      return next;
+    });
+  }, []);
 
   // Load more handler for infinite scroll
   const handleLoadMore = useCallback(() => {
@@ -457,6 +601,9 @@ export default function TimelinePage() {
 
   return (
     <div className="h-full flex flex-col p-6 overflow-hidden">
+      {/* Detail Modal */}
+      <DetailModal />
+
       {/* Page Header */}
       <div className="mb-6 animate-fade-in flex-shrink-0">
         <div className="flex items-center gap-3 mb-1">
@@ -502,7 +649,10 @@ export default function TimelinePage() {
                 key={date}
                 date={date}
                 memories={memories}
+                expandedIds={expandedIds}
+                focusedId={focusedId}
                 onMemoryClick={handleMemoryClick}
+                onToggleExpand={handleToggleExpand}
                 searchQuery={isSearchMode ? filters.searchQuery : undefined}
               />
             ))}
@@ -523,5 +673,14 @@ export default function TimelinePage() {
         )}
       </div>
     </div>
+  );
+}
+
+// Wrap in Suspense for useSearchParams
+export default function TimelinePage() {
+  return (
+    <Suspense fallback={<TimelineSkeleton />}>
+      <TimelineContent />
+    </Suspense>
   );
 }

@@ -120,22 +120,27 @@ Update this as we build - it's our source of truth for what's wired and what's n
 
 | Component | API Dependencies | Status |
 |-----------|------------------|--------|
-| `DashboardPage` | Aggregates child panels | ⬜ |
-| `LivingSummaryPanel` | `/api/summaries` | ⬜ |
-| `TodayPanel` | `/api/memories` (filtered recent, high salience) | ⬜ |
-| `BeliefsPanel` | `/api/beliefs` | ⬜ |
-| `PatternsPanel` | `/api/patterns` | ⬜ |
-| `EntitiesPanel` | `/api/entities` | ⬜ |
-| `InsightsPanel` | `/api/insights` | ⬜ |
+| `DashboardPage` | Aggregates child panels | ✅ Wired |
+| `DashboardPanel` | None (layout wrapper) | ✅ Built |
+| `StatsCard` | None (props) | ✅ Built |
+| `LivingSummaryPanel` | `/api/summaries` | ✅ Wired |
+| `TodayPanel` | `/api/memories` (filtered recent, high salience) | ✅ Wired |
+| `BeliefsPanel` | `/api/beliefs` | ✅ Wired |
+| `PatternsPanel` | `/api/patterns` | ✅ Wired |
+| `EntitiesPanel` | `/api/entities` | ✅ Wired |
+| `InsightsPanel` | `/api/insights` | ✅ Wired |
+| `DetailModal` | None (uses detailModalStore) | ✅ Wired |
 
 ## Timeline Components
 
 | Component | API Dependencies | Status |
 |-----------|------------------|--------|
-| `TimelinePage` | `/api/memories` | ⬜ |
-| `TimelineScroller` | Props from TimelinePage | ⬜ |
-| `TimelineFilters` | Local state, triggers refetch | ⬜ |
-| `DateSeparator` | None | ⬜ |
+| `TimelinePage` | `/api/memories`, `/api/memories/search` | ✅ Wired |
+| `MemoryCard` | Props + detailModalStore | ✅ Wired |
+| `DateSection` | Props from TimelinePage | ✅ Built |
+| `TimelineFilters` | Local state, triggers refetch | ✅ Built |
+| `LoadMoreTrigger` | IntersectionObserver | ✅ Built |
+| `EndOfTimeline` | Props | ✅ Built |
 
 ## Graph Components
 
@@ -165,7 +170,8 @@ Update this as we build - it's our source of truth for what's wired and what's n
 | Store | Purpose | Status |
 |-------|---------|--------|
 | `chatStore` | Messages, conversationId, loading state | ✅ Implemented |
-| `overlayStore` | Active memory cards, push/dismiss | ⬜ |
+| `overlayStore` | Active memory cards, push/dismiss | ✅ Implemented |
+| `detailModalStore` | Detail modal state for all item types | ✅ Implemented |
 | `uiStore` | Theme, sidebar state, selected profile | ⬜ |
 
 ## TanStack Query Keys
@@ -282,26 +288,59 @@ Update this as we build - it's our source of truth for what's wired and what's n
 
 ---
 
+# DATA TYPE MAPPING
+
+**CRITICAL**: Backend and frontend use different field names. All API responses must be transformed.
+
+## Memory Type Mapping
+
+| Backend Field | Frontend Field | Transform | Notes |
+|---------------|----------------|-----------|-------|
+| `salience_score` | `salience` | Direct copy | 0-10 scale |
+| `occurred_at` | `updated_at` | Fallback to `created_at` | Can be null |
+| `created_at` | `created_at` | Direct copy | |
+| `content` | `content` | Direct copy | |
+| `source` | `source` | Cast to MemorySource | |
+| `id` | `id` | Direct copy | UUID |
+
+**Transformer**: `transformMemory()` in `lib/api/memories.ts`
+
+## Entity Type Mapping
+
+| Backend Field | Frontend Field | Transform | Notes |
+|---------------|----------------|-----------|-------|
+| TBD | TBD | TBD | Need to verify |
+
+## Belief/Pattern/Insight Type Mapping
+
+| Backend Field | Frontend Field | Transform | Notes |
+|---------------|----------------|-----------|-------|
+| TBD | TBD | TBD | Need to verify |
+
+---
+
 # API CLIENT FUNCTIONS
 
 Track implementation status of API client wrappers:
 
 | Function | File | Status | Endpoint |
 |----------|------|--------|----------|
-| `fetchMemories()` | `lib/api/memories.ts` | ⬜ | GET /api/memories |
-| `searchMemories()` | `lib/api/memories.ts` | ⬜ | GET /api/memories/search |
-| `getMemory()` | `lib/api/memories.ts` | ⬜ | GET /api/memories/:id |
+| `fetchMemories()` | `lib/api/memories.ts` | ✅ | GET /api/memories |
+| `fetchMemoriesPage()` | `lib/api/memories.ts` | ✅ | GET /api/memories (paginated) |
+| `searchMemories()` | `lib/api/memories.ts` | ✅ | GET /api/memories/search |
+| `fetchMemory()` | `lib/api/memories.ts` | ✅ | GET /api/memories/:id |
+| `fetchRecentHighSalienceMemories()` | `lib/api/memories.ts` | ✅ | GET /api/memories (sorted) |
 | `createMemory()` | `lib/api/memories.ts` | ⬜ | POST /api/memories |
-| `fetchContextPackage()` | `lib/api/context.ts` | ⬜ | POST /api/context |
+| `fetchContextPackage()` | `lib/api/context.ts` | ✅ | POST /api/context |
 | `fetchProfiles()` | `lib/api/context.ts` | ⬜ | GET /api/context/profiles |
 | `sendChatMessage()` | `lib/api/chat.ts` | ✅ | POST /api/chat |
-| `fetchEntities()` | `lib/api/entities.ts` | ⬜ | GET /api/entities |
+| `fetchEntities()` | `lib/api/entities.ts` | ✅ | GET /api/entities |
 | `getEntity()` | `lib/api/entities.ts` | ⬜ | GET /api/entities/:id |
-| `fetchBeliefs()` | `lib/api/beliefs.ts` | ⬜ | GET /api/beliefs |
-| `fetchPatterns()` | `lib/api/patterns.ts` | ⬜ | GET /api/patterns |
-| `fetchInsights()` | `lib/api/insights.ts` | ⬜ | GET /api/insights |
+| `fetchBeliefs()` | `lib/api/beliefs.ts` | ✅ | GET /api/beliefs |
+| `fetchPatterns()` | `lib/api/patterns.ts` | ✅ | GET /api/patterns |
+| `fetchInsights()` | `lib/api/insights.ts` | ✅ | GET /api/insights |
 | `dismissInsight()` | `lib/api/insights.ts` | ⬜ | POST /api/insights/:id/dismiss |
-| `fetchSummaries()` | `lib/api/summaries.ts` | ⬜ | GET /api/summaries |
+| `fetchSummaries()` | `lib/api/summaries.ts` | ✅ | GET /api/summaries |
 | `fetchGraphVisualization()` | `lib/api/graph.ts` | ⬜ | GET /api/graph/visualization |
 
 ---
@@ -312,15 +351,18 @@ Track implementation status of React hooks:
 
 | Hook | File | Status | Dependencies |
 |------|------|--------|--------------|
-| `useMemories()` | `lib/hooks/useMemories.ts` | ⬜ | fetchMemories |
-| `useMemory()` | `lib/hooks/useMemories.ts` | ⬜ | getMemory |
+| `useMemories()` | `lib/hooks/useMemories.ts` | ✅ | fetchMemories |
+| `useInfiniteMemories()` | `lib/hooks/useMemories.ts` | ✅ | fetchMemoriesPage |
+| `useMemorySearch()` | `lib/hooks/useMemories.ts` | ✅ | searchMemories |
+| `useMemory()` | `lib/hooks/useMemories.ts` | ⬜ | fetchMemory |
 | `useContextPackage()` | `lib/hooks/useContextPackage.ts` | ⬜ | fetchContextPackage |
 | `useProfiles()` | `lib/hooks/useProfiles.ts` | ⬜ | fetchProfiles |
-| `useEntities()` | `lib/hooks/useEntities.ts` | ⬜ | fetchEntities |
-| `useBeliefs()` | `lib/hooks/useBeliefs.ts` | ⬜ | fetchBeliefs |
-| `usePatterns()` | `lib/hooks/usePatterns.ts` | ⬜ | fetchPatterns |
-| `useInsights()` | `lib/hooks/useInsights.ts` | ⬜ | fetchInsights |
-| `useSummaries()` | `lib/hooks/useSummaries.ts` | ⬜ | fetchSummaries |
+| `useEntities()` | `lib/hooks/useEntities.ts` | ✅ | fetchEntities |
+| `useBeliefs()` | `lib/hooks/useBeliefs.ts` | ✅ | fetchBeliefs |
+| `usePatterns()` | `lib/hooks/usePatterns.ts` | ✅ | fetchPatterns |
+| `useInsights()` | `lib/hooks/useInsights.ts` | ✅ | fetchInsights |
+| `useSummaries()` | `lib/hooks/useSummaries.ts` | ✅ | fetchSummaries |
+| `useRecentMemories()` | `lib/hooks/useDashboard.ts` | ✅ | fetchRecentHighSalienceMemories |
 | `useGraphData()` | `lib/hooks/useGraphData.ts` | ⬜ | fetchGraphVisualization |
 | `useSpeechRecognition()` | `lib/hooks/useSpeechRecognition.ts` | ✅ | Web Speech API |
 | `useWebSocket()` | `lib/hooks/useWebSocket.ts` | ⬜ | Socket.IO |
@@ -340,7 +382,22 @@ Track changes to wiring as we implement:
 | 2025-12-27 | P1-T4 | /api/chat endpoint created | Backend routes/chat.ts, services/chat.ts |
 | 2025-12-27 | P1-T5 | Frontend wired to backend API | lib/api/chat.ts, chatStore updated |
 | 2025-12-27 | P1-T6 | STT Button implemented | STTButton, useSpeechRecognition hook |
-| | | | |
+| 2025-12-27 | P2 | Context overlay system | OverlayStore, ContextualMemoryOverlayStack |
+| 2025-12-27 | P3-T1 | Dashboard layout | DashboardPage, DashboardPanel, StatsCard |
+| 2025-12-27 | P3-T2 | Living Summary panel | LivingSummaryPanel, useSummaries |
+| 2025-12-27 | P3-T3 | Today panel | TodayPanel, useRecentMemories |
+| 2025-12-27 | P3-T4 | Beliefs panel | BeliefsPanel, useBeliefs |
+| 2025-12-27 | P3-T5 | Patterns panel | PatternsPanel, usePatterns |
+| 2025-12-27 | P3-T6 | Entities panel | EntitiesPanel, useEntities |
+| 2025-12-27 | P3-T7 | Insights panel | InsightsPanel, useInsights |
+| 2025-12-27 | P3-T8 | Detail modal system | DetailModal, detailModalStore |
+| 2025-12-27 | P4-T1 | Timeline page route | TimelinePage, MemoryCard, DateSection |
+| 2025-12-27 | P4-T2 | Timeline filters | TimelineFilters, source/date/salience filters |
+| 2025-12-27 | P4-T3 | Infinite scroll | useInfiniteMemories, LoadMoreTrigger |
+| 2025-12-27 | P4-T4 | Memory cards enhanced | Expand/collapse, detail modal wiring |
+| 2025-12-27 | P4-T5 | Animations | Framer Motion staggered entrance |
+| 2025-12-27 | P4-T6 | Deep linking | URL params ?memory=id, focus/highlight |
+| 2025-12-27 | FIX | Data type mapping | Added transformMemory() for backend→frontend field mapping |
 
 ---
 

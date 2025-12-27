@@ -5,9 +5,33 @@
 import { apiGet } from './client';
 import type { Memory } from '@/lib/types';
 
+// Raw API response type (matches backend schema)
+interface ApiMemory {
+  id: string;
+  content: string;
+  source: string;
+  salience_score: number;  // Backend uses salience_score
+  created_at: string;
+  occurred_at: string | null;
+  last_accessed_at: string | null;
+  // ... other fields
+}
+
+// Transform backend memory to frontend Memory type
+function transformMemory(apiMemory: ApiMemory): Memory {
+  return {
+    id: apiMemory.id,
+    content: apiMemory.content,
+    source: apiMemory.source as Memory['source'],
+    salience: apiMemory.salience_score ?? 0,  // Map salience_score -> salience
+    created_at: apiMemory.created_at,
+    updated_at: apiMemory.occurred_at ?? apiMemory.created_at,  // Use occurred_at or fallback to created_at
+  };
+}
+
 // API Response types
 interface MemoriesListResponse {
-  memories: Memory[];
+  memories: ApiMemory[];
   total: number;
   limit: number;
   offset: number;
@@ -15,7 +39,7 @@ interface MemoriesListResponse {
 
 interface MemorySearchResponse {
   query: string;
-  results: Memory[];
+  results: ApiMemory[];
   count: number;
 }
 
@@ -46,7 +70,7 @@ export async function fetchMemories(options: FetchMemoriesOptions = {}): Promise
     params: { limit, offset, source },
   });
   return {
-    memories: response.memories,
+    memories: response.memories.map(transformMemory),
     total: response.total,
   };
 }
@@ -63,7 +87,7 @@ export async function fetchMemoriesPage(options: FetchMemoriesOptions = {}): Pro
   const hasMore = offset + response.memories.length < response.total;
 
   return {
-    memories: response.memories,
+    memories: response.memories.map(transformMemory),
     total: response.total,
     offset,
     limit,
@@ -84,8 +108,11 @@ export async function fetchRecentHighSalienceMemories(
     params: { limit: limit * 3, offset: 0 },
   });
 
+  // Transform to frontend type
+  const memories = response.memories.map(transformMemory);
+
   // Sort by salience (descending) then by recency (descending)
-  const sorted = response.memories.sort((a, b) => {
+  const sorted = memories.sort((a, b) => {
     // Primary: salience score
     if (b.salience !== a.salience) {
       return b.salience - a.salience;
@@ -102,7 +129,8 @@ export async function fetchRecentHighSalienceMemories(
  * Fetch a single memory by ID
  */
 export async function fetchMemory(id: string): Promise<Memory> {
-  return apiGet<Memory>(`/api/memories/${id}`);
+  const response = await apiGet<ApiMemory>(`/api/memories/${id}`);
+  return transformMemory(response);
 }
 
 /**
@@ -116,5 +144,5 @@ export async function searchMemories(
   const response = await apiGet<MemorySearchResponse>('/api/memories/search', {
     params: { query, limit, min_similarity: minSimilarity },
   });
-  return response.results;
+  return response.results.map(transformMemory);
 }
