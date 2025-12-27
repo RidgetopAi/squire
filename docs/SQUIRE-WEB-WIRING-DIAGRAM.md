@@ -147,9 +147,10 @@ Update this as we build - it's our source of truth for what's wired and what's n
 | Component | API Dependencies | Status |
 |-----------|------------------|--------|
 | `GraphPage` | `/api/graph/stats`, `/api/graph/visualization`, `/api/graph/entities/:id/subgraph` | ✅ Wired |
-| `MemoryGraphView` | Props from GraphPage (react-force-graph) | 🔧 Integrated into GraphPage |
-| `GraphControls` | Local state, triggers refetch | 🔧 Basic zoom controls in GraphPage |
-| `SelectionDetailsPanel` | `/api/entities/:id`, `/api/memories/:id` | ⬜ |
+| `MemoryGraphView` | `/api/graph/memories/:id/subgraph` via useMemorySubgraph | ✅ Built |
+| `GraphControls` | Local state (filters, display options), triggers refetch | ✅ Built |
+| `GraphContextMenu` | None (props + callbacks) | ✅ Built |
+| `SelectionDetailsPanel` | `/api/entities/:id`, `/api/memories/:id`, `/api/graph/entities/:id/neighbors` | ✅ Wired |
 
 ## Shared Components
 
@@ -423,6 +424,7 @@ Track implementation status of React hooks:
 | `useEntitySubgraph()` | `lib/hooks/useGraphData.ts` | ✅ | fetchEntitySubgraph |
 | `useMemorySubgraph()` | `lib/hooks/useGraphData.ts` | ✅ | fetchMemorySubgraph |
 | `useEntityNeighbors()` | `lib/hooks/useGraphData.ts` | ✅ | fetchEntityNeighbors |
+| `useGraphInteractions()` | `lib/hooks/useGraphInteractions.ts` | ✅ | graphData, callbacks |
 | `useSpeechRecognition()` | `lib/hooks/useSpeechRecognition.ts` | ✅ | Web Speech API |
 | `useWebSocket()` | `lib/hooks/useWebSocket.ts` | ⬜ | Socket.IO |
 
@@ -460,6 +462,10 @@ Track changes to wiring as we implement:
 | 2025-12-27 | AUDIT | Complete data mapping | Added transformers for Entity, Belief, Pattern, Insight APIs |
 | 2025-12-27 | P5-T1 | GraphPage with react-force-graph | GraphPage, lib/api/graph.ts, lib/hooks/useGraphData.ts |
 | 2025-12-27 | P5-T2 | Graph visualization endpoint | /api/graph/visualization, fetchGraphVisualization, useGraphVisualization, GraphPage full view |
+| 2025-12-27 | P5-T3 | MemoryGraphView component | components/graph/MemoryGraphView.tsx (reusable memory graph) |
+| 2025-12-27 | P5-T4 | GraphControls panel | components/graph/GraphControls.tsx (filters, display options) |
+| 2025-12-27 | P5-T5 | Graph interactions | useGraphInteractions hook, GraphContextMenu, hover highlights, double-click zoom |
+| 2025-12-27 | P5-T6 | SelectionDetailsPanel | components/graph/SelectionDetailsPanel.tsx (entity/memory details) |
 
 ---
 

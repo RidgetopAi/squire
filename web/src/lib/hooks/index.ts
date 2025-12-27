@@ -45,3 +45,4 @@ export {
   useEntityNeighbors,
   useGraphVisualization,
 } from './useGraphData';
+export { useGraphInteractions, type UseGraphInteractionsResult } from './useGraphInteractions';

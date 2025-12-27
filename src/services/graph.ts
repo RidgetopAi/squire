@@ -664,7 +664,14 @@ export async function getEntitySubgraph(
     }
   }
 
-  return { nodes, edges };
+  // Filter edges to only include nodes that exist in the subgraph
+  // (prevents d3-force crash when edges reference missing nodes)
+  const nodeIds = new Set(nodes.map((n) => n.id));
+  const validEdges = edges.filter(
+    (e) => nodeIds.has(e.source) && nodeIds.has(e.target)
+  );
+
+  return { nodes, edges: validEdges };
 }
 
 /**
@@ -930,43 +937,33 @@ export async function getFullGraphVisualization(
       }
     }
 
-    // 5. Add CO_OCCURS edges between entities that share memories
-    // Build a map of which entities share which memories
-    const entityMemoryMap = new Map<string, Set<string>>();
-    for (const edge of edges) {
-      if (edge.type === 'MENTIONS') {
-        if (!entityMemoryMap.has(edge.source)) {
-          entityMemoryMap.set(edge.source, new Set());
-        }
-        entityMemoryMap.get(edge.source)!.add(edge.target);
-      }
-    }
+    // 5. Add CO_OCCURS edges between entities that share ANY memory (not just visualized ones)
+    // Query database directly to find entity pairs that co-occur in the same memories
+    const visualizedEntityIds = nodes.filter((n) => n.type === 'entity').map((n) => n.id);
 
-    // Find entity pairs that share memories
-    const entityPairs = new Map<string, number>();
-    for (const [entity1, mems1] of entityMemoryMap) {
-      for (const [entity2, mems2] of entityMemoryMap) {
-        if (entity1 >= entity2) continue; // Avoid duplicates and self-loops
-        const shared = [...mems1].filter((m) => mems2.has(m)).length;
-        if (shared > 0) {
-          const key = `${entity1}-${entity2}`;
-          entityPairs.set(key, shared);
-        }
-      }
-    }
+    if (visualizedEntityIds.length > 1) {
+      const cooccursResult = await pool.query(
+        `SELECT
+           em1.entity_id as entity1,
+           em2.entity_id as entity2,
+           COUNT(DISTINCT em1.memory_id) as shared_count
+         FROM entity_mentions em1
+         JOIN entity_mentions em2 ON em1.memory_id = em2.memory_id
+         WHERE em1.entity_id = ANY($1)
+           AND em2.entity_id = ANY($1)
+           AND em1.entity_id < em2.entity_id
+         GROUP BY em1.entity_id, em2.entity_id
+         HAVING COUNT(DISTINCT em1.memory_id) > 0`,
+        [visualizedEntityIds]
+      );
 
-    // Add CO_OCCURS edges between entities
-    for (const [key, count] of entityPairs) {
-      const parts = key.split('-');
-      const sourceId = parts[0];
-      const targetId = parts[1];
-      if (sourceId && targetId) {
+      for (const row of cooccursResult.rows) {
         edges.push({
-          source: sourceId,
-          target: targetId,
+          source: row.entity1,
+          target: row.entity2,
           type: 'CO_OCCURS',
-          weight: Math.min(count / 5, 1), // Normalize weight
-          attributes: { shared_memory_count: count },
+          weight: Math.min(row.shared_count / 5, 1),
+          attributes: { shared_memory_count: parseInt(row.shared_count) },
         });
       }
     }

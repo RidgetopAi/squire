@@ -5,6 +5,16 @@ import dynamic from 'next/dynamic';
 import { useTopEntities } from '@/lib/hooks/useEntities';
 import { useEntitySubgraph, useGraphStats, useGraphVisualization } from '@/lib/hooks/useGraphData';
 import type { ForceGraphNode, ForceGraphLink } from '@/lib/api/graph';
+import {
+  GraphControls,
+  GraphContextMenu,
+  SelectionDetailsPanel,
+  type GraphFilters,
+  type GraphDisplayOptions,
+  DEFAULT_GRAPH_FILTERS,
+  DEFAULT_DISPLAY_OPTIONS,
+} from '@/components/graph';
+import { useGraphInteractions } from '@/lib/hooks';
 
 // Graph node with position data (added by force simulation)
 interface GraphNodeWithPosition extends ForceGraphNode {
@@ -78,6 +88,9 @@ export default function GraphPage() {
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [hoveredNode, setHoveredNode] = useState<GraphNodeWithPosition | null>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+  const [showControls, setShowControls] = useState(false);
+  const [filters, setFilters] = useState<GraphFilters>(DEFAULT_GRAPH_FILTERS);
+  const [displayOptions, setDisplayOptions] = useState<GraphDisplayOptions>(DEFAULT_DISPLAY_OPTIONS);
 
   // Data fetching
   const { data: stats, isLoading: statsLoading } = useGraphStats();
@@ -85,9 +98,11 @@ export default function GraphPage() {
 
   // Full visualization (when no entity selected)
   const { data: fullGraphData, isLoading: fullGraphLoading } = useGraphVisualization({
-    nodeLimit: 100,
-    entityLimit: 30,
-    memoryLimit: 70,
+    nodeLimit: filters.entityLimit + filters.memoryLimit,
+    entityLimit: filters.entityLimit,
+    memoryLimit: filters.memoryLimit,
+    minSalience: filters.minSalience,
+    entityTypes: filters.entityTypes.length < 6 ? filters.entityTypes : undefined,
     enabled: !selectedEntityId, // Only fetch when no entity is selected
   });
 
@@ -100,6 +115,28 @@ export default function GraphPage() {
   // Choose which data to display
   const graphData = selectedEntityId ? entityGraphData : fullGraphData;
   const graphLoading = selectedEntityId ? entityGraphLoading : fullGraphLoading;
+
+  // Graph interactions
+  const {
+    state: interactionState,
+    handlers: interactionHandlers,
+    getNodeOpacity,
+    getLinkOpacity,
+  } = useGraphInteractions({
+    graphData: graphData ?? null,
+    onEntityClick: (entityId) => setSelectedEntityId(entityId),
+    onZoomToNode: (node) => {
+      if (graphRef.current && node) {
+        // Zoom to and center on the node
+        graphRef.current.centerAt(
+          (node as GraphNodeWithPosition).x,
+          (node as GraphNodeWithPosition).y,
+          500
+        );
+        graphRef.current.zoom(2.5, 500);
+      }
+    },
+  });
 
   // Handle container resize
   useEffect(() => {
@@ -120,17 +157,22 @@ export default function GraphPage() {
 
   // Node click handler
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const handleNodeClick = useCallback((node: any) => {
-    if (node.type === 'entity') {
-      setSelectedEntityId(node.id);
-    }
-  }, []);
+  const handleNodeClick = useCallback((node: any, event: MouseEvent) => {
+    interactionHandlers.handleNodeClick(node as ForceGraphNode, event);
+  }, [interactionHandlers]);
+
+  // Node right-click handler
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleNodeRightClick = useCallback((node: any, event: MouseEvent) => {
+    interactionHandlers.handleNodeRightClick(node as ForceGraphNode, event);
+  }, [interactionHandlers]);
 
   // Node hover handlers
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleNodeHover = useCallback((node: any) => {
     setHoveredNode(node as GraphNodeWithPosition | null);
-  }, []);
+    interactionHandlers.handleNodeHover(node as ForceGraphNode | null);
+  }, [interactionHandlers]);
 
   // Custom node rendering
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -138,6 +180,10 @@ export default function GraphPage() {
     const label = node.label || '';
     const fontSize = 12 / globalScale;
     const nodeSize = (node.val || 4) / globalScale * 2;
+    const opacity = getNodeOpacity(node.id);
+    const isSelected = interactionState.selectedNode?.id === node.id;
+
+    ctx.globalAlpha = opacity;
 
     // Draw node circle
     ctx.beginPath();
@@ -145,22 +191,24 @@ export default function GraphPage() {
     ctx.fillStyle = node.color || '#64748b';
     ctx.fill();
 
-    // Draw border if hovered
-    if (hoveredNode?.id === node.id) {
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 2 / globalScale;
+    // Draw border if hovered or selected
+    if (hoveredNode?.id === node.id || isSelected) {
+      ctx.strokeStyle = isSelected ? '#22d3ee' : '#fff';
+      ctx.lineWidth = (isSelected ? 3 : 2) / globalScale;
       ctx.stroke();
     }
 
-    // Draw label
-    if (globalScale > 0.5) {
+    // Draw label (when labels are enabled or zoom is sufficient)
+    if (displayOptions.showLabels && globalScale > 0.5) {
       ctx.font = `${fontSize}px Inter, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = '#e2e8f0';
       ctx.fillText(label.slice(0, 20), node.x || 0, (node.y || 0) + nodeSize + fontSize);
     }
-  }, [hoveredNode]);
+
+    ctx.globalAlpha = 1;
+  }, [hoveredNode, getNodeOpacity, interactionState.selectedNode, displayOptions.showLabels]);
 
   // Zoom controls
   const handleZoomIn = useCallback(() => {
@@ -193,19 +241,36 @@ export default function GraphPage() {
             </p>
           </div>
 
-          {/* Stats */}
-          {stats && !statsLoading && (
-            <div className="flex items-center gap-4 text-sm">
-              <div className="flex items-center gap-1.5 text-foreground-muted">
-                <span className="text-blue-400">{icons.memory}</span>
-                <span>{stats.memoryCount} memories</span>
+          <div className="flex items-center gap-4">
+            {/* Stats */}
+            {stats && !statsLoading && (
+              <div className="flex items-center gap-4 text-sm">
+                <div className="flex items-center gap-1.5 text-foreground-muted">
+                  <span className="text-blue-400">{icons.memory}</span>
+                  <span>{stats.memoryCount} memories</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-foreground-muted">
+                  <span className="text-violet-400">{icons.users}</span>
+                  <span>{stats.entityCount} entities</span>
+                </div>
               </div>
-              <div className="flex items-center gap-1.5 text-foreground-muted">
-                <span className="text-violet-400">{icons.users}</span>
-                <span>{stats.entityCount} entities</span>
-              </div>
-            </div>
-          )}
+            )}
+
+            {/* Controls Toggle */}
+            <button
+              onClick={() => setShowControls(!showControls)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                showControls
+                  ? 'bg-primary/20 text-primary border border-primary/30'
+                  : 'bg-surface-raised border border-border hover:bg-surface-sunken text-foreground-muted'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+              </svg>
+              Controls
+            </button>
+          </div>
         </div>
       </div>
 
@@ -313,12 +378,13 @@ export default function GraphPage() {
             </div>
           ) : graphData && graphData.nodes.length > 0 ? (
             <ForceGraph2D
+              key={selectedEntityId || 'full-graph'}
               ref={graphRef}
               width={dimensions.width}
               height={dimensions.height}
               graphData={{
-                nodes: graphData.nodes,
-                links: graphData.links,
+                nodes: graphData.nodes.map(n => ({ ...n })),
+                links: graphData.links.map(l => ({ ...l })),
               }}
               nodeId="id"
               nodeLabel="label"
@@ -327,17 +393,55 @@ export default function GraphPage() {
               linkSource="source"
               linkTarget="target"
               linkColor="color"
-              linkWidth={(link) => Math.max(1, (link.weight || 0.5) * 3)}
-              linkDirectionalParticles={2}
+              linkWidth={(link: unknown) => Math.max(1, ((link as { weight?: number }).weight || 0.5) * 3)}
+              linkLineDash={(link: unknown) => {
+                const opacity = getLinkOpacity(link as ForceGraphLink);
+                return opacity < 0.5 ? [2, 2] : [];
+              }}
+              linkDirectionalParticles={displayOptions.showParticles ? 2 : 0}
               linkDirectionalParticleWidth={2}
               onNodeClick={handleNodeClick}
+              onNodeRightClick={handleNodeRightClick}
               onNodeHover={handleNodeHover}
+              onBackgroundClick={interactionHandlers.handleBackgroundClick}
               nodeCanvasObject={nodeCanvasObject}
               backgroundColor="transparent"
               cooldownTicks={100}
-              onEngineStop={() => graphRef.current?.zoom(0.8, 400)}
+              onEngineStop={() => graphRef.current?.zoomToFit(400, 50)}
             />
-          ) : (
+          ) : null}
+
+          {/* Context Menu */}
+          {interactionState.contextMenuOpen && interactionState.contextMenuNode && interactionState.contextMenuPosition && (
+            <GraphContextMenu
+              node={interactionState.contextMenuNode}
+              position={interactionState.contextMenuPosition}
+              onClose={interactionHandlers.closeContextMenu}
+              onFocus={(node) => {
+                if (graphRef.current) {
+                  graphRef.current.centerAt(
+                    (node as GraphNodeWithPosition).x,
+                    (node as GraphNodeWithPosition).y,
+                    500
+                  );
+                  graphRef.current.zoom(2.5, 500);
+                }
+              }}
+              onViewDetails={(node) => {
+                if (node.type === 'entity') {
+                  setSelectedEntityId(node.id);
+                }
+              }}
+              onFindRelated={(node) => {
+                if (node.type === 'entity') {
+                  setSelectedEntityId(node.id);
+                }
+              }}
+            />
+          )}
+
+          {/* Empty State */}
+          {!graphLoading && (!graphData || graphData.nodes.length === 0) && (
             <div className="h-full flex flex-col items-center justify-center text-center p-8">
               <div className="w-16 h-16 mx-auto rounded-full bg-accent-magenta/10 border border-accent-magenta/30 flex items-center justify-center mb-4">
                 <span className="text-accent-magenta">{icons.graph}</span>
@@ -353,6 +457,64 @@ export default function GraphPage() {
             </div>
           )}
         </div>
+
+        {/* Right Panel: Controls or Selection Details */}
+        {(showControls || interactionState.selectedNode) && (
+          <div className="w-72 flex-none border-l border-border overflow-hidden bg-surface-raised/50 flex flex-col">
+            {/* Panel Tabs */}
+            {showControls && interactionState.selectedNode && (
+              <div className="flex border-b border-border">
+                <button
+                  onClick={() => setShowControls(true)}
+                  className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
+                    showControls && !interactionState.selectedNode
+                      ? 'text-primary border-b-2 border-primary'
+                      : 'text-foreground-muted hover:text-foreground'
+                  }`}
+                >
+                  Controls
+                </button>
+                <button
+                  onClick={() => setShowControls(false)}
+                  className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
+                    !showControls || interactionState.selectedNode
+                      ? 'text-primary border-b-2 border-primary'
+                      : 'text-foreground-muted hover:text-foreground'
+                  }`}
+                >
+                  Details
+                </button>
+              </div>
+            )}
+
+            {/* Panel Content */}
+            <div className="flex-1 overflow-auto">
+              {showControls && !interactionState.selectedNode ? (
+                <GraphControls
+                  filters={filters}
+                  displayOptions={displayOptions}
+                  onFiltersChange={setFilters}
+                  onDisplayOptionsChange={setDisplayOptions}
+                />
+              ) : interactionState.selectedNode ? (
+                <SelectionDetailsPanel
+                  selectedNode={interactionState.selectedNode}
+                  graphData={graphData ?? null}
+                  onEntityClick={(entityId) => setSelectedEntityId(entityId)}
+                  onMemoryClick={() => {/* Could navigate to timeline */}}
+                  onClearSelection={interactionHandlers.clearSelection}
+                />
+              ) : (
+                <GraphControls
+                  filters={filters}
+                  displayOptions={displayOptions}
+                  onFiltersChange={setFilters}
+                  onDisplayOptionsChange={setDisplayOptions}
+                />
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Legend */}
