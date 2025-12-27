@@ -89,6 +89,15 @@ import {
   type QuestionType,
   type TimingHint,
 } from './services/research.js';
+import {
+  findEntityNeighbors,
+  findSharedMemories,
+  traverseEntities,
+  findPathBetweenEntities,
+  getEntitySubgraph,
+  getGraphStats,
+} from './services/graph.js';
+import { getEntity, searchEntities } from './services/entities.js';
 import { pool, checkConnection, closePool } from './db/pool.js';
 import { checkEmbeddingHealth } from './providers/embeddings.js';
 import { checkLLMHealth, getLLMInfo } from './providers/llm.js';
@@ -1771,6 +1780,341 @@ program
       console.log('');
     } catch (error) {
       console.error('Failed to get question:', error);
+      process.exit(1);
+    } finally {
+      await closePool();
+    }
+  });
+
+/**
+ * graph - Show graph statistics
+ */
+program
+  .command('graph')
+  .description('Show knowledge graph statistics')
+  .action(async () => {
+    try {
+      const stats = await getGraphStats();
+
+      console.log('\nKnowledge Graph\n');
+      console.log('Nodes:');
+      console.log(`  Memories: ${stats.nodeCount.memories}`);
+      console.log(`  Entities: ${stats.nodeCount.entities}`);
+      console.log('');
+      console.log('Edges:');
+      console.log(`  Memory connections: ${stats.edgeCount.memoryEdges}`);
+      console.log(`  Entity mentions: ${stats.edgeCount.mentions}`);
+      console.log('');
+      console.log('Connectivity:');
+      console.log(`  Avg memory degree: ${stats.averageDegree.memories}`);
+      console.log(`  Avg entity degree: ${stats.averageDegree.entities}`);
+      console.log(`  Components: ~${stats.components}`);
+      console.log('');
+    } catch (error) {
+      console.error('Failed to get graph stats:', error);
+      process.exit(1);
+    } finally {
+      await closePool();
+    }
+  });
+
+/**
+ * neighbors - Find entities that co-occur with a given entity
+ */
+program
+  .command('neighbors')
+  .description('Find entities that appear in the same memories as a given entity')
+  .argument('<entity>', 'Entity name or ID')
+  .option('-l, --limit <limit>', 'Maximum number to show', '10')
+  .option('-m, --min <count>', 'Minimum shared memories', '1')
+  .option('-t, --type <type>', 'Filter by entity type')
+  .action(async (entityArg: string, options: { limit: string; min: string; type?: string }) => {
+    try {
+      // Find entity by name or ID
+      let entity = null;
+      if (entityArg.length === 36) {
+        entity = await getEntity(entityArg);
+      } else {
+        const matches = await searchEntities(entityArg);
+        if (matches.length > 0) {
+          entity = matches[0];
+        }
+      }
+
+      if (!entity) {
+        console.log(`\nEntity not found: "${entityArg}"`);
+        console.log('Use `squire entities` to see available entities.');
+        return;
+      }
+
+      const limit = parseInt(options.limit, 10);
+      const minShared = parseInt(options.min, 10);
+
+      const neighbors = await findEntityNeighbors(entity.id, {
+        limit,
+        minSharedMemories: minShared,
+        entityType: options.type,
+      });
+
+      console.log(`\nNeighbors of ${entity.name} (${entity.entity_type})\n`);
+
+      if (neighbors.length === 0) {
+        console.log('No connected entities found.');
+        console.log('Entities are connected when they appear in the same memories.');
+      } else {
+        console.log(`Found ${neighbors.length} connected entities:\n`);
+
+        for (const n of neighbors) {
+          const strength = (n.connectionStrength * 100).toFixed(0);
+          console.log(`  [${n.entity.entity_type}] ${n.entity.name}`);
+          console.log(`    shared memories: ${n.sharedMemoryCount} | strength: ${strength}%`);
+          console.log('');
+        }
+      }
+    } catch (error) {
+      console.error('Failed to find neighbors:', error);
+      process.exit(1);
+    } finally {
+      await closePool();
+    }
+  });
+
+/**
+ * path - Find path between two entities
+ */
+program
+  .command('path')
+  .description('Find connection path between two entities')
+  .argument('<entity1>', 'First entity name or ID')
+  .argument('<entity2>', 'Second entity name or ID')
+  .option('-m, --max-hops <hops>', 'Maximum hops to search', '4')
+  .action(async (entity1Arg: string, entity2Arg: string, options: { maxHops: string }) => {
+    try {
+      // Find first entity
+      let entity1 = null;
+      if (entity1Arg.length === 36) {
+        entity1 = await getEntity(entity1Arg);
+      } else {
+        const matches = await searchEntities(entity1Arg);
+        if (matches.length > 0) {
+          entity1 = matches[0];
+        }
+      }
+
+      // Find second entity
+      let entity2 = null;
+      if (entity2Arg.length === 36) {
+        entity2 = await getEntity(entity2Arg);
+      } else {
+        const matches = await searchEntities(entity2Arg);
+        if (matches.length > 0) {
+          entity2 = matches[0];
+        }
+      }
+
+      if (!entity1) {
+        console.log(`\nEntity not found: "${entity1Arg}"`);
+        return;
+      }
+      if (!entity2) {
+        console.log(`\nEntity not found: "${entity2Arg}"`);
+        return;
+      }
+
+      // Check for direct connection first
+      const shared = await findSharedMemories(entity1.id, entity2.id, { limit: 5 });
+      if (shared.length > 0) {
+        console.log(`\n${entity1.name} ←→ ${entity2.name}`);
+        console.log(`\nDirectly connected via ${shared.length} shared memories:\n`);
+        for (const m of shared) {
+          const preview = m.content.length > 60
+            ? m.content.substring(0, 60) + '...'
+            : m.content;
+          console.log(`  [${m.id.substring(0, 8)}] ${preview}`);
+        }
+        console.log('');
+        return;
+      }
+
+      // Find indirect path
+      const maxHops = parseInt(options.maxHops, 10);
+      const result = await findPathBetweenEntities(entity1.id, entity2.id, { maxHops });
+
+      console.log(`\n${entity1.name} → ${entity2.name}\n`);
+
+      if (!result || !result.found) {
+        console.log(`No path found within ${maxHops} hops.`);
+        console.log('Try increasing --max-hops or these entities may not be connected.');
+      } else {
+        console.log(`Path found (${result.path.length - 1} hops):\n`);
+        for (let i = 0; i < result.path.length; i++) {
+          const e = result.path[i];
+          if (!e) continue;
+          const arrow = i < result.path.length - 1 ? ' →' : '';
+          console.log(`  ${i + 1}. [${e.entity_type}] ${e.name}${arrow}`);
+        }
+      }
+      console.log('');
+    } catch (error) {
+      console.error('Failed to find path:', error);
+      process.exit(1);
+    } finally {
+      await closePool();
+    }
+  });
+
+/**
+ * explore - Multi-hop traversal from an entity
+ */
+program
+  .command('explore')
+  .description('Explore entities connected to a starting entity')
+  .argument('<entity>', 'Entity name or ID')
+  .option('-h, --hops <hops>', 'Maximum hops to explore', '2')
+  .option('-l, --limit <limit>', 'Maximum entities to show', '20')
+  .action(async (entityArg: string, options: { hops: string; limit: string }) => {
+    try {
+      // Find entity by name or ID
+      let entity = null;
+      if (entityArg.length === 36) {
+        entity = await getEntity(entityArg);
+      } else {
+        const matches = await searchEntities(entityArg);
+        if (matches.length > 0) {
+          entity = matches[0];
+        }
+      }
+
+      if (!entity) {
+        console.log(`\nEntity not found: "${entityArg}"`);
+        console.log('Use `squire entities` to see available entities.');
+        return;
+      }
+
+      const maxHops = parseInt(options.hops, 10);
+      const limit = parseInt(options.limit, 10);
+
+      const results = await traverseEntities(entity.id, {
+        maxHops,
+        limit,
+      });
+
+      console.log(`\nExploring from ${entity.name} (up to ${maxHops} hops)\n`);
+
+      if (results.length === 0) {
+        console.log('No connected entities found.');
+      } else {
+        // Group by hops
+        const byHops = new Map<number, typeof results>();
+        for (const r of results) {
+          if (!byHops.has(r.hops)) {
+            byHops.set(r.hops, []);
+          }
+          byHops.get(r.hops)!.push(r);
+        }
+
+        for (const [hops, entities] of [...byHops.entries()].sort((a, b) => a[0] - b[0])) {
+          console.log(`${hops} hop${hops > 1 ? 's' : ''} away (${entities.length}):`);
+          for (const e of entities.slice(0, 10)) {
+            const strength = (e.pathStrength * 100).toFixed(0);
+            console.log(`  [${e.entity.entity_type}] ${e.entity.name} (${strength}%)`);
+          }
+          if (entities.length > 10) {
+            console.log(`  ... and ${entities.length - 10} more`);
+          }
+          console.log('');
+        }
+      }
+    } catch (error) {
+      console.error('Failed to explore:', error);
+      process.exit(1);
+    } finally {
+      await closePool();
+    }
+  });
+
+/**
+ * network - Get subgraph around an entity
+ */
+program
+  .command('network')
+  .description('Show the local network around an entity')
+  .argument('<entity>', 'Entity name or ID')
+  .option('-m, --memories <count>', 'Maximum memories to include', '10')
+  .option('-e, --entities <count>', 'Maximum connected entities', '5')
+  .action(async (entityArg: string, options: { memories: string; entities: string }) => {
+    try {
+      // Find entity by name or ID
+      let entity = null;
+      if (entityArg.length === 36) {
+        entity = await getEntity(entityArg);
+      } else {
+        const matches = await searchEntities(entityArg);
+        if (matches.length > 0) {
+          entity = matches[0];
+        }
+      }
+
+      if (!entity) {
+        console.log(`\nEntity not found: "${entityArg}"`);
+        console.log('Use `squire entities` to see available entities.');
+        return;
+      }
+
+      const memoryLimit = parseInt(options.memories, 10);
+      const entityLimit = parseInt(options.entities, 10);
+
+      const subgraph = await getEntitySubgraph(entity.id, {
+        memoryLimit,
+        entityLimit,
+        includeEdges: true,
+      });
+
+      console.log(`\nNetwork around ${entity.name}\n`);
+      console.log(`  Nodes: ${subgraph.nodes.length} (${subgraph.nodes.filter(n => n.type === 'memory').length} memories, ${subgraph.nodes.filter(n => n.type === 'entity').length} entities)`);
+      console.log(`  Edges: ${subgraph.edges.length}`);
+      console.log('');
+
+      // Show entities
+      const entityNodes = subgraph.nodes.filter(n => n.type === 'entity' && n.id !== entity!.id);
+      if (entityNodes.length > 0) {
+        console.log('Connected entities:');
+        for (const n of entityNodes) {
+          const attrs = n.attributes as { entity_type?: string; shared_memories?: number };
+          const shared = attrs.shared_memories ? ` (${attrs.shared_memories} shared)` : '';
+          console.log(`  [${attrs.entity_type || '?'}] ${n.label}${shared}`);
+        }
+        console.log('');
+      }
+
+      // Show memories
+      const memoryNodes = subgraph.nodes.filter(n => n.type === 'memory').slice(0, 5);
+      if (memoryNodes.length > 0) {
+        console.log('Related memories:');
+        for (const n of memoryNodes) {
+          console.log(`  [${n.id.substring(0, 8)}] ${n.label}`);
+        }
+        const totalMemories = subgraph.nodes.filter(n => n.type === 'memory').length;
+        if (totalMemories > 5) {
+          console.log(`  ... and ${totalMemories - 5} more`);
+        }
+        console.log('');
+      }
+
+      // Show edge types
+      const edgeTypes = new Map<string, number>();
+      for (const e of subgraph.edges) {
+        edgeTypes.set(e.type, (edgeTypes.get(e.type) || 0) + 1);
+      }
+      if (edgeTypes.size > 0) {
+        console.log('Edge types:');
+        for (const [type, count] of edgeTypes) {
+          console.log(`  ${type}: ${count}`);
+        }
+        console.log('');
+      }
+    } catch (error) {
+      console.error('Failed to get network:', error);
       process.exit(1);
     } finally {
       await closePool();
