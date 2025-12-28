@@ -106,9 +106,9 @@
 | Push | `src/services/push.ts` | ✅ | send, subscribe, unsubscribe |
 | Scheduler | `src/services/scheduler.ts` | ✅ | start, stop, processReminders |
 | Google Auth | `src/services/google/auth.ts` | ✅ | getAuthUrl, handleCallback, refreshToken |
-| Google Calendars | `src/services/google/calendars.ts` | 🔲 | list, sync |
-| Google Events | `src/services/google/events.ts` | 🔲 | pull, push, detectConflicts |
-| Google Sync | `src/services/google/sync.ts` | 🔲 | fullSync, incrementalSync |
+| Google Calendars | `src/services/google/calendars.ts` | ✅ | list, sync |
+| Google Events | `src/services/google/events.ts` | ✅ | pull, push, detectConflicts |
+| Google Sync | `src/services/google/sync.ts` | ✅ | fullSync, incrementalSync |
 
 ---
 
@@ -191,9 +191,9 @@
 |---|------|------------|--------|
 | 3.1 | Create google integration migration (020) | `bfb5dea5-0e83-491f-a078-b7acb40278ce` | ✅ |
 | 3.2 | Create Google auth service | `839684b1-53da-4ee6-b267-b2fc3e5bef64` | ✅ |
-| 3.3 | Create Google calendars service | `e984e0fe-79e3-436a-985f-da7d0964c144` | 🔲 |
-| 3.4 | Create Google events service | `d89967e4-6ad3-4fbe-bbeb-43f98395931a` | 🔲 |
-| 3.5 | Create Google sync orchestration | `2e3263d3-2fb3-4a2b-a55b-3917898bd2ce` | 🔲 |
+| 3.3 | Create Google calendars service | `e984e0fe-79e3-436a-985f-da7d0964c144` | ✅ |
+| 3.4 | Create Google events service | `d89967e4-6ad3-4fbe-bbeb-43f98395931a` | ✅ |
+| 3.5 | Create Google sync orchestration | `2e3263d3-2fb3-4a2b-a55b-3917898bd2ce` | ✅ |
 | 3.6 | Create Google integration API routes | `9116f9c5-e6b6-4ea6-9ffa-6be9019ae958` | 🔲 |
 | 3.7 | Create calendar API routes (unified view) | `d2d7bf90-ffb2-42ed-b7c5-49200888f51e` | 🔲 |
 | 3.8 | Create settings/integrations page | `0bcbe9ee-6e1f-4437-859e-535e83effae3` | 🔲 |
