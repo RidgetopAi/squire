@@ -19,6 +19,8 @@ import chatRouter from './routes/chat.js';
 import commitmentsRouter from './routes/commitments.js';
 import remindersRouter from './routes/reminders.js';
 import notificationsRouter from './routes/notifications.js';
+import googleRouter from './routes/google.js';
+import calendarRouter from './routes/calendar.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -57,6 +59,8 @@ app.use('/api/chat', chatRouter);
 app.use('/api/commitments', commitmentsRouter);
 app.use('/api/reminders', remindersRouter);
 app.use('/api/notifications', notificationsRouter);
+app.use('/api/integrations/google', googleRouter);
+app.use('/api/calendar', calendarRouter);
 
 // 404 handler
 app.use((_req, res) => {
