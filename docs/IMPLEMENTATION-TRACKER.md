@@ -11,7 +11,7 @@
 |-------|-------|--------|
 | 1 | Core Commitments | ✅ Complete |
 | 2 | Reminders + PWA Push | ✅ Complete |
-| 3 | Google Calendar Sync | 🔲 Not Started |
+| 3 | Google Calendar Sync | 🔄 In Progress |
 | 4 | Recurrence (RRULE) | 🔲 Not Started |
 | 5 | Resolution Detection | 🔲 Not Started |
 
@@ -23,9 +23,9 @@
 |-------|-----------|--------|-------|
 | `commitments` | 018_commitments.sql | ✅ | Core commitment tracking |
 | `reminders` | 019_reminders.sql | ✅ | Scheduled notifications |
-| `google_accounts` | 020_google_integration.sql | 🔲 | OAuth tokens |
-| `google_calendars` | 020_google_integration.sql | 🔲 | Which calendars to sync |
-| `google_events` | 020_google_integration.sql | 🔲 | Cached Google events |
+| `google_accounts` | 020_google_integration.sql | ✅ | OAuth tokens |
+| `google_calendars` | 020_google_integration.sql | ✅ | Which calendars to sync |
+| `google_events` | 020_google_integration.sql | ✅ | Cached Google events |
 | `push_subscriptions` | 021_push_subscriptions.sql | ✅ | PWA push endpoints |
 
 ---
@@ -189,7 +189,7 @@
 
 | # | Task | Mandrel ID | Status |
 |---|------|------------|--------|
-| 3.1 | Create google integration migration (020) | `bfb5dea5-0e83-491f-a078-b7acb40278ce` | 🔲 |
+| 3.1 | Create google integration migration (020) | `bfb5dea5-0e83-491f-a078-b7acb40278ce` | ✅ |
 | 3.2 | Create Google auth service | `839684b1-53da-4ee6-b267-b2fc3e5bef64` | 🔲 |
 | 3.3 | Create Google calendars service | `e984e0fe-79e3-436a-985f-da7d0964c144` | 🔲 |
 | 3.4 | Create Google events service | `d89967e4-6ad3-4fbe-bbeb-43f98395931a` | 🔲 |
