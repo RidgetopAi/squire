@@ -7,6 +7,7 @@
 
 import { pool } from '../db/pool.js';
 import { completeText } from '../providers/llm.js';
+import { broadcastInsightCreated } from '../api/socket/broadcast.js';
 
 // === TYPES ===
 
@@ -271,7 +272,13 @@ export async function createInsight(
      RETURNING *`,
     [content, insightType, confidence, priority, model || null]
   );
-  return result.rows[0]!;
+
+  const insight = result.rows[0]!;
+
+  // Broadcast to connected WebSocket clients (P6-T5)
+  broadcastInsightCreated(insight);
+
+  return insight;
 }
 
 /**

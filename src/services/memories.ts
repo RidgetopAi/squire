@@ -2,6 +2,7 @@ import { pool } from '../db/pool.js';
 import { generateEmbedding } from '../providers/embeddings.js';
 import { calculateSalience } from './salience.js';
 import { extractAndStoreEntities, Entity, EntityMention } from './entities.js';
+import { broadcastMemoryCreated } from '../api/socket/broadcast.js';
 
 export interface Memory {
   id: string;
@@ -95,6 +96,9 @@ export async function createMemory(input: CreateMemoryInput): Promise<CreateMemo
   );
 
   const memory = result.rows[0] as Memory;
+
+  // Broadcast to connected WebSocket clients (P6-T5)
+  broadcastMemoryCreated(memory);
 
   // Extract and store entities (Slice 4)
   let entities: Entity[] = [];

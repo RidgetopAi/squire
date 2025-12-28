@@ -5,4 +5,5 @@
  */
 
 export * from './types.js';
-export { registerSocketHandlers, broadcastMemoryCreated, broadcastInsightCreated } from './handlers.js';
+export { registerSocketHandlers } from './handlers.js';
+export { setSocketServer, broadcastMemoryCreated, broadcastInsightCreated } from './broadcast.js';

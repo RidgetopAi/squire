@@ -2,7 +2,7 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import { config } from '../config/index.js';
-import { registerSocketHandlers } from './socket/index.js';
+import { registerSocketHandlers, setSocketServer } from './socket/index.js';
 import memoriesRouter from './routes/memories.js';
 import healthRouter from './routes/health.js';
 import contextRouter from './routes/context.js';
@@ -30,6 +30,9 @@ export const io = new SocketIOServer(httpServer, {
 
 // Register Socket.IO event handlers
 registerSocketHandlers(io);
+
+// Register io for broadcast functions (used by services)
+setSocketServer(io);
 
 // Middleware
 app.use(express.json());
