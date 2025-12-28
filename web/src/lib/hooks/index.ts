@@ -46,3 +46,17 @@ export {
   useGraphVisualization,
 } from './useGraphData';
 export { useGraphInteractions, type UseGraphInteractionsResult } from './useGraphInteractions';
+export {
+  useWebSocket,
+  getConnectionStatus,
+  emitEvent,
+  type UseWebSocketReturn,
+  type ChatChunkPayload,
+  type ChatContextPayload,
+  type ChatErrorPayload,
+  type ChatDonePayload,
+  type ChatMessagePayload,
+  type MemoryCreatedPayload,
+  type InsightCreatedPayload,
+  type ConnectionStatusPayload,
+} from './useWebSocket';

@@ -426,7 +426,7 @@ Track implementation status of React hooks:
 | `useEntityNeighbors()` | `lib/hooks/useGraphData.ts` | ✅ | fetchEntityNeighbors |
 | `useGraphInteractions()` | `lib/hooks/useGraphInteractions.ts` | ✅ | graphData, callbacks |
 | `useSpeechRecognition()` | `lib/hooks/useSpeechRecognition.ts` | ✅ | Web Speech API |
-| `useWebSocket()` | `lib/hooks/useWebSocket.ts` | ⬜ | Socket.IO |
+| `useWebSocket()` | `lib/hooks/useWebSocket.ts` | ✅ | Socket.IO |
 
 ---
 
@@ -469,6 +469,7 @@ Track changes to wiring as we implement:
 | 2025-12-27 | FIX | Graph hover collapse bug | useMemo for stableGraphData, hasInitialZoomRef |
 | 2025-12-27 | P6-T1 | Socket.IO added to Express | src/api/server.ts, src/config/index.ts, socket.io package |
 | 2025-12-27 | P6-T2 | WebSocket event handlers | src/api/socket/types.ts, handlers.ts, index.ts - chat streaming |
+| 2025-12-27 | P6-T3 | useWebSocket hook | web/src/lib/hooks/useWebSocket.ts - singleton socket client |
 
 ---
 
