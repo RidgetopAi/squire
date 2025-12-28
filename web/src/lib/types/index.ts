@@ -258,6 +258,29 @@ export interface PaginatedResponse<T> {
   hasMore: boolean;
 }
 
+// Commitment Types
+export interface Commitment {
+  id: string;
+  title: string;
+  description: string | null;
+  memory_id: string | null;
+  source_type: 'chat' | 'manual' | 'google_sync';
+  due_at: string | null;
+  timezone: string;
+  all_day: boolean;
+  duration_minutes: number | null;
+  rrule: string | null;
+  status: CommitmentStatus;
+  resolved_at: string | null;
+  resolution_type: ResolutionType | null;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export type CommitmentStatus = 'open' | 'in_progress' | 'completed' | 'canceled' | 'snoozed';
+export type ResolutionType = 'completed' | 'canceled' | 'no_longer_relevant' | 'superseded';
+
 // Profile Types
 export interface ContextProfile {
   id: string;
