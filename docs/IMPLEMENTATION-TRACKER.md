@@ -66,13 +66,13 @@
 
 | Method | Route | Status | Handler | Notes |
 |--------|-------|--------|---------|-------|
-| GET | `/api/integrations/google/auth` | 🔲 | startAuth | OAuth redirect |
-| GET | `/api/integrations/google/callback` | 🔲 | handleCallback | OAuth callback |
-| GET | `/api/integrations/google/status` | 🔲 | getStatus | Connection status |
-| DELETE | `/api/integrations/google/disconnect` | 🔲 | disconnect | Remove connection |
-| GET | `/api/integrations/google/calendars` | 🔲 | listCalendars | Available calendars |
-| PATCH | `/api/integrations/google/calendars/:id` | 🔲 | updateCalendar | Sync settings |
-| POST | `/api/integrations/google/sync` | 🔲 | triggerSync | Manual sync |
+| GET | `/api/integrations/google/auth` | ✅ | startAuth | OAuth redirect |
+| GET | `/api/integrations/google/callback` | ✅ | handleCallback | OAuth callback |
+| GET | `/api/integrations/google/status` | ✅ | getStatus | Connection status |
+| DELETE | `/api/integrations/google/disconnect/:id` | ✅ | disconnect | Remove connection |
+| GET | `/api/integrations/google/calendars/:accountId` | ✅ | listCalendars | Available calendars |
+| PATCH | `/api/integrations/google/calendars/settings/:id` | ✅ | updateCalendar | Sync settings |
+| POST | `/api/integrations/google/sync/:accountId` | ✅ | triggerSync | Manual sync |
 
 ### Push Notifications - `/api/notifications`
 
