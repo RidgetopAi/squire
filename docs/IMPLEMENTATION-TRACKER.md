@@ -9,8 +9,8 @@
 
 | Phase | Scope | Status |
 |-------|-------|--------|
-| 1 | Core Commitments | 🔄 In Progress |
-| 2 | Reminders + PWA Push | 🔲 Not Started |
+| 1 | Core Commitments | ✅ Complete |
+| 2 | Reminders + PWA Push | 🔄 In Progress |
 | 3 | Google Calendar Sync | 🔲 Not Started |
 | 4 | Recurrence (RRULE) | 🔲 Not Started |
 | 5 | Resolution Detection | 🔲 Not Started |
@@ -22,7 +22,7 @@
 | Table | Migration | Status | Notes |
 |-------|-----------|--------|-------|
 | `commitments` | 018_commitments.sql | ✅ | Core commitment tracking |
-| `reminders` | 019_reminders.sql | 🔲 | Scheduled notifications |
+| `reminders` | 019_reminders.sql | ✅ | Scheduled notifications |
 | `google_accounts` | 020_google_integration.sql | 🔲 | OAuth tokens |
 | `google_calendars` | 020_google_integration.sql | 🔲 | Which calendars to sync |
 | `google_events` | 020_google_integration.sql | 🔲 | Cached Google events |
@@ -89,7 +89,7 @@
 | Route | Page | Status | Notes |
 |-------|------|--------|-------|
 | `/app/calendar` | CalendarPage | 🔲 | Week/month view |
-| `/app/commitments` | CommitmentsPage | 🔲 | List + management |
+| `/app/commitments` | CommitmentsPage | ✅ | List + management |
 | `/app/settings/integrations` | IntegrationsPage | 🔲 | Google connection |
 
 ---
@@ -165,13 +165,13 @@
 | 1.2 | Create commitments service | `7b525561-b250-48dd-bb2e-f1f106aad49f` | ✅ |
 | 1.3 | Create commitments API routes | `df506266-d471-439a-9ef8-1fa67258b1c4` | ✅ |
 | 1.4 | Add commitment detection to chat extraction | `63dbeef4-fc10-4bbf-9ac0-baec97a2586f` | ✅ |
-| 1.5 | Create commitments page and list (frontend) | `66f029ee-8517-4fe1-8740-e997e70121fc` | 🔲 |
+| 1.5 | Create commitments page and list (frontend) | `66f029ee-8517-4fe1-8740-e997e70121fc` | ✅ |
 
 ### Phase 2: Reminders + PWA Push
 
 | # | Task | Mandrel ID | Status |
 |---|------|------------|--------|
-| 2.1 | Create reminders migration (019_reminders.sql) | `31a29a56-326a-4bfb-9561-e9987b31c420` | 🔲 |
+| 2.1 | Create reminders migration (019_reminders.sql) | `31a29a56-326a-4bfb-9561-e9987b31c420` | ✅ |
 | 2.2 | Create push_subscriptions migration (021) | `19e95a01-6760-4338-9145-0df688a6da7a` | 🔲 |
 | 2.3 | Create reminders service | `9bad05e1-5d28-4306-ab83-bba0e2db9d04` | 🔲 |
 | 2.4 | Create push notification service | `93dcb88a-f2e2-423c-8de1-cb2e9ef94882` | 🔲 |
