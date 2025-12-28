@@ -66,20 +66,23 @@ Update this as we build - it's our source of truth for what's wired and what's n
 
 | Event | Status | Frontend Handler | Payload | Purpose |
 |-------|--------|------------------|---------|---------|
-| `chat:response` | 🆕 | ChatPage | `{ conversationId, chunk, done }` | Stream LLM tokens |
-| `chat:context` | 🆕 | OverlayStore | `{ conversationId, memories[], entities[] }` | Context used |
-| `memory:created` | 🆕 | Timeline, Dashboard | `{ memory }` | New memory added |
-| `memory:updated` | 🆕 | Timeline, Dashboard | `{ memory }` | Memory changed |
-| `summary:updated` | 🆕 | LivingSummaryPanel | `{ category, summary }` | Summary refreshed |
-| `insight:created` | 🆕 | InsightsPanel | `{ insight }` | New insight |
-| `connection:status` | 🆕 | HeaderBar | `{ connected, latency }` | Connection health |
+| `chat:chunk` | ✅ | chatStore | `{ conversationId, chunk, done }` | Stream LLM tokens |
+| `chat:context` | ✅ | chatStore | `{ conversationId, memories[], entities[] }` | Context used |
+| `chat:done` | ✅ | chatStore | `{ conversationId, usage?, model? }` | Stream complete |
+| `chat:error` | ✅ | chatStore | `{ conversationId, error, code? }` | Stream error |
+| `memory:created` | ✅ | WebSocketProvider | `{ memory }` | Invalidates ['memories'] queries |
+| `memory:updated` | ⬜ | Timeline, Dashboard | `{ memory }` | Memory changed |
+| `summary:updated` | ⬜ | LivingSummaryPanel | `{ category, summary }` | Summary refreshed |
+| `insight:created` | ✅ | WebSocketProvider | `{ insight }` | Invalidates ['insights'] queries |
+| `connection:status` | ✅ | useWebSocket | `{ connected, socketId }` | Connection health |
 
 ## Client → Server
 
 | Event | Status | Frontend Source | Payload | Purpose |
 |-------|--------|-----------------|---------|---------|
-| `chat:message` | 🆕 | ChatInputBar | `{ conversationId, message, profile }` | Send message |
-| `chat:cancel` | 🆕 | ChatPage | `{ conversationId }` | Cancel streaming |
+| `chat:message` | ✅ | chatStore | `{ conversationId, message, history, includeContext }` | Send message |
+| `chat:cancel` | ✅ | chatStore | `{ conversationId }` | Cancel streaming |
+| `ping` | ✅ | useWebSocket | `(callback)` | Latency measurement |
 
 ---
 
@@ -89,22 +92,23 @@ Update this as we build - it's our source of truth for what's wired and what's n
 
 | Component | API Dependencies | Status |
 |-----------|------------------|--------|
-| `AppLayout` | None | ⬜ |
-| `HeaderBar` | `/api/context/profiles`, WS `connection:status` | ⬜ |
-| `SideNav` | None | ⬜ |
-| `OverlayPortal` | None (uses OverlayStore) | ⬜ |
+| `AppLayout` | None | ✅ Built |
+| `HeaderBar` | useWebSocket (connection status + latency) | ✅ Wired |
+| `SideNav` | None | ✅ Built |
+| `OverlayPortal` | None (uses OverlayStore) | ✅ Built |
+| `WebSocketProvider` | useWebSocket, initWebSocketListeners, queryClient | ✅ Wired |
 
 ## Chat Components
 
 | Component | API Dependencies | Status |
 |-----------|------------------|--------|
-| `ChatPage` | `/api/chat`, `/api/context`, WS events | ⬜ |
-| `ChatWindow` | useChatStore → `/api/chat` | ✅ Wired |
-| `MessageList` | useChatStore | ✅ Wired |
+| `ChatPage` | chatStore (WebSocket streaming + HTTP fallback) | ✅ Wired |
+| `ChatWindow` | useChatStore → WebSocket or `/api/chat` | ✅ Wired |
+| `MessageList` | useChatStore (supports streaming messages) | ✅ Wired |
 | `MessageBubble` | None | ✅ Built |
-| `ChatInputBar` | useChatStore → `/api/chat` | ✅ Wired |
+| `ChatInputBar` | useChatStore → WebSocket or `/api/chat` | ✅ Wired |
 | `STTButton` | Web Speech API (browser) | ✅ Wired |
-| `ContextualMemoryOverlayStack` | OverlayStore (from context response) | ⬜ |
+| `ContextualMemoryOverlayStack` | OverlayStore (from context response) | ✅ Wired |
 
 ## Card Components
 
@@ -170,7 +174,7 @@ Update this as we build - it's our source of truth for what's wired and what's n
 
 | Store | Purpose | Status |
 |-------|---------|--------|
-| `chatStore` | Messages, conversationId, loading state | ✅ Implemented |
+| `chatStore` | Messages, streaming state, WebSocket/HTTP dual-mode, initWebSocketListeners() | ✅ Implemented |
 | `overlayStore` | Active memory cards, push/dismiss | ✅ Implemented |
 | `detailModalStore` | Detail modal state for all item types | ✅ Implemented |
 | `uiStore` | Theme, sidebar state, selected profile | ⬜ |
@@ -470,6 +474,10 @@ Track changes to wiring as we implement:
 | 2025-12-27 | P6-T1 | Socket.IO added to Express | src/api/server.ts, src/config/index.ts, socket.io package |
 | 2025-12-27 | P6-T2 | WebSocket event handlers | src/api/socket/types.ts, handlers.ts, index.ts - chat streaming |
 | 2025-12-27 | P6-T3 | useWebSocket hook | web/src/lib/hooks/useWebSocket.ts - singleton socket client |
+| 2025-12-27 | P6-T4 | Wire chatStore to WebSocket | chatStore streaming state, dual-mode HTTP/WS, initWebSocketListeners() |
+| 2025-12-27 | P6-T5 | Real-time notifications | broadcast.ts, memory:created/insight:created → query invalidation |
+| 2025-12-27 | P6-T6 | HeaderBar connection status | useWebSocket for live/offline indicator with latency |
+| 2025-12-27 | **MILESTONE** | **Phase 6 Complete** | Full WebSocket integration: streaming chat, real-time updates, connection UI |
 
 ---
 
