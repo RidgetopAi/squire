@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { useTopEntities } from '@/lib/hooks/useEntities';
 import { useEntitySubgraph, useGraphStats, useGraphVisualization } from '@/lib/hooks/useGraphData';
@@ -83,6 +83,7 @@ const entityTypeColors: Record<string, string> = {
 export default function GraphPage() {
   const graphRef = useRef<ForceGraphMethods>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);
+  const hasInitialZoomRef = useRef(false);
 
   // State
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
@@ -116,6 +117,16 @@ export default function GraphPage() {
   const graphData = selectedEntityId ? entityGraphData : fullGraphData;
   const graphLoading = selectedEntityId ? entityGraphLoading : fullGraphLoading;
 
+  // CRITICAL: Memoize the graphData passed to ForceGraph2D
+  // Without this, every render creates new object references, causing ForceGraph to restart simulation
+  const stableGraphData = useMemo(() => {
+    if (!graphData) return null;
+    return {
+      nodes: graphData.nodes.map(n => ({ ...n })),
+      links: graphData.links.map(l => ({ ...l })),
+    };
+  }, [graphData]);
+
   // Graph interactions
   const {
     state: interactionState,
@@ -137,6 +148,11 @@ export default function GraphPage() {
       }
     },
   });
+
+  // Reset zoom ref when graph data source changes (entity selected/deselected)
+  useEffect(() => {
+    hasInitialZoomRef.current = false;
+  }, [selectedEntityId]);
 
   // Handle container resize
   useEffect(() => {
@@ -376,16 +392,13 @@ export default function GraphPage() {
                 <p className="text-sm text-foreground-muted">Loading graph...</p>
               </div>
             </div>
-          ) : graphData && graphData.nodes.length > 0 ? (
+          ) : stableGraphData && stableGraphData.nodes.length > 0 ? (
             <ForceGraph2D
               key={selectedEntityId || 'full-graph'}
               ref={graphRef}
               width={dimensions.width}
               height={dimensions.height}
-              graphData={{
-                nodes: graphData.nodes.map(n => ({ ...n })),
-                links: graphData.links.map(l => ({ ...l })),
-              }}
+              graphData={stableGraphData}
               nodeId="id"
               nodeLabel="label"
               nodeVal="val"
@@ -407,7 +420,14 @@ export default function GraphPage() {
               nodeCanvasObject={nodeCanvasObject}
               backgroundColor="transparent"
               cooldownTicks={100}
-              onEngineStop={() => graphRef.current?.zoomToFit(400, 50)}
+              autoPauseRedraw={false}
+              enableNodeDrag={false}
+              onEngineStop={() => {
+                if (!hasInitialZoomRef.current) {
+                  hasInitialZoomRef.current = true;
+                  graphRef.current?.zoomToFit(400, 50);
+                }
+              }}
             />
           ) : null}
 
