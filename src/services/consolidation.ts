@@ -17,6 +17,7 @@ import {
   processResearchForConsolidation,
 } from './research.js';
 import { extractMemoriesFromChat } from './chatExtraction.js';
+import { updateAllSummaries } from './summaries.js';
 
 /**
  * Consolidation Configuration
@@ -87,6 +88,8 @@ export interface ConsolidationResult {
   gapsSurfaced: number;
   questionsCreated: number;
   questionsExpired: number;
+  summariesUpdated: number;
+  summaryMemoriesProcessed: number;
   durationMs: number;
 }
 
@@ -380,6 +383,9 @@ export async function consolidateSession(session: Session): Promise<Consolidatio
     // 7. Process active research (detect gaps, generate questions)
     const researchResult = await processResearchForConsolidation();
 
+    // 8. Update living summaries (generate summaries from pending memories)
+    const summaryResult = await updateAllSummaries();
+
     // Count total memories processed
     const countResult = await pool.query(`SELECT COUNT(*) as count FROM memories`);
     const memoriesProcessed = parseInt(countResult.rows[0]?.count ?? '0', 10);
@@ -419,6 +425,8 @@ export async function consolidateSession(session: Session): Promise<Consolidatio
       gapsSurfaced: researchResult.gapsSurfaced.length,
       questionsCreated: researchResult.questionsCreated.length,
       questionsExpired: researchResult.questionsExpired,
+      summariesUpdated: summaryResult.updated.length,
+      summaryMemoriesProcessed: summaryResult.memoriesProcessed,
       durationMs: Date.now() - startTime,
     };
   } catch (error) {
@@ -466,6 +474,10 @@ export async function consolidateAll(): Promise<ConsolidationResult> {
   console.log('[Consolidation] Step 7: Processing research...');
   const researchResult = await processResearchForConsolidation();
 
+  // 8. Update living summaries (generate summaries from pending memories)
+  console.log('[Consolidation] Step 8: Updating living summaries...');
+  const summaryResult = await updateAllSummaries();
+
   // Count total memories processed
   const countResult = await pool.query(`SELECT COUNT(*) as count FROM memories`);
   const memoriesProcessed = parseInt(countResult.rows[0]?.count ?? '0', 10);
@@ -495,6 +507,8 @@ export async function consolidateAll(): Promise<ConsolidationResult> {
     gapsSurfaced: researchResult.gapsSurfaced.length,
     questionsCreated: researchResult.questionsCreated.length,
     questionsExpired: researchResult.questionsExpired,
+    summariesUpdated: summaryResult.updated.length,
+    summaryMemoriesProcessed: summaryResult.memoriesProcessed,
     durationMs: Date.now() - startTime,
   };
 }
