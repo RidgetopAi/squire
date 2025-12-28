@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useWebSocket } from '@/lib/hooks/useWebSocket';
 
 interface HeaderBarProps {
   onMenuToggle?: () => void;
@@ -8,23 +8,8 @@ interface HeaderBarProps {
 }
 
 export function HeaderBar({ onMenuToggle, isSideNavOpen }: HeaderBarProps) {
-  const [isConnected, setIsConnected] = useState(false);
-
-  // Simulate connection check - will be replaced with real WebSocket status
-  useEffect(() => {
-    const checkConnection = async () => {
-      try {
-        const response = await fetch('/api/health');
-        setIsConnected(response.ok);
-      } catch {
-        setIsConnected(false);
-      }
-    };
-
-    checkConnection();
-    const interval = setInterval(checkConnection, 30000);
-    return () => clearInterval(interval);
-  }, []);
+  // Real WebSocket connection status (P6-T6)
+  const { isConnected, latency } = useWebSocket();
 
   return (
     <header className="h-14 bg-background-secondary border-b border-glass-border flex items-center justify-between px-4 shrink-0">
@@ -75,7 +60,7 @@ export function HeaderBar({ onMenuToggle, isSideNavOpen }: HeaderBarProps) {
 
       {/* Right: Status + Profile */}
       <div className="flex items-center gap-4">
-        {/* Connection status */}
+        {/* WebSocket connection status (P6-T6) */}
         <div className="flex items-center gap-2">
           <div
             className={`w-2 h-2 rounded-full ${
@@ -83,10 +68,14 @@ export function HeaderBar({ onMenuToggle, isSideNavOpen }: HeaderBarProps) {
                 ? 'bg-success animate-pulse'
                 : 'bg-error'
             }`}
-            title={isConnected ? 'Connected' : 'Disconnected'}
+            title={isConnected ? `Connected${latency ? ` (${latency}ms)` : ''}` : 'Disconnected'}
           />
           <span className="hidden sm:inline text-xs text-foreground-muted">
-            {isConnected ? 'Connected' : 'Offline'}
+            {isConnected ? (
+              <>Live{latency ? <span className="text-foreground-subtle ml-1">({latency}ms)</span> : ''}</>
+            ) : (
+              'Offline'
+            )}
           </span>
         </div>
 
