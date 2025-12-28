@@ -48,11 +48,11 @@
 
 | Method | Route | Status | Handler | Notes |
 |--------|-------|--------|---------|-------|
-| GET | `/api/reminders` | 🔲 | list | Upcoming reminders |
-| POST | `/api/reminders` | 🔲 | create | Standalone reminder |
-| DELETE | `/api/reminders/:id` | 🔲 | delete | Cancel reminder |
-| POST | `/api/reminders/:id/snooze` | 🔲 | snooze | Postpone reminder |
-| POST | `/api/reminders/:id/acknowledge` | 🔲 | acknowledge | Mark as seen |
+| GET | `/api/reminders` | ✅ | list | Upcoming reminders |
+| POST | `/api/reminders` | ✅ | create | Standalone reminder |
+| DELETE | `/api/reminders/:id` | ✅ | delete | Cancel reminder |
+| POST | `/api/reminders/:id/snooze` | ✅ | snooze | Postpone reminder |
+| POST | `/api/reminders/:id/acknowledge` | ✅ | acknowledge | Mark as seen |
 
 ### Calendar - `/api/calendar`
 
@@ -176,7 +176,7 @@
 | 2.3 | Create reminders service | `9bad05e1-5d28-4306-ab83-bba0e2db9d04` | ✅ |
 | 2.4 | Create push notification service | `93dcb88a-f2e2-423c-8de1-cb2e9ef94882` | ✅ |
 | 2.5 | Create scheduler service | `d31302d1-554c-4cc3-b90f-03e414fc68c6` | ✅ |
-| 2.6 | Create reminders API routes | `61403daa-970b-4f0f-ab51-a095789cbb26` | 🔲 |
+| 2.6 | Create reminders API routes | `61403daa-970b-4f0f-ab51-a095789cbb26` | ✅ |
 | 2.7 | Create notifications API routes | `b77537ac-33f3-427c-a3bf-bc4e0574113e` | 🔲 |
 | 2.8 | Create service worker for PWA push | `1f225f73-e207-47f4-8e5f-173863701a62` | 🔲 |
 | 2.9 | Add "remind me in X" parsing | `06f9a0b3-e7dc-46b0-b117-f66e6cbe5586` | 🔲 |

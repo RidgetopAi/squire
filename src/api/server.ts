@@ -17,6 +17,7 @@ import graphRouter from './routes/graph.js';
 import objectsRouter from './routes/objects.js';
 import chatRouter from './routes/chat.js';
 import commitmentsRouter from './routes/commitments.js';
+import remindersRouter from './routes/reminders.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -53,6 +54,7 @@ app.use('/api/graph', graphRouter);
 app.use('/api/objects', objectsRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/commitments', commitmentsRouter);
+app.use('/api/reminders', remindersRouter);
 
 // 404 handler
 app.use((_req, res) => {
