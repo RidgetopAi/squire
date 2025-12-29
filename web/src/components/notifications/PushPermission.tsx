@@ -72,6 +72,8 @@ export function PushPermission({
   }
 
   // Permission denied - show how to enable
+  const isIOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/.test(navigator.userAgent);
+
   if (permission === 'denied') {
     if (compact) {
       return (
@@ -86,13 +88,25 @@ export function PushPermission({
     }
     return (
       <div className={`p-4 rounded-lg bg-gray-800/50 border border-gray-700 ${className}`}>
-        <div className="flex items-center gap-3">
-          <BellOffIcon className="w-6 h-6 text-gray-500" />
+        <div className="flex items-start gap-3">
+          <BellOffIcon className="w-6 h-6 text-gray-500 shrink-0 mt-0.5" />
           <div>
             <p className="text-sm text-gray-300">Notifications blocked</p>
-            <p className="text-xs text-gray-500">
-              Enable in browser settings to receive reminders
-            </p>
+            {isIOS ? (
+              <div className="text-xs text-gray-500 mt-1 space-y-1">
+                <p>To fix on iOS:</p>
+                <ol className="list-decimal list-inside space-y-0.5">
+                  <li>Close this app completely (swipe up)</li>
+                  <li>Go to Settings → Squire → Notifications</li>
+                  <li>Toggle OFF, wait 5 seconds, toggle ON</li>
+                  <li>Re-open Squire from home screen</li>
+                </ol>
+              </div>
+            ) : (
+              <p className="text-xs text-gray-500">
+                Enable in browser settings to receive reminders
+              </p>
+            )}
           </div>
         </div>
       </div>
