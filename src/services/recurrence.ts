@@ -8,10 +8,19 @@
  * - Helpers for creating common recurrence patterns
  */
 
-import { RRule, RRuleSet, rrulestr, Frequency, Weekday } from 'rrule';
+// Use CommonJS-compatible import for rrule
+import rrulePkg from 'rrule';
+const { RRule, RRuleSet, rrulestr, Frequency, Weekday } = rrulePkg;
+
+// Type aliases for the imported values
+type RRuleType = InstanceType<typeof RRule>;
+type RRuleSetType = InstanceType<typeof RRuleSet>;
+type FrequencyType = typeof Frequency[keyof typeof Frequency];
+type WeekdayType = InstanceType<typeof Weekday>;
 
 // Re-export rrule types that consumers might need
 export { RRule, RRuleSet, rrulestr, Frequency, Weekday };
+export type { RRuleType, RRuleSetType, FrequencyType, WeekdayType };
 
 // ============================================
 // Recurrence Types
@@ -107,11 +116,11 @@ export function expandRecurrence(
   const { after = new Date(), before, inclusive = true, limit = 100 } = options;
 
   // Parse the RRULE
-  let rule: RRule | RRuleSet;
+  let rule: RRuleType | RRuleSetType;
   try {
     // Try parsing as RRuleSet first (handles EXDATE, RDATE)
     if (rruleString.includes('EXDATE') || rruleString.includes('RDATE')) {
-      rule = rrulestr(rruleString, { dtstart }) as RRuleSet;
+      rule = rrulestr(rruleString, { dtstart }) as RRuleSetType;
     } else {
       // Simple RRULE
       rule = RRule.fromString(rruleString);
@@ -222,7 +231,7 @@ export function buildRRule(params: {
   const { frequency, interval = 1, daysOfWeek, until, count } = params;
 
   // Map frequency to RRule.Frequency
-  const freqMap: Record<RecurrenceFrequency, Frequency> = {
+  const freqMap: Record<RecurrenceFrequency, FrequencyType> = {
     daily: Frequency.DAILY,
     weekly: Frequency.WEEKLY,
     biweekly: Frequency.WEEKLY, // handled with interval=2
@@ -231,7 +240,7 @@ export function buildRRule(params: {
   };
 
   // Map day strings to Weekday objects
-  const weekdayMap: Record<DayOfWeek, Weekday> = {
+  const weekdayMap: Record<DayOfWeek, WeekdayType> = {
     MO: RRule.MO,
     TU: RRule.TU,
     WE: RRule.WE,
