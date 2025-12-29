@@ -5,37 +5,6 @@ import { PushPermission } from '@/components/notifications';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
-// Debug component to show browser capabilities
-function PushDebug() {
-  const [info, setInfo] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    const debug: Record<string, string> = {
-      'serviceWorker': 'serviceWorker' in navigator ? 'Yes' : 'No',
-      'PushManager': 'PushManager' in window ? 'Yes' : 'No',
-      'Notification': 'Notification' in window ? 'Yes' : 'No',
-      'standalone': (window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone) ? 'Yes' : 'No',
-      'iOS': /iPhone|iPad|iPod/.test(navigator.userAgent) ? 'Yes' : 'No',
-      'userAgent': navigator.userAgent.slice(0, 50) + '...',
-    };
-    setInfo(debug);
-  }, []);
-
-  return (
-    <details className="mb-4 p-3 rounded-lg bg-gray-800/50 border border-gray-700 text-xs">
-      <summary className="cursor-pointer text-gray-400">Debug Info (tap to expand)</summary>
-      <div className="mt-2 space-y-1 font-mono">
-        {Object.entries(info).map(([k, v]) => (
-          <div key={k} className="flex gap-2">
-            <span className="text-gray-500">{k}:</span>
-            <span className={v === 'Yes' ? 'text-green-400' : v === 'No' ? 'text-red-400' : 'text-gray-300'}>{v}</span>
-          </div>
-        ))}
-      </div>
-    </details>
-  );
-}
-
 type ReminderStatus = 'pending' | 'sent' | 'acknowledged' | 'snoozed' | 'canceled' | 'failed';
 
 interface Reminder {
@@ -250,8 +219,7 @@ export default function RemindersPage() {
         </div>
 
         {/* Push Notification Permission */}
-        <PushPermission className="mb-4" />
-        <PushDebug />
+        <PushPermission className="mb-6" />
 
         {/* Stats */}
         <div className="grid grid-cols-4 gap-3 mb-6">
