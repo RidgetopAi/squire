@@ -73,6 +73,31 @@ async function checkAndTriggerAutoSleep(): Promise<boolean> {
   }
 }
 
+// === FOLLOW-UP ACKNOWLEDGMENT TEMPLATES ===
+
+function formatReminderAcknowledgment(title: string, remindAt: string): string {
+  const date = new Date(remindAt);
+  const now = new Date();
+  const diffMs = date.getTime() - now.getTime();
+  const diffMins = Math.round(diffMs / 60000);
+
+  let timeStr: string;
+  if (diffMins < 60) {
+    timeStr = `in ${diffMins} minute${diffMins !== 1 ? 's' : ''}`;
+  } else if (diffMins < 1440) {
+    const hours = Math.round(diffMins / 60);
+    timeStr = `in ${hours} hour${hours !== 1 ? 's' : ''}`;
+  } else {
+    timeStr = `on ${date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} at ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+  }
+
+  return `\n\n---\n✓ I've set a reminder for you: "${title}" ${timeStr}.`;
+}
+
+function formatCommitmentAcknowledgment(title: string): string {
+  return `\n\n---\n✓ I've noted your commitment: "${title}"`;
+}
+
 // System prompt for Squire
 const SQUIRE_SYSTEM_PROMPT = `You are Squire, a personal AI companion with perfect memory.
 
@@ -131,26 +156,11 @@ async function handleChatMessage(
       content: message,
     });
 
-    // Step 1.5: Real-time extraction for commitments/reminders
-    // This runs in parallel with the LLM response
-    processMessageRealTime(message).then((extracted) => {
-      if (extracted.commitmentCreated) {
-        socket.emit('commitment:created', {
-          id: extracted.commitmentCreated.id,
-          title: extracted.commitmentCreated.title,
-        });
-        console.log(`[Socket] Emitted commitment:created for "${extracted.commitmentCreated.title}"`);
-      }
-      if (extracted.reminderCreated) {
-        socket.emit('reminder:created', {
-          id: extracted.reminderCreated.id,
-          title: extracted.reminderCreated.title,
-          remind_at: extracted.reminderCreated.remind_at,
-        });
-        console.log(`[Socket] Emitted reminder:created for "${extracted.reminderCreated.title}"`);
-      }
-    }).catch((error) => {
+    // Step 1.5: Start real-time extraction for commitments/reminders
+    // Runs in parallel with context fetch and LLM response - awaited after streaming
+    const extractionPromise = processMessageRealTime(message).catch((error) => {
       console.error('[Socket] Real-time extraction error:', error);
+      return { commitmentCreated: null, reminderCreated: null };
     });
 
     // Step 2: Fetch context if requested
@@ -210,15 +220,63 @@ async function handleChatMessage(
     // Step 4: Stream LLM response
     console.log(`[Socket] Step 4: Starting Groq stream...`);
     const streamResult = await streamGroqResponse(socket, conversationId, messages, abortController.signal);
-    chatDoneEmitted = true; // streamGroqResponse emits chat:done on success
     console.log(`[Socket] Stream complete: ${streamResult.content.length} chars`);
 
-    // Step 5: Persist assistant message after streaming completes
-    if (streamResult.content) {
+    // Step 5: Await extraction and stream follow-up acknowledgment if needed
+    let fullContent = streamResult.content;
+    const extracted = await extractionPromise;
+
+    if (extracted.commitmentCreated || extracted.reminderCreated) {
+      let followUp = '';
+
+      if (extracted.reminderCreated) {
+        followUp = formatReminderAcknowledgment(
+          extracted.reminderCreated.title,
+          extracted.reminderCreated.remind_at
+        );
+        socket.emit('reminder:created', {
+          id: extracted.reminderCreated.id,
+          title: extracted.reminderCreated.title,
+          remind_at: extracted.reminderCreated.remind_at,
+        });
+        console.log(`[Socket] Reminder created: "${extracted.reminderCreated.title}"`);
+      } else if (extracted.commitmentCreated) {
+        followUp = formatCommitmentAcknowledgment(extracted.commitmentCreated.title);
+        socket.emit('commitment:created', {
+          id: extracted.commitmentCreated.id,
+          title: extracted.commitmentCreated.title,
+        });
+        console.log(`[Socket] Commitment created: "${extracted.commitmentCreated.title}"`);
+      }
+
+      // Stream the follow-up as additional chunks
+      if (followUp) {
+        socket.emit('chat:chunk', {
+          conversationId,
+          chunk: followUp,
+          done: false,
+        });
+        fullContent += followUp;
+      }
+    }
+
+    // Emit chat:done after follow-up
+    socket.emit('chat:done', {
+      conversationId,
+      usage: streamResult.usage ? {
+        promptTokens: streamResult.usage.promptTokens,
+        completionTokens: streamResult.usage.completionTokens,
+        totalTokens: streamResult.usage.promptTokens + streamResult.usage.completionTokens,
+      } : undefined,
+    });
+    chatDoneEmitted = true;
+
+    // Step 6: Persist assistant message (including follow-up) after streaming completes
+    if (fullContent) {
       await addMessage({
         conversationId: conversation.id,
         role: 'assistant',
-        content: streamResult.content,
+        content: fullContent,
         memoryIds,
         disclosureId,
         contextProfile,
@@ -327,15 +385,7 @@ async function streamGroqResponse(
           const data = line.slice(6);
 
           if (data === '[DONE]') {
-            socket.emit('chat:done', {
-              conversationId,
-              usage: {
-                promptTokens: 0,
-                completionTokens: totalTokens,
-                totalTokens,
-              },
-              model: config.llm.model,
-            });
+            // Don't emit chat:done here - caller handles it after follow-up
             return { content: fullContent, usage: { promptTokens: 0, completionTokens: totalTokens } };
           }
 
@@ -359,15 +409,7 @@ async function streamGroqResponse(
             }
 
             if (parsed.choices[0]?.finish_reason === 'stop') {
-              socket.emit('chat:done', {
-                conversationId,
-                usage: {
-                  promptTokens: 0,
-                  completionTokens: totalTokens,
-                  totalTokens,
-                },
-                model: config.llm.model,
-              });
+              // Don't emit chat:done here - caller handles it after follow-up
               return { content: fullContent, usage: { promptTokens: 0, completionTokens: totalTokens } };
             }
           } catch {
