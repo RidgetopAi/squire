@@ -89,9 +89,44 @@ If there's nothing worth remembering, return: []
 
 IMPORTANT: Return ONLY valid JSON array, no markdown, no explanation.`;
 
+// === DATE/TIME HELPERS ===
+
+/**
+ * Get current date/time context for LLM prompts (Eastern Time)
+ */
+function getDateTimeContext(): {
+  iso: string;
+  formatted: string;
+  dayOfWeek: string;
+  tomorrowIso: string;
+} {
+  const now = new Date();
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const options: Intl.DateTimeFormatOptions = {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: 'America/New_York',
+  };
+
+  return {
+    iso: now.toISOString(),
+    formatted: now.toLocaleString('en-US', options),
+    dayOfWeek: now.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'America/New_York' }),
+    tomorrowIso: tomorrow.toISOString().split('T')[0] as string,
+  };
+}
+
 // === COMMITMENT DETECTION PROMPT ===
 
-const COMMITMENT_DETECTION_PROMPT = `Analyze this memory content and determine if it represents an actionable commitment.
+function getCommitmentDetectionPrompt(): string {
+  const dt = getDateTimeContext();
+  return `Analyze this memory content and determine if it represents an actionable commitment.
 
 A commitment is something the user:
 - Needs to do, should do, wants to do, or has promised to do
@@ -102,22 +137,32 @@ Return JSON with:
 - is_commitment: boolean - true if this is an actionable commitment
 - title: string - short actionable title (imperative form, e.g., "Finish report", "Call mom")
 - description: string | null - additional context if any
-- due_at: string | null - ISO date if deadline mentioned (parse "next week", "by Friday", "tomorrow" relative to today)
+- due_at: string | null - ISO date if deadline mentioned (calculate from current date/time below)
 - all_day: boolean - true if no specific time mentioned
 
-Examples:
-Input: "Brian wants to ship Squire by January"
-Output: {"is_commitment": true, "title": "Ship Squire", "description": "Goal to complete and launch the Squire project", "due_at": "2025-01-31T23:59:59Z", "all_day": true}
+CURRENT DATE/TIME: ${dt.formatted}
+TODAY IS: ${dt.dayOfWeek}
+TOMORROW'S DATE: ${dt.tomorrowIso}
 
-Input: "Brian's wife is named Sarah"
+For relative dates, calculate from current date:
+- "tomorrow" = ${dt.tomorrowIso}
+- "next week" = 7 days from today
+- "next Monday" = the coming Monday
+- "in 3 days" = add 3 days to today
+- "by Friday" = this coming Friday (or next if today is Friday)
+
+Examples:
+Input: "I need to finish the report by Friday"
+Output: {"is_commitment": true, "title": "Finish the report", "description": null, "due_at": "[CALCULATED_FRIDAY]T23:59:59Z", "all_day": true}
+
+Input: "Call mom tomorrow at 3pm"
+Output: {"is_commitment": true, "title": "Call mom", "description": null, "due_at": "${dt.tomorrowIso}T15:00:00Z", "all_day": false}
+
+Input: "My wife's name is Sarah"
 Output: {"is_commitment": false, "title": null, "description": null, "due_at": null, "all_day": false}
 
-Input: "Brian needs to call the dentist tomorrow"
-Output: {"is_commitment": true, "title": "Call the dentist", "description": null, "due_at": "[TOMORROW_DATE]T12:00:00Z", "all_day": true}
-
-Today's date: ${new Date().toISOString().split('T')[0]}
-
 IMPORTANT: Return ONLY valid JSON object, no markdown, no explanation.`;
+}
 
 interface CommitmentDetection {
   is_commitment: boolean;
@@ -129,7 +174,9 @@ interface CommitmentDetection {
 
 // === REMINDER DETECTION PROMPT ===
 
-const REMINDER_DETECTION_PROMPT = `Analyze this message and detect if the user is requesting a reminder.
+function getReminderDetectionPrompt(): string {
+  const dt = getDateTimeContext();
+  return `Analyze this message and detect if the user is requesting a reminder.
 
 Look for patterns like:
 - "remind me in X minutes/hours/days"
@@ -137,29 +184,43 @@ Look for patterns like:
 - "set a reminder for X"
 - "don't let me forget to X"
 - "ping me about X in Y"
+- "remind me tomorrow/tonight/this evening"
+
+CURRENT DATE/TIME: ${dt.formatted}
+TODAY IS: ${dt.dayOfWeek}
 
 Return JSON with:
 - is_reminder: boolean - true if this is a reminder request
 - title: string | null - what to remind about (extracted from message)
-- delay_minutes: number | null - how many minutes from now (convert hours/days to minutes)
+- delay_minutes: number | null - how many minutes from now (calculate based on current time)
+
+Time calculations:
+- "in 2 hours" = 120 minutes
+- "tomorrow" = minutes until 9am tomorrow
+- "tomorrow morning" = minutes until 9am tomorrow
+- "tomorrow afternoon" = minutes until 2pm tomorrow
+- "tonight" = minutes until 8pm today (or tomorrow if past 8pm)
+- "this evening" = minutes until 6pm today
+- "next week" = 7 days = 10080 minutes
 
 Examples:
 Input: "remind me in 2 hours to call mom"
 Output: {"is_reminder": true, "title": "Call mom", "delay_minutes": 120}
 
-Input: "remind me to pick up groceries tomorrow"
-Output: {"is_reminder": true, "title": "Pick up groceries", "delay_minutes": 1440}
+Input: "remind me tomorrow to pick up groceries"
+Output: {"is_reminder": true, "title": "Pick up groceries", "delay_minutes": [MINUTES_UNTIL_9AM_TOMORROW]}
 
 Input: "set a reminder for 30 minutes to take a break"
 Output: {"is_reminder": true, "title": "Take a break", "delay_minutes": 30}
 
-Input: "I need to remember my dentist appointment"
-Output: {"is_reminder": false, "title": null, "delay_minutes": null}
-
 Input: "ping me about the report in 45 minutes"
 Output: {"is_reminder": true, "title": "The report", "delay_minutes": 45}
 
+Input: "I need to remember my dentist appointment"
+Output: {"is_reminder": false, "title": null, "delay_minutes": null}
+
 IMPORTANT: Return ONLY valid JSON object, no markdown, no explanation.`;
+}
 
 interface ReminderDetection {
   is_reminder: boolean;
@@ -210,7 +271,7 @@ async function detectReminderRequest(message: string): Promise<ReminderDetection
 
   try {
     const messages: LLMMessage[] = [
-      { role: 'system', content: REMINDER_DETECTION_PROMPT },
+      { role: 'system', content: getReminderDetectionPrompt() },
       { role: 'user', content: message },
     ];
 
@@ -238,7 +299,7 @@ async function detectReminderRequest(message: string): Promise<ReminderDetection
 async function detectCommitment(memoryContent: string): Promise<CommitmentDetection | null> {
   try {
     const messages: LLMMessage[] = [
-      { role: 'system', content: COMMITMENT_DETECTION_PROMPT },
+      { role: 'system', content: getCommitmentDetectionPrompt() },
       { role: 'user', content: memoryContent },
     ];
 

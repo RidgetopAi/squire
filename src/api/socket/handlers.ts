@@ -119,6 +119,7 @@ If memory context is provided below, use it to personalize your responses. Don't
 
 /**
  * Get current timestamp for system prompt grounding
+ * Uses Eastern Time (user's timezone)
  */
 function getCurrentTimeContext(): string {
   const now = new Date();
@@ -129,6 +130,7 @@ function getCurrentTimeContext(): string {
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
+    timeZone: 'America/New_York',
     timeZoneName: 'short',
   };
   const formatted = now.toLocaleString('en-US', options);
