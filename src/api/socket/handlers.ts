@@ -103,6 +103,9 @@ async function handleChatMessage(
 
   console.log(`[Socket] chat:message from ${socket.id} - conversation: ${conversationId}`);
 
+  // Track if we've emitted chat:done to avoid duplicates
+  let chatDoneEmitted = false;
+
   // Check for auto-sleep (consolidation after inactivity)
   // This runs BEFORE processing the new message so extracted memories are available
   await checkAndTriggerAutoSleep();
@@ -116,8 +119,10 @@ async function handleChatMessage(
   let disclosureId: string | undefined;
 
   try {
+    console.log(`[Socket] Step 0: Getting/creating conversation...`);
     // Step 0: Ensure conversation exists in database
     const conversation = await getOrCreateConversation(conversationId);
+    console.log(`[Socket] Conversation ready: ${conversation.id}`);
 
     // Step 1: Persist user message immediately
     await addMessage({
@@ -152,10 +157,12 @@ async function handleChatMessage(
     let contextMarkdown: string | undefined;
     if (includeContext) {
       try {
+        console.log(`[Socket] Step 2: Generating context...`);
         const contextPackage = await generateContext({
           query: message,
           profile: contextProfile,
         });
+        console.log(`[Socket] Context generated: ${contextPackage.memories.length} memories`);
 
         contextMarkdown = contextPackage.markdown;
         memoryIds = contextPackage.memories.map((m) => m.id);
@@ -201,7 +208,10 @@ async function handleChatMessage(
     messages.push({ role: 'user', content: message });
 
     // Step 4: Stream LLM response
+    console.log(`[Socket] Step 4: Starting Groq stream...`);
     const streamResult = await streamGroqResponse(socket, conversationId, messages, abortController.signal);
+    chatDoneEmitted = true; // streamGroqResponse emits chat:done on success
+    console.log(`[Socket] Stream complete: ${streamResult.content.length} chars`);
 
     // Step 5: Persist assistant message after streaming completes
     if (streamResult.content) {
@@ -225,6 +235,11 @@ async function handleChatMessage(
       code: 'CHAT_ERROR',
     });
   } finally {
+    // ALWAYS emit chat:done if not already emitted - this clears the loading state
+    if (!chatDoneEmitted) {
+      console.log(`[Socket] Emitting chat:done in finally block (error case)`);
+      socket.emit('chat:done', { conversationId });
+    }
     activeStreams.delete(conversationId);
   }
 }
@@ -250,39 +265,51 @@ async function streamGroqResponse(
     return { content: '' };
   }
 
-  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: config.llm.model,
-      messages,
-      max_tokens: config.llm.maxTokens,
-      temperature: config.llm.temperature,
-      stream: true,
-    }),
-    signal,
-  });
+  // Create a combined abort signal with timeout
+  const GROQ_TIMEOUT_MS = 30000; // 30 second timeout
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => {
+    console.log(`[Socket] Groq API timeout after ${GROQ_TIMEOUT_MS}ms`);
+    timeoutController.abort();
+  }, GROQ_TIMEOUT_MS);
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Groq API error: ${response.status} - ${errorText}`);
-  }
-
-  const reader = response.body?.getReader();
-  if (!reader) {
-    throw new Error('No response body');
-  }
-
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let totalTokens = 0;
-  let fullContent = '';
+  // Abort if either the external signal or timeout fires
+  signal.addEventListener('abort', () => timeoutController.abort());
 
   try {
-    while (true) {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.llm.model,
+        messages,
+        max_tokens: config.llm.maxTokens,
+        temperature: config.llm.temperature,
+        stream: true,
+      }),
+      signal: timeoutController.signal,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Groq API error: ${response.status} - ${errorText}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('No response body');
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let totalTokens = 0;
+    let fullContent = '';
+
+    try {
+      while (true) {
       const { done, value } = await reader.read();
 
       if (done) {
@@ -350,10 +377,13 @@ async function streamGroqResponse(
       }
     }
 
-    // If we exit the loop without explicit return, return what we have
-    return { content: fullContent, usage: { promptTokens: 0, completionTokens: totalTokens } };
+      // If we exit the loop without explicit return, return what we have
+      return { content: fullContent, usage: { promptTokens: 0, completionTokens: totalTokens } };
+    } finally {
+      reader.releaseLock();
+    }
   } finally {
-    reader.releaseLock();
+    clearTimeout(timeoutId);
   }
 }
 
