@@ -9,6 +9,7 @@ import { config } from '../../config/index.js';
 import { generateContext } from '../../services/context.js';
 import { getOrCreateConversation, addMessage } from '../../services/conversations.js';
 import { consolidateAll } from '../../services/consolidation.js';
+import { processMessageRealTime } from '../../services/chatExtraction.js';
 import { pool } from '../../db/pool.js';
 import type {
   ClientToServerEvents,
@@ -123,6 +124,28 @@ async function handleChatMessage(
       conversationId: conversation.id,
       role: 'user',
       content: message,
+    });
+
+    // Step 1.5: Real-time extraction for commitments/reminders
+    // This runs in parallel with the LLM response
+    processMessageRealTime(message).then((extracted) => {
+      if (extracted.commitmentCreated) {
+        socket.emit('commitment:created', {
+          id: extracted.commitmentCreated.id,
+          title: extracted.commitmentCreated.title,
+        });
+        console.log(`[Socket] Emitted commitment:created for "${extracted.commitmentCreated.title}"`);
+      }
+      if (extracted.reminderCreated) {
+        socket.emit('reminder:created', {
+          id: extracted.reminderCreated.id,
+          title: extracted.reminderCreated.title,
+          remind_at: extracted.reminderCreated.remind_at,
+        });
+        console.log(`[Socket] Emitted reminder:created for "${extracted.reminderCreated.title}"`);
+      }
+    }).catch((error) => {
+      console.error('[Socket] Real-time extraction error:', error);
     });
 
     // Step 2: Fetch context if requested

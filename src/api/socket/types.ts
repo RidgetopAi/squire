@@ -89,6 +89,17 @@ export interface ConnectionStatusPayload {
   latency?: number;
 }
 
+export interface CommitmentCreatedPayload {
+  id: string;
+  title: string;
+}
+
+export interface ReminderCreatedPayload {
+  id: string;
+  title: string;
+  remind_at: string;
+}
+
 export interface ServerToClientEvents {
   'chat:chunk': (payload: ChatChunkPayload) => void;
   'chat:context': (payload: ChatContextPayload) => void;
@@ -97,6 +108,8 @@ export interface ServerToClientEvents {
   'memory:created': (payload: MemoryCreatedPayload) => void;
   'insight:created': (payload: InsightCreatedPayload) => void;
   'connection:status': (payload: ConnectionStatusPayload) => void;
+  'commitment:created': (payload: CommitmentCreatedPayload) => void;
+  'reminder:created': (payload: ReminderCreatedPayload) => void;
 }
 
 // === SOCKET DATA ===

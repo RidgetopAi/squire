@@ -625,6 +625,73 @@ export async function extractMemoriesFromChat(): Promise<ExtractionResult> {
 }
 
 /**
+ * Real-time extraction for a single message
+ * Called immediately when user sends a message (before LLM response)
+ * Returns what was created so the UI can be updated
+ */
+export async function processMessageRealTime(message: string): Promise<{
+  commitmentCreated: { id: string; title: string } | null;
+  reminderCreated: { id: string; title: string; remind_at: string } | null;
+}> {
+  const result = {
+    commitmentCreated: null as { id: string; title: string } | null,
+    reminderCreated: null as { id: string; title: string; remind_at: string } | null,
+  };
+
+  // Quick keyword checks to avoid unnecessary LLM calls
+  const commitmentKeywords = /\b(need to|have to|should|must|want to|going to|will|promise|commit|schedule|plan to|deadline|by|due|tomorrow|next week|today)\b/i;
+  const reminderKeywords = /remind|ping|alert|don't forget|dont forget|set.+reminder/i;
+
+  // Check for reminder requests first (more specific pattern)
+  if (reminderKeywords.test(message)) {
+    try {
+      const reminderResult = await detectReminderRequest(message);
+      if (reminderResult?.is_reminder && reminderResult.title && reminderResult.delay_minutes) {
+        const reminder = await createStandaloneReminder(
+          reminderResult.title,
+          reminderResult.delay_minutes
+        );
+        if (reminder) {
+          result.reminderCreated = {
+            id: reminder.id,
+            title: reminderResult.title,
+            remind_at: reminder.scheduled_for.toISOString(),
+          };
+          console.log(`[RealTimeExtraction] Created reminder: "${reminderResult.title}" in ${reminderResult.delay_minutes} minutes`);
+        }
+      }
+    } catch (error) {
+      console.error('[RealTimeExtraction] Reminder detection error:', error);
+    }
+  }
+
+  // Check for commitment if no reminder was created
+  if (!result.reminderCreated && commitmentKeywords.test(message)) {
+    try {
+      const commitmentResult = await detectCommitment(message);
+      if (commitmentResult?.is_commitment && commitmentResult.title) {
+        const commitment = await createCommitment({
+          title: commitmentResult.title,
+          description: commitmentResult.description || undefined,
+          due_at: commitmentResult.due_at ? new Date(commitmentResult.due_at) : undefined,
+          all_day: commitmentResult.all_day,
+          source_type: 'chat',
+        });
+        result.commitmentCreated = {
+          id: commitment.id,
+          title: commitmentResult.title,
+        };
+        console.log(`[RealTimeExtraction] Created commitment: "${commitmentResult.title}"`);
+      }
+    } catch (error) {
+      console.error('[RealTimeExtraction] Commitment detection error:', error);
+    }
+  }
+
+  return result;
+}
+
+/**
  * Get extraction statistics
  */
 export async function getExtractionStats(): Promise<{
