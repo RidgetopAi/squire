@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { PushPermission } from '@/components/notifications';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -212,10 +213,13 @@ export default function RemindersPage() {
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-6">
       <div className="max-w-3xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
+        <div className="mb-6">
           <h1 className="text-2xl font-bold text-white mb-2">Reminders</h1>
           <p className="text-gray-400">Your scheduled reminders and notifications</p>
         </div>
+
+        {/* Push Notification Permission */}
+        <PushPermission className="mb-6" />
 
         {/* Stats */}
         <div className="grid grid-cols-4 gap-3 mb-6">
