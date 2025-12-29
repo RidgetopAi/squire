@@ -17,11 +17,11 @@ function SocketToastListener() {
 
   useEffect(() => {
     const unsubCommitment = onCommitmentCreated((data) => {
-      showToast(`Scheduled: ${data.title}`, 'success', 4000);
+      showToast(`Scheduled: ${data.title}`, 'success', 6000);
     });
 
     const unsubReminder = onReminderCreated((data) => {
-      showToast(`Reminder set: ${data.title}`, 'info', 4000);
+      showToast(`Reminder set: ${data.title}`, 'info', 6000);
     });
 
     return () => {
