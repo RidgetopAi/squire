@@ -25,7 +25,8 @@ export async function fetchNotes(options: ListNotesOptions = {}): Promise<Note[]
   if (options.limit) params.limit = options.limit;
   if (options.offset) params.offset = options.offset;
 
-  return apiGet<Note[]>('/api/notes', { params });
+  const response = await apiGet<{ notes: Note[] }>('/api/notes', { params });
+  return response.notes;
 }
 
 /**

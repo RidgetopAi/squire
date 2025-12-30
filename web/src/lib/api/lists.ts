@@ -37,7 +37,8 @@ export async function fetchLists(options: ListListOptions = {}): Promise<List[]>
   if (options.limit) params.limit = options.limit;
   if (options.offset) params.offset = options.offset;
 
-  return apiGet<List[]>('/api/lists', { params });
+  const response = await apiGet<{ lists: List[] }>('/api/lists', { params });
+  return response.lists;
 }
 
 /**
