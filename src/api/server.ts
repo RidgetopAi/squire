@@ -21,6 +21,8 @@ import remindersRouter from './routes/reminders.js';
 import notificationsRouter from './routes/notifications.js';
 import googleRouter from './routes/google.js';
 import calendarRouter from './routes/calendar.js';
+import notesRouter from './routes/notes.js';
+import listsRouter from './routes/lists.js';
 import { initScheduler, shutdownScheduler } from '../services/scheduler.js';
 
 const app = express();
@@ -62,6 +64,8 @@ app.use('/api/reminders', remindersRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/integrations/google', googleRouter);
 app.use('/api/calendar', calendarRouter);
+app.use('/api/notes', notesRouter);
+app.use('/api/lists', listsRouter);
 
 // 404 handler
 app.use((_req, res) => {

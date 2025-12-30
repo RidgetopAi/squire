@@ -491,3 +491,134 @@ export const DayOfWeekShortLabels: Record<DayOfWeek, string> = {
   SA: 'Sat',
   SU: 'Sun',
 };
+
+// ============================================
+// Notes Types
+// ============================================
+
+export type NoteSourceType = 'manual' | 'voice' | 'chat' | 'calendar_event';
+export type NoteCategory = 'work' | 'personal' | 'health' | 'project' | string;
+
+export interface Note {
+  id: string;
+  title: string | null;
+  content: string;
+  memory_id: string | null;
+  source_type: NoteSourceType;
+  source_context: Record<string, unknown>;
+  primary_entity_id: string | null;
+  entity_ids: string[];
+  category: NoteCategory | null;
+  tags: string[];
+  is_pinned: boolean;
+  color: string | null;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+  // Joined entity data (optional)
+  primary_entity?: Entity;
+}
+
+export interface CreateNoteInput {
+  title?: string;
+  content: string;
+  source_type?: NoteSourceType;
+  source_context?: Record<string, unknown>;
+  primary_entity_id?: string;
+  category?: NoteCategory;
+  tags?: string[];
+  is_pinned?: boolean;
+  color?: string;
+}
+
+export interface UpdateNoteInput {
+  title?: string;
+  content?: string;
+  category?: NoteCategory;
+  tags?: string[];
+  is_pinned?: boolean;
+  color?: string;
+}
+
+export interface ListNotesOptions {
+  category?: NoteCategory;
+  entity_id?: string;
+  is_pinned?: boolean;
+  tags?: string[];
+  limit?: number;
+  offset?: number;
+}
+
+// ============================================
+// Lists Types
+// ============================================
+
+export type ListType = 'checklist' | 'simple' | 'ranked';
+export type ListSortOrder = 'manual' | 'created' | 'priority' | 'due_date';
+
+export interface List {
+  id: string;
+  name: string;
+  description: string | null;
+  list_type: ListType;
+  primary_entity_id: string | null;
+  category: string | null;
+  tags: string[];
+  is_pinned: boolean;
+  color: string | null;
+  default_sort: ListSortOrder;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+  // Joined data
+  primary_entity?: Entity;
+  item_count?: number;
+  completed_count?: number;
+}
+
+export interface ListItem {
+  id: string;
+  list_id: string;
+  content: string;
+  notes: string | null;
+  is_completed: boolean;
+  completed_at: string | null;
+  priority: number;
+  due_at: string | null;
+  entity_id: string | null;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+  // Joined
+  entity?: Entity;
+}
+
+export interface ListWithItems extends List {
+  items: ListItem[];
+}
+
+export interface CreateListInput {
+  name: string;
+  description?: string;
+  list_type?: ListType;
+  primary_entity_id?: string;
+  category?: string;
+  tags?: string[];
+  is_pinned?: boolean;
+  color?: string;
+}
+
+export interface CreateListItemInput {
+  content: string;
+  notes?: string;
+  priority?: number;
+  due_at?: string;
+  entity_id?: string;
+}
+
+export interface ListCompletionStats {
+  total: number;
+  completed: number;
+  percentage: number;
+}

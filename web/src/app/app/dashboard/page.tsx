@@ -16,6 +16,8 @@ import {
   ExpandedPatternsList,
   ExpandedInsightsList,
 } from '@/components/dashboard';
+import { PinnedNotesPanel } from '@/components/notes';
+import { ActiveListsPanel } from '@/components/lists';
 import {
   useOpenMemoryDetail,
   useOpenBeliefDetail,
@@ -190,7 +192,26 @@ export default function DashboardPage() {
           <TodayPanel onMemoryClick={openMemory} />
         </DashboardPanel>
 
-        {/* Row 2: Beliefs + Patterns + Insights (3 cols) - Expandable */}
+        {/* Row 2: Pinned Notes (1 col) + Beliefs + Patterns (2 cols) */}
+        <DashboardPanel
+          title="Pinned Notes"
+          icon={icons.document}
+          accent="gold"
+          className="min-h-[260px]"
+        >
+          <PinnedNotesPanel limit={4} />
+        </DashboardPanel>
+
+        <DashboardPanel
+          title="Active Lists"
+          icon={icons.sparkles}
+          accent="primary"
+          className="min-h-[260px]"
+        >
+          <ActiveListsPanel limit={4} />
+        </DashboardPanel>
+
+        {/* Beliefs + Patterns + Insights - Expandable */}
         <DashboardPanel
           title="Beliefs"
           icon={icons.heart}

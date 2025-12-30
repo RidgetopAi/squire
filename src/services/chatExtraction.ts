@@ -14,6 +14,9 @@ import { classifyMemoryCategories, linkMemoryToCategories } from './summaries.js
 import { createCommitment } from './commitments.js';
 import { createStandaloneReminder, createScheduledReminder } from './reminders.js';
 import { processMessagesForResolutions, type ResolutionCandidate } from './resolution.js';
+import { createNote } from './notes.js';
+import { createList, addItem, findListByName } from './lists.js';
+import { searchEntities } from './entities.js';
 
 // === TYPES ===
 
@@ -358,6 +361,94 @@ interface ReminderDetection {
   scheduled_at: string | null;
 }
 
+// === NOTE DETECTION ===
+
+const NOTE_DETECTION_PROMPT = `Analyze this message to determine if the user wants to create a note.
+
+Look for patterns like:
+- "take a note about X"
+- "note: X" or "note that X"
+- "remember that X" (when X is something to record, not a reminder)
+- "add a note about X"
+- "jot down X"
+- "make a note: X"
+
+Return JSON with:
+- is_note: boolean - true if this is a note creation request
+- content: string | null - the actual note content
+- title: string | null - optional title if clearly stated
+- category: string | null - detected category (work, personal, health, project, etc.)
+- entity_name: string | null - if the note is about a specific person/project/entity, extract the name
+
+Examples:
+Input: "Take a note about Central Va Flooring - they want LVP in the kitchen"
+Output: {"is_note": true, "content": "They want LVP in the kitchen", "title": "Central Va Flooring", "category": "work", "entity_name": "Central Va Flooring"}
+
+Input: "Note: Dr. Smith recommended reducing caffeine"
+Output: {"is_note": true, "content": "Dr. Smith recommended reducing caffeine", "title": null, "category": "health", "entity_name": "Dr. Smith"}
+
+Input: "Add a note to the Johnson project - client prefers matte finish"
+Output: {"is_note": true, "content": "Client prefers matte finish", "title": null, "category": "project", "entity_name": "Johnson project"}
+
+Input: "Remind me to buy groceries"
+Output: {"is_note": false, "content": null, "title": null, "category": null, "entity_name": null}
+
+IMPORTANT: Return ONLY valid JSON object, no markdown, no explanation.`;
+
+interface NoteDetection {
+  is_note: boolean;
+  content: string | null;
+  title: string | null;
+  category: string | null;
+  entity_name: string | null;
+}
+
+// === LIST DETECTION ===
+
+const LIST_DETECTION_PROMPT = `Analyze this message to determine if the user wants to create or modify a list.
+
+Look for patterns like:
+- "start a list for X" or "create a list for X"
+- "add X to the Y list" or "add X to my Y list"
+- "put X on the Y list"
+- "create a checklist for X"
+- "make a to-do list for X"
+
+Return JSON with:
+- is_list_action: boolean - true if this is a list operation
+- action: "create" | "add_item" | null - the type of action
+- list_name: string | null - the name of the list (for create or add_item)
+- item_content: string | null - the item to add (for add_item)
+- list_type: "checklist" | "simple" | "ranked" | null - type if creating
+- entity_name: string | null - if the list is about a specific entity
+
+Examples:
+Input: "Start a list for Squire bugs"
+Output: {"is_list_action": true, "action": "create", "list_name": "Squire bugs", "item_content": null, "list_type": "checklist", "entity_name": "Squire"}
+
+Input: "Add 'fix modal z-index' to the Squire bugs list"
+Output: {"is_list_action": true, "action": "add_item", "list_name": "Squire bugs", "item_content": "fix modal z-index", "list_type": null, "entity_name": null}
+
+Input: "Create a grocery list"
+Output: {"is_list_action": true, "action": "create", "list_name": "Grocery list", "item_content": null, "list_type": "simple", "entity_name": null}
+
+Input: "Put milk on my shopping list"
+Output: {"is_list_action": true, "action": "add_item", "list_name": "Shopping list", "item_content": "milk", "list_type": null, "entity_name": null}
+
+Input: "What's on my to-do list?"
+Output: {"is_list_action": false, "action": null, "list_name": null, "item_content": null, "list_type": null, "entity_name": null}
+
+IMPORTANT: Return ONLY valid JSON object, no markdown, no explanation.`;
+
+interface ListDetection {
+  is_list_action: boolean;
+  action: 'create' | 'add_item' | null;
+  list_name: string | null;
+  item_content: string | null;
+  list_type: 'checklist' | 'simple' | 'ranked' | null;
+  entity_name: string | null;
+}
+
 /**
  * Safely parse JSON from LLM response, handling common issues
  */
@@ -447,6 +538,92 @@ async function detectCommitment(memoryContent: string): Promise<CommitmentDetect
     return parsed;
   } catch (error) {
     console.error('[ChatExtraction] Commitment detection failed:', error);
+    return null;
+  }
+}
+
+/**
+ * Detect if a message contains a note creation request
+ */
+async function detectNoteIntent(message: string): Promise<NoteDetection | null> {
+  const noteKeywords = /\b(note|jot|record|write down|remember that)\b/i;
+  if (!noteKeywords.test(message)) {
+    return null;
+  }
+
+  try {
+    const messages: LLMMessage[] = [
+      { role: 'system', content: NOTE_DETECTION_PROMPT },
+      { role: 'user', content: message },
+    ];
+
+    const result = await complete(messages, {
+      temperature: 0.1,
+      maxTokens: 300,
+    });
+
+    const parsed = safeParseJSON<NoteDetection>(result.content);
+    if (!parsed) {
+      console.error('[ChatExtraction] Failed to parse note JSON:', result.content.substring(0, 200));
+      return null;
+    }
+
+    return parsed;
+  } catch (error) {
+    console.error('[ChatExtraction] Note detection failed:', error);
+    return null;
+  }
+}
+
+/**
+ * Detect if a message contains a list creation or modification request
+ */
+async function detectListIntent(message: string): Promise<ListDetection | null> {
+  const listKeywords = /\b(list|checklist|to-?do|add .+ to|put .+ on)\b/i;
+  if (!listKeywords.test(message)) {
+    return null;
+  }
+
+  try {
+    const messages: LLMMessage[] = [
+      { role: 'system', content: LIST_DETECTION_PROMPT },
+      { role: 'user', content: message },
+    ];
+
+    const result = await complete(messages, {
+      temperature: 0.1,
+      maxTokens: 300,
+    });
+
+    const parsed = safeParseJSON<ListDetection>(result.content);
+    if (!parsed) {
+      console.error('[ChatExtraction] Failed to parse list JSON:', result.content.substring(0, 200));
+      return null;
+    }
+
+    return parsed;
+  } catch (error) {
+    console.error('[ChatExtraction] List detection failed:', error);
+    return null;
+  }
+}
+
+/**
+ * Resolve an entity name to an entity ID
+ * Returns the best matching entity ID or null if not found
+ */
+async function resolveEntityName(entityName: string): Promise<string | null> {
+  if (!entityName) return null;
+
+  try {
+    const entities = await searchEntities(entityName);
+    if (entities && entities.length > 0) {
+      const first = entities[0];
+      return first?.id ?? null;
+    }
+    return null;
+  } catch (error) {
+    console.error('[ChatExtraction] Entity resolution failed:', error);
     return null;
   }
 }
@@ -865,15 +1042,23 @@ export async function extractMemoriesFromChat(): Promise<ExtractionResult> {
 export async function processMessageRealTime(message: string): Promise<{
   commitmentCreated: { id: string; title: string } | null;
   reminderCreated: { id: string; title: string; remind_at: string } | null;
+  noteCreated: { id: string; title: string | null; content: string } | null;
+  listCreated: { id: string; name: string } | null;
+  listItemCreated: { id: string; list_id: string; list_name: string; content: string } | null;
 }> {
   const result = {
     commitmentCreated: null as { id: string; title: string } | null,
     reminderCreated: null as { id: string; title: string; remind_at: string } | null,
+    noteCreated: null as { id: string; title: string | null; content: string } | null,
+    listCreated: null as { id: string; name: string } | null,
+    listItemCreated: null as { id: string; list_id: string; list_name: string; content: string } | null,
   };
 
   // Quick keyword checks to avoid unnecessary LLM calls
   const commitmentKeywords = /\b(need to|have to|should|must|want to|going to|will|promise|commit|schedule|plan to|deadline|by|due|tomorrow|next week|today)\b/i;
   const reminderKeywords = /remind|ping|alert|don't forget|dont forget|set.+reminder/i;
+  const noteKeywords = /\b(note|jot|record|write down|remember that)\b/i;
+  const listKeywords = /\b(list|checklist|to-?do|add .+ to|put .+ on|start a list)\b/i;
 
   // Check for reminder requests first (more specific pattern)
   if (reminderKeywords.test(message)) {
@@ -905,6 +1090,7 @@ export async function processMessageRealTime(message: string): Promise<{
             title: reminderResult.title,
             remind_at: reminder.scheduled_for.toISOString(),
           };
+          return result; // Return early - reminder takes precedence
         }
       }
     } catch (error) {
@@ -912,8 +1098,117 @@ export async function processMessageRealTime(message: string): Promise<{
     }
   }
 
-  // Check for commitment if no reminder was created
-  if (!result.reminderCreated && commitmentKeywords.test(message)) {
+  // Check for note creation
+  if (noteKeywords.test(message)) {
+    try {
+      const noteResult = await detectNoteIntent(message);
+      if (noteResult?.is_note && noteResult.content) {
+        // Resolve entity if mentioned
+        let entityId: string | null = null;
+        if (noteResult.entity_name) {
+          entityId = await resolveEntityName(noteResult.entity_name);
+        }
+
+        const note = await createNote({
+          title: noteResult.title ?? undefined,
+          content: noteResult.content,
+          source_type: 'chat',
+          category: noteResult.category ?? undefined,
+          primary_entity_id: entityId ?? undefined,
+        });
+
+        result.noteCreated = {
+          id: note.id,
+          title: note.title,
+          content: note.content,
+        };
+        console.log(`[RealTimeExtraction] Created note: "${noteResult.title ?? noteResult.content.substring(0, 50)}"`);
+        return result; // Return early
+      }
+    } catch (error) {
+      console.error('[RealTimeExtraction] Note detection error:', error);
+    }
+  }
+
+  // Check for list operations
+  if (listKeywords.test(message)) {
+    try {
+      const listResult = await detectListIntent(message);
+      if (listResult?.is_list_action) {
+        if (listResult.action === 'create' && listResult.list_name) {
+          // Resolve entity if mentioned
+          let entityId: string | null = null;
+          if (listResult.entity_name) {
+            entityId = await resolveEntityName(listResult.entity_name);
+          }
+
+          const list = await createList({
+            name: listResult.list_name,
+            list_type: listResult.list_type ?? 'checklist',
+            primary_entity_id: entityId ?? undefined,
+          });
+
+          result.listCreated = {
+            id: list.id,
+            name: list.name,
+          };
+          console.log(`[RealTimeExtraction] Created list: "${listResult.list_name}"`);
+          return result;
+        } else if (listResult.action === 'add_item' && listResult.list_name && listResult.item_content) {
+          // Find the list by name
+          const existingList = await findListByName(listResult.list_name);
+          if (existingList) {
+            const item = await addItem(existingList.id, {
+              content: listResult.item_content,
+            });
+
+            result.listItemCreated = {
+              id: item.id,
+              list_id: existingList.id,
+              list_name: existingList.name,
+              content: item.content,
+            };
+            console.log(`[RealTimeExtraction] Added item to list "${existingList.name}": "${listResult.item_content}"`);
+            return result;
+          } else {
+            // List doesn't exist - create it with the item
+            let entityId: string | null = null;
+            if (listResult.entity_name) {
+              entityId = await resolveEntityName(listResult.entity_name);
+            }
+
+            const newList = await createList({
+              name: listResult.list_name,
+              list_type: 'checklist',
+              primary_entity_id: entityId ?? undefined,
+            });
+
+            const item = await addItem(newList.id, {
+              content: listResult.item_content,
+            });
+
+            result.listCreated = {
+              id: newList.id,
+              name: newList.name,
+            };
+            result.listItemCreated = {
+              id: item.id,
+              list_id: newList.id,
+              list_name: newList.name,
+              content: item.content,
+            };
+            console.log(`[RealTimeExtraction] Created list "${newList.name}" and added item: "${listResult.item_content}"`);
+            return result;
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[RealTimeExtraction] List detection error:', error);
+    }
+  }
+
+  // Check for commitment (lower priority - check last)
+  if (commitmentKeywords.test(message)) {
     try {
       const commitmentResult = await detectCommitment(message);
       if (commitmentResult?.is_commitment && commitmentResult.title) {

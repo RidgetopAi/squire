@@ -12,6 +12,8 @@ import { pool } from '../db/pool.js';
 import { generateEmbedding } from '../providers/embeddings.js';
 import { EntityType } from './entities.js';
 import { getNonEmptySummaries, type LivingSummary } from './summaries.js';
+import { searchNotes, getPinnedNotes } from './notes.js';
+import { searchLists } from './lists.js';
 
 // === TYPES ===
 
@@ -73,6 +75,24 @@ export interface SummarySnapshot {
   memory_count: number;
 }
 
+export interface NoteSnapshot {
+  id: string;
+  title: string | null;
+  content: string;
+  category: string | null;
+  entity_name: string | null;
+  similarity?: number;
+}
+
+export interface ListSnapshot {
+  id: string;
+  name: string;
+  description: string | null;
+  list_type: string;
+  entity_name: string | null;
+  similarity?: number;
+}
+
 export interface ContextPackage {
   generated_at: string;
   profile: string;
@@ -80,6 +100,8 @@ export interface ContextPackage {
   memories: ScoredMemory[];
   entities: EntitySummary[];
   summaries: SummarySnapshot[];
+  notes: NoteSnapshot[];
+  lists: ListSnapshot[];
   token_count: number;
   disclosure_id: string;
   markdown: string;
@@ -402,12 +424,56 @@ function formatMarkdown(
 }
 
 /**
+ * Format notes for markdown context
+ */
+function formatNotesMarkdown(notes: NoteSnapshot[]): string {
+  if (notes.length === 0) return '';
+
+  const lines: string[] = [];
+  lines.push('## Relevant Notes');
+  lines.push('');
+
+  for (const note of notes) {
+    const title = note.title ?? 'Untitled Note';
+    const entityInfo = note.entity_name ? ` (${note.entity_name})` : '';
+    const similarity = note.similarity ? ` [${(note.similarity * 100).toFixed(0)}% match]` : '';
+    lines.push(`### ${title}${entityInfo}${similarity}`);
+    lines.push(note.content);
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Format lists for markdown context
+ */
+function formatListsMarkdown(lists: ListSnapshot[]): string {
+  if (lists.length === 0) return '';
+
+  const lines: string[] = [];
+  lines.push('## Relevant Lists');
+  lines.push('');
+
+  for (const list of lists) {
+    const entityInfo = list.entity_name ? ` (${list.entity_name})` : '';
+    const similarity = list.similarity ? ` [${(list.similarity * 100).toFixed(0)}% match]` : '';
+    lines.push(`- **${list.name}**${entityInfo}${similarity}: ${list.description ?? list.list_type}`);
+  }
+  lines.push('');
+
+  return lines.join('\n');
+}
+
+/**
  * Format memories as JSON
  */
 function formatJson(
   memories: ScoredMemory[],
   entities: EntitySummary[],
   summaries: SummarySnapshot[],
+  notes: NoteSnapshot[],
+  lists: ListSnapshot[],
   profile: ContextProfile,
   query?: string
 ): object {
@@ -441,6 +507,22 @@ function formatJson(
         final: m.final_score,
       },
       token_estimate: m.token_estimate,
+    })),
+    notes: notes.map((n) => ({
+      id: n.id,
+      title: n.title,
+      content: n.content,
+      category: n.category,
+      entity_name: n.entity_name,
+      similarity: n.similarity,
+    })),
+    lists: lists.map((l) => ({
+      id: l.id,
+      name: l.name,
+      description: l.description,
+      list_type: l.list_type,
+      entity_name: l.entity_name,
+      similarity: l.similarity,
     })),
   };
 }
@@ -581,6 +663,56 @@ export async function generateContext(
     memory_count: s.memory_count,
   }));
 
+  // Get relevant notes and lists
+  let notes: NoteSnapshot[] = [];
+  let lists: ListSnapshot[] = [];
+
+  // Always include pinned notes
+  const pinnedNotes = await getPinnedNotes();
+  for (const note of pinnedNotes) {
+    notes.push({
+      id: note.id,
+      title: note.title,
+      content: note.content,
+      category: note.category,
+      entity_name: null, // Could be enriched with entity lookup
+    });
+  }
+
+  // If query provided, also search for relevant notes/lists
+  if (query) {
+    try {
+      const relevantNotes = await searchNotes(query, { limit: 5, threshold: 0.4 });
+      for (const note of relevantNotes) {
+        // Avoid duplicates from pinned notes
+        if (!notes.some(n => n.id === note.id)) {
+          notes.push({
+            id: note.id,
+            title: note.title,
+            content: note.content,
+            category: note.category,
+            entity_name: null,
+            similarity: note.similarity,
+          });
+        }
+      }
+
+      const relevantLists = await searchLists(query, 5);
+      for (const list of relevantLists) {
+        lists.push({
+          id: list.id,
+          name: list.name,
+          description: list.description,
+          list_type: list.list_type,
+          entity_name: null,
+          similarity: list.similarity,
+        });
+      }
+    } catch (error) {
+      console.error('[Context] Error fetching notes/lists:', error);
+    }
+  }
+
   // Log disclosure
   const disclosureId = await logDisclosure(
     profile.name,
@@ -593,8 +725,14 @@ export async function generateContext(
   );
 
   // Format output
-  const markdown = formatMarkdown(budgetedMemories, entities, summaries, profile, query);
-  const json = formatJson(budgetedMemories, entities, summaries, profile, query);
+  let markdown = formatMarkdown(budgetedMemories, entities, summaries, profile, query);
+  if (notes.length > 0) {
+    markdown += '\n' + formatNotesMarkdown(notes);
+  }
+  if (lists.length > 0) {
+    markdown += '\n' + formatListsMarkdown(lists);
+  }
+  const json = formatJson(budgetedMemories, entities, summaries, notes, lists, profile, query);
 
   return {
     generated_at: new Date().toISOString(),
@@ -603,6 +741,8 @@ export async function generateContext(
     memories: budgetedMemories,
     entities,
     summaries,
+    notes,
+    lists,
     token_count: totalTokens,
     disclosure_id: disclosureId,
     markdown,
