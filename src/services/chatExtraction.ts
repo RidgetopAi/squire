@@ -12,7 +12,7 @@ import { createMemory } from './memories.js';
 import { processMemoryForBeliefs } from './beliefs.js';
 import { classifyMemoryCategories, linkMemoryToCategories } from './summaries.js';
 import { createCommitment } from './commitments.js';
-import { createStandaloneReminder } from './reminders.js';
+import { createStandaloneReminder, createScheduledReminder } from './reminders.js';
 import { processMessagesForResolutions, type ResolutionCandidate } from './resolution.js';
 
 // === TYPES ===
@@ -126,6 +126,13 @@ function getDateTimeContext(): {
 
 function getCommitmentDetectionPrompt(): string {
   const dt = getDateTimeContext();
+
+  // Calculate example dates for the prompt
+  const today = new Date();
+  const friday = new Date(today);
+  friday.setDate(today.getDate() + ((5 - today.getDay() + 7) % 7 || 7)); // Next Friday
+  const fridayIso = friday.toISOString().split('T')[0];
+
   return `Analyze this memory content and determine if it represents an actionable commitment.
 
 A commitment is something the user:
@@ -137,26 +144,38 @@ Return JSON with:
 - is_commitment: boolean - true if this is an actionable commitment
 - title: string - short actionable title (imperative form, e.g., "Finish report", "Call mom")
 - description: string | null - additional context if any
-- due_at: string | null - ISO date if deadline mentioned (calculate from current date/time below)
+- due_at: string | null - ISO 8601 date if deadline mentioned
 - all_day: boolean - true if no specific time mentioned
 
 CURRENT DATE/TIME: ${dt.formatted}
 TODAY IS: ${dt.dayOfWeek}
+CURRENT ISO DATE: ${dt.iso.split('T')[0]}
 TOMORROW'S DATE: ${dt.tomorrowIso}
+
+ISO 8601 DATE FORMAT (CRITICAL):
+- Format: YYYY-MM-DDTHH:MM:SSZ
+- Month uses numbers 01-12 (NOT 0-11): January=01, February=02, March=03, April=04, May=05, June=06, July=07, August=08, September=09, October=10, November=11, December=12
+- Examples:
+  * January 5, 2026 at 9:00 AM → "2026-01-05T09:00:00Z"
+  * December 31, 2025 at noon → "2025-12-31T12:00:00Z"
+  * March 15, 2026 at 3:30 PM → "2026-03-15T15:30:00Z"
 
 For relative dates, calculate from current date:
 - "tomorrow" = ${dt.tomorrowIso}
 - "next week" = 7 days from today
 - "next Monday" = the coming Monday
 - "in 3 days" = add 3 days to today
-- "by Friday" = this coming Friday (or next if today is Friday)
+- "by Friday" = this coming Friday = ${fridayIso}
 
 Examples:
 Input: "I need to finish the report by Friday"
-Output: {"is_commitment": true, "title": "Finish the report", "description": null, "due_at": "[CALCULATED_FRIDAY]T23:59:59Z", "all_day": true}
+Output: {"is_commitment": true, "title": "Finish the report", "description": null, "due_at": "${fridayIso}T23:59:59Z", "all_day": true}
 
 Input: "Call mom tomorrow at 3pm"
 Output: {"is_commitment": true, "title": "Call mom", "description": null, "due_at": "${dt.tomorrowIso}T15:00:00Z", "all_day": false}
+
+Input: "Meeting on January 15, 2026 at 2pm"
+Output: {"is_commitment": true, "title": "Meeting", "description": null, "due_at": "2026-01-15T14:00:00Z", "all_day": false}
 
 Input: "My wife's name is Sarah"
 Output: {"is_commitment": false, "title": null, "description": null, "due_at": null, "all_day": false}
@@ -176,6 +195,14 @@ interface CommitmentDetection {
 
 function getReminderDetectionPrompt(): string {
   const dt = getDateTimeContext();
+
+  // Calculate minutes until 9am tomorrow for example
+  const now = new Date();
+  const tomorrow9am = new Date(now);
+  tomorrow9am.setDate(tomorrow9am.getDate() + 1);
+  tomorrow9am.setHours(9, 0, 0, 0);
+  const minutesUntilTomorrow9am = Math.round((tomorrow9am.getTime() - now.getTime()) / 60000);
+
   return `Analyze this message and detect if the user is requesting a reminder.
 
 Look for patterns like:
@@ -185,18 +212,31 @@ Look for patterns like:
 - "don't let me forget to X"
 - "ping me about X in Y"
 - "remind me tomorrow/tonight/this evening"
+- "remind me on [specific date]"
 
 CURRENT DATE/TIME: ${dt.formatted}
 TODAY IS: ${dt.dayOfWeek}
+CURRENT ISO DATE: ${dt.iso.split('T')[0]}
 
 Return JSON with:
 - is_reminder: boolean - true if this is a reminder request
 - title: string | null - what to remind about (extracted from message)
-- delay_minutes: number | null - how many minutes from now (calculate based on current time)
+- delay_minutes: number | null - for RELATIVE times ("in 2 hours", "tomorrow")
+- scheduled_at: string | null - ISO 8601 date for EXPLICIT dates ("on January 5, 2026")
 
-Time calculations:
+IMPORTANT: Use delay_minutes for relative times. Use scheduled_at for explicit dates.
+Never use both - pick the one that matches the user's request.
+
+ISO 8601 DATE FORMAT (for scheduled_at):
+- Format: YYYY-MM-DDTHH:MM:SSZ
+- Month uses numbers 01-12 (NOT 0-11): January=01, February=02, ... December=12
+- Examples:
+  * January 5, 2026 at 9:00 AM → "2026-01-05T09:00:00Z"
+  * March 15, 2026 at 2:30 PM → "2026-03-15T14:30:00Z"
+
+Time calculations for delay_minutes:
 - "in 2 hours" = 120 minutes
-- "tomorrow" = minutes until 9am tomorrow
+- "tomorrow" = ${minutesUntilTomorrow9am} minutes (until 9am tomorrow)
 - "tomorrow morning" = minutes until 9am tomorrow
 - "tomorrow afternoon" = minutes until 2pm tomorrow
 - "tonight" = minutes until 8pm today (or tomorrow if past 8pm)
@@ -205,19 +245,22 @@ Time calculations:
 
 Examples:
 Input: "remind me in 2 hours to call mom"
-Output: {"is_reminder": true, "title": "Call mom", "delay_minutes": 120}
+Output: {"is_reminder": true, "title": "Call mom", "delay_minutes": 120, "scheduled_at": null}
 
 Input: "remind me tomorrow to pick up groceries"
-Output: {"is_reminder": true, "title": "Pick up groceries", "delay_minutes": [MINUTES_UNTIL_9AM_TOMORROW]}
+Output: {"is_reminder": true, "title": "Pick up groceries", "delay_minutes": ${minutesUntilTomorrow9am}, "scheduled_at": null}
 
 Input: "set a reminder for 30 minutes to take a break"
-Output: {"is_reminder": true, "title": "Take a break", "delay_minutes": 30}
+Output: {"is_reminder": true, "title": "Take a break", "delay_minutes": 30, "scheduled_at": null}
 
-Input: "ping me about the report in 45 minutes"
-Output: {"is_reminder": true, "title": "The report", "delay_minutes": 45}
+Input: "remind me on January 5, 2026 at 9am about the PAD-A-THON"
+Output: {"is_reminder": true, "title": "PAD-A-THON", "delay_minutes": null, "scheduled_at": "2026-01-05T09:00:00Z"}
+
+Input: "set a reminder for March 15th at 2:30pm to call the doctor"
+Output: {"is_reminder": true, "title": "Call the doctor", "delay_minutes": null, "scheduled_at": "2026-03-15T14:30:00Z"}
 
 Input: "I need to remember my dentist appointment"
-Output: {"is_reminder": false, "title": null, "delay_minutes": null}
+Output: {"is_reminder": false, "title": null, "delay_minutes": null, "scheduled_at": null}
 
 IMPORTANT: Return ONLY valid JSON object, no markdown, no explanation.`;
 }
@@ -226,6 +269,7 @@ interface ReminderDetection {
   is_reminder: boolean;
   title: string | null;
   delay_minutes: number | null;
+  scheduled_at: string | null;
 }
 
 /**
@@ -500,14 +544,29 @@ async function extractFromConversation(
     for (const msg of messages) {
       try {
         const reminderInfo = await detectReminderRequest(msg.content);
-        if (reminderInfo?.is_reminder && reminderInfo.title && reminderInfo.delay_minutes) {
-          await createStandaloneReminder(
-            reminderInfo.title,
-            reminderInfo.delay_minutes,
-            { body: `Reminder from chat: "${msg.content}"` }
-          );
-          remindersCreated++;
-          console.log(`[ChatExtraction] Created reminder: ${reminderInfo.title} in ${reminderInfo.delay_minutes} minutes`);
+        if (reminderInfo?.is_reminder && reminderInfo.title) {
+          const bodyText = `Reminder from chat: "${msg.content}"`;
+
+          if (reminderInfo.scheduled_at) {
+            // Explicit date scheduling
+            const scheduledDate = new Date(reminderInfo.scheduled_at);
+            await createScheduledReminder(
+              reminderInfo.title,
+              scheduledDate,
+              { body: bodyText }
+            );
+            remindersCreated++;
+            console.log(`[ChatExtraction] Created reminder: ${reminderInfo.title} scheduled for ${scheduledDate.toISOString()}`);
+          } else if (reminderInfo.delay_minutes) {
+            // Relative time scheduling
+            await createStandaloneReminder(
+              reminderInfo.title,
+              reminderInfo.delay_minutes,
+              { body: bodyText }
+            );
+            remindersCreated++;
+            console.log(`[ChatExtraction] Created reminder: ${reminderInfo.title} in ${reminderInfo.delay_minutes} minutes`);
+          }
         }
       } catch (reminderError) {
         console.error('[ChatExtraction] Reminder creation failed:', reminderError);
@@ -734,18 +793,32 @@ export async function processMessageRealTime(message: string): Promise<{
   if (reminderKeywords.test(message)) {
     try {
       const reminderResult = await detectReminderRequest(message);
-      if (reminderResult?.is_reminder && reminderResult.title && reminderResult.delay_minutes) {
-        const reminder = await createStandaloneReminder(
-          reminderResult.title,
-          reminderResult.delay_minutes
-        );
+      if (reminderResult?.is_reminder && reminderResult.title) {
+        let reminder = null;
+
+        if (reminderResult.scheduled_at) {
+          // Explicit date scheduling
+          const scheduledDate = new Date(reminderResult.scheduled_at);
+          reminder = await createScheduledReminder(
+            reminderResult.title,
+            scheduledDate
+          );
+          console.log(`[RealTimeExtraction] Created reminder: "${reminderResult.title}" scheduled for ${scheduledDate.toISOString()}`);
+        } else if (reminderResult.delay_minutes) {
+          // Relative time scheduling
+          reminder = await createStandaloneReminder(
+            reminderResult.title,
+            reminderResult.delay_minutes
+          );
+          console.log(`[RealTimeExtraction] Created reminder: "${reminderResult.title}" in ${reminderResult.delay_minutes} minutes`);
+        }
+
         if (reminder) {
           result.reminderCreated = {
             id: reminder.id,
             title: reminderResult.title,
             remind_at: reminder.scheduled_for.toISOString(),
           };
-          console.log(`[RealTimeExtraction] Created reminder: "${reminderResult.title}" in ${reminderResult.delay_minutes} minutes`);
         }
       }
     } catch (error) {

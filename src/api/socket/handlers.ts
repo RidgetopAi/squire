@@ -83,6 +83,9 @@ function formatReminderAcknowledgment(title: string, remindAt: string): string {
   const diffMs = date.getTime() - now.getTime();
   const diffMins = Math.round(diffMs / 60000);
 
+  // Always use America/New_York timezone for user-facing display
+  const userTimezone = 'America/New_York';
+
   let timeStr: string;
   if (diffMins < 60) {
     timeStr = `in ${diffMins} minute${diffMins !== 1 ? 's' : ''}`;
@@ -90,7 +93,18 @@ function formatReminderAcknowledgment(title: string, remindAt: string): string {
     const hours = Math.round(diffMins / 60);
     timeStr = `in ${hours} hour${hours !== 1 ? 's' : ''}`;
   } else {
-    timeStr = `on ${date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} at ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+    const dateOptions: Intl.DateTimeFormatOptions = {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      timeZone: userTimezone
+    };
+    const timeOptions: Intl.DateTimeFormatOptions = {
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: userTimezone
+    };
+    timeStr = `on ${date.toLocaleDateString('en-US', dateOptions)} at ${date.toLocaleTimeString('en-US', timeOptions)}`;
   }
 
   return `\n\n---\n✓ I've set a reminder for you: "${title}" ${timeStr}.`;

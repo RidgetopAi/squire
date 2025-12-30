@@ -268,21 +268,21 @@ export async function pushEventToGoogle(
     // All-day event uses date format
     eventResource.start = {
       date: commitment.due_at.toISOString().split('T')[0],
-      timeZone: commitment.timezone || 'America/Chicago',
+      timeZone: commitment.timezone || 'America/New_York',
     };
     eventResource.end = {
       date: endTime.toISOString().split('T')[0],
-      timeZone: commitment.timezone || 'America/Chicago',
+      timeZone: commitment.timezone || 'America/New_York',
     };
   } else {
     // Timed event uses dateTime
     eventResource.start = {
       dateTime: commitment.due_at.toISOString(),
-      timeZone: commitment.timezone || 'America/Chicago',
+      timeZone: commitment.timezone || 'America/New_York',
     };
     eventResource.end = {
       dateTime: endTime.toISOString(),
-      timeZone: commitment.timezone || 'America/Chicago',
+      timeZone: commitment.timezone || 'America/New_York',
     };
   }
 
@@ -320,7 +320,7 @@ export async function pushEventToGoogle(
     commitment.due_at,
     endTime,
     commitment.all_day || false,
-    commitment.timezone || 'America/Chicago',
+    commitment.timezone || 'America/New_York',
     'confirmed',
     response.data.etag,
     commitment.id,
@@ -373,20 +373,20 @@ export async function updateEventInGoogle(
     if (updates.all_day) {
       eventResource.start = {
         date: updates.due_at.toISOString().split('T')[0],
-        timeZone: updates.timezone || 'America/Chicago',
+        timeZone: updates.timezone || 'America/New_York',
       };
       eventResource.end = {
         date: endTime.toISOString().split('T')[0],
-        timeZone: updates.timezone || 'America/Chicago',
+        timeZone: updates.timezone || 'America/New_York',
       };
     } else {
       eventResource.start = {
         dateTime: updates.due_at.toISOString(),
-        timeZone: updates.timezone || 'America/Chicago',
+        timeZone: updates.timezone || 'America/New_York',
       };
       eventResource.end = {
         dateTime: endTime.toISOString(),
-        timeZone: updates.timezone || 'America/Chicago',
+        timeZone: updates.timezone || 'America/New_York',
       };
     }
   }

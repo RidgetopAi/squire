@@ -98,7 +98,7 @@ export async function createCommitment(input: CreateCommitmentInput): Promise<Co
     memory_id,
     source_type = 'manual',
     due_at,
-    timezone = 'America/Chicago',
+    timezone = 'America/New_York',
     all_day = false,
     duration_minutes,
     rrule,

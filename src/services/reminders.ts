@@ -83,7 +83,7 @@ export async function createReminder(input: CreateReminderInput): Promise<Remind
     title,
     body,
     scheduled_for,
-    timezone = 'America/Chicago',
+    timezone = 'America/New_York',
     offset_type,
     offset_minutes,
     channel = 'push',
@@ -130,7 +130,7 @@ export async function createCommitmentReminders(
 ): Promise<Reminder[]> {
   const {
     offsets = [DEFAULT_REMINDER_OFFSETS.ONE_WEEK, DEFAULT_REMINDER_OFFSETS.ONE_DAY, DEFAULT_REMINDER_OFFSETS.ONE_HOUR],
-    timezone = 'America/Chicago',
+    timezone = 'America/New_York',
   } = options;
 
   const reminders: Reminder[] = [];
@@ -164,7 +164,7 @@ export async function createStandaloneReminder(
   delayMinutes: number,
   options: { body?: string; timezone?: string } = {}
 ): Promise<Reminder> {
-  const { body, timezone = 'America/Chicago' } = options;
+  const { body, timezone = 'America/New_York' } = options;
 
   const scheduledFor = new Date(Date.now() + delayMinutes * 60000);
 
@@ -172,6 +172,31 @@ export async function createStandaloneReminder(
     title,
     body,
     scheduled_for: scheduledFor,
+    offset_type: 'exact',
+    timezone,
+    channel: 'push',
+  });
+}
+
+/**
+ * Create a reminder for a specific date/time (e.g., "remind me on January 5, 2026")
+ */
+export async function createScheduledReminder(
+  title: string,
+  scheduledAt: Date,
+  options: { body?: string; timezone?: string } = {}
+): Promise<Reminder> {
+  const { body, timezone = 'America/New_York' } = options;
+
+  // Validate the scheduled date is in the future
+  if (scheduledAt <= new Date()) {
+    throw new Error('Scheduled time must be in the future');
+  }
+
+  return createReminder({
+    title,
+    body,
+    scheduled_for: scheduledAt,
     offset_type: 'exact',
     timezone,
     channel: 'push',
