@@ -272,6 +272,9 @@ export default function RemindersPage() {
   const [stats, setStats] = useState<Record<ReminderStatus, number>>({
     pending: 0, sent: 0, acknowledged: 0, snoozed: 0, canceled: 0, failed: 0
   });
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newReminder, setNewReminder] = useState({ title: '', body: '', scheduledFor: '' });
+  const [creating, setCreating] = useState(false);
 
   const fetchReminders = async () => {
     try {
@@ -345,15 +348,58 @@ export default function RemindersPage() {
     }
   };
 
-  const upcomingCount = stats.pending + stats.snoozed;
+  const handleCreateReminder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newReminder.title.trim() || !newReminder.scheduledFor) return;
+
+    setCreating(true);
+    try {
+      const res = await fetch(`${API_URL}/api/reminders/standalone`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newReminder.title,
+          body: newReminder.body || undefined,
+          scheduled_at: new Date(newReminder.scheduledFor).toISOString(),
+          timezone: 'America/New_York',
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to create reminder');
+      }
+      setNewReminder({ title: '', body: '', scheduledFor: '' });
+      setShowAddModal(false);
+      fetchReminders();
+      fetchStats();
+    } catch (err) {
+      console.error('Failed to create reminder:', err);
+      alert(err instanceof Error ? err.message : 'Failed to create reminder');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const upcomingCount = (stats.pending || 0) + (stats.snoozed || 0);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-6">
       <div className="max-w-3xl mx-auto">
         {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-white mb-2">Reminders</h1>
-          <p className="text-gray-400">Your scheduled reminders and notifications</p>
+        <div className="mb-6 flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-white mb-2">Reminders</h1>
+            <p className="text-gray-400">Your scheduled reminders and notifications</p>
+          </div>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add Reminder
+          </button>
         </div>
 
         {/* Push Notification Permission */}
@@ -417,6 +463,77 @@ export default function RemindersPage() {
                 onCancel={handleCancel}
               />
             ))}
+          </div>
+        )}
+
+        {/* Add Reminder Modal */}
+        {showAddModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-gray-800 rounded-xl border border-white/10 w-full max-w-md">
+              <div className="p-4 border-b border-white/10 flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-white">Add Reminder</h2>
+                <button
+                  onClick={() => setShowAddModal(false)}
+                  className="p-1 hover:bg-white/10 rounded text-gray-400 hover:text-white"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <form onSubmit={handleCreateReminder} className="p-4 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Title *</label>
+                  <input
+                    type="text"
+                    value={newReminder.title}
+                    onChange={(e) => setNewReminder({ ...newReminder, title: e.target.value })}
+                    placeholder="What do you need to remember?"
+                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">When *</label>
+                  <input
+                    type="datetime-local"
+                    value={newReminder.scheduledFor}
+                    onChange={(e) => setNewReminder({ ...newReminder, scheduledFor: e.target.value })}
+                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Notes (optional)</label>
+                  <textarea
+                    value={newReminder.body}
+                    onChange={(e) => setNewReminder({ ...newReminder, body: e.target.value })}
+                    placeholder="Additional details..."
+                    rows={3}
+                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-none"
+                  />
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddModal(false)}
+                    className="flex-1 px-4 py-2 bg-white/5 hover:bg-white/10 text-gray-300 rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={creating || !newReminder.title.trim() || !newReminder.scheduledFor}
+                    className="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-500/50 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+                  >
+                    {creating && (
+                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    )}
+                    {creating ? 'Creating...' : 'Create Reminder'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         )}
       </div>

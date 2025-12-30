@@ -241,6 +241,9 @@ export default function CalendarPage() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newEvent, setNewEvent] = useState({ title: '', description: '', startDate: '', startTime: '', endTime: '', allDay: false });
+  const [creating, setCreating] = useState(false);
 
   const fetchEvents = useCallback(async () => {
     setLoading(true);
@@ -298,6 +301,59 @@ export default function CalendarPage() {
 
   const goToToday = () => {
     setCurrentDate(new Date());
+  };
+
+  const handleCreateEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newEvent.title.trim() || !newEvent.startDate) return;
+
+    setCreating(true);
+    try {
+      let dueAt: Date;
+      let durationMinutes: number | undefined;
+
+      if (newEvent.allDay) {
+        dueAt = new Date(newEvent.startDate + 'T00:00:00');
+      } else {
+        if (!newEvent.startTime) {
+          alert('Start time is required for non-all-day events');
+          setCreating(false);
+          return;
+        }
+        dueAt = new Date(newEvent.startDate + 'T' + newEvent.startTime);
+        if (newEvent.endTime) {
+          const endDate = new Date(newEvent.startDate + 'T' + newEvent.endTime);
+          durationMinutes = Math.round((endDate.getTime() - dueAt.getTime()) / 60000);
+          if (durationMinutes <= 0) durationMinutes = 60;
+        }
+      }
+
+      const res = await fetch(`${API_URL}/api/commitments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newEvent.title,
+          description: newEvent.description || undefined,
+          due_at: dueAt.toISOString(),
+          all_day: newEvent.allDay,
+          duration_minutes: durationMinutes,
+          timezone: 'America/New_York',
+          source_type: 'manual',
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to create event');
+      }
+      setNewEvent({ title: '', description: '', startDate: '', startTime: '', endTime: '', allDay: false });
+      setShowAddModal(false);
+      fetchEvents();
+    } catch (err) {
+      console.error('Failed to create event:', err);
+      alert(err instanceof Error ? err.message : 'Failed to create event');
+    } finally {
+      setCreating(false);
+    }
   };
 
   // Calculate week start (Sunday) for week view
@@ -500,6 +556,17 @@ export default function CalendarPage() {
               </button>
             </div>
 
+            {/* Add Event Button */}
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-1.5"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Add Event
+            </button>
+
             {/* Settings Link */}
             <a
               href="/app/settings/integrations"
@@ -557,6 +624,110 @@ export default function CalendarPage() {
 
       {/* Event Details Panel */}
       <EventDetailsPanel event={selectedEvent} onClose={() => setSelectedEvent(null)} />
+
+      {/* Add Event Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-xl border border-white/10 w-full max-w-md">
+            <div className="p-4 border-b border-white/10 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-white">Add Event</h2>
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="p-1 hover:bg-white/10 rounded text-gray-400 hover:text-white"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <form onSubmit={handleCreateEvent} className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Title *</label>
+                <input
+                  type="text"
+                  value={newEvent.title}
+                  onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })}
+                  placeholder="Event title"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Date *</label>
+                <input
+                  type="date"
+                  value={newEvent.startDate}
+                  onChange={(e) => setNewEvent({ ...newEvent, startDate: e.target.value })}
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                  required
+                />
+              </div>
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="allDay"
+                  checked={newEvent.allDay}
+                  onChange={(e) => setNewEvent({ ...newEvent, allDay: e.target.checked })}
+                  className="w-4 h-4 rounded border-white/20 bg-white/5"
+                />
+                <label htmlFor="allDay" className="text-sm text-gray-300">All day event</label>
+              </div>
+              {!newEvent.allDay && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Start Time *</label>
+                    <input
+                      type="time"
+                      value={newEvent.startTime}
+                      onChange={(e) => setNewEvent({ ...newEvent, startTime: e.target.value })}
+                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                      required={!newEvent.allDay}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">End Time</label>
+                    <input
+                      type="time"
+                      value={newEvent.endTime}
+                      onChange={(e) => setNewEvent({ ...newEvent, endTime: e.target.value })}
+                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Description (optional)</label>
+                <textarea
+                  value={newEvent.description}
+                  onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })}
+                  placeholder="Event details..."
+                  rows={3}
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-none"
+                />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="flex-1 px-4 py-2 bg-white/5 hover:bg-white/10 text-gray-300 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={creating || !newEvent.title.trim() || !newEvent.startDate}
+                  className="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-500/50 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  {creating && (
+                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  )}
+                  {creating ? 'Creating...' : 'Create Event'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

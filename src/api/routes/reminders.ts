@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import {
   createReminder,
   createStandaloneReminder,
+  createScheduledReminder,
   getReminder,
   listReminders,
   updateReminder,
@@ -133,23 +134,46 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
 
 /**
  * POST /api/reminders/standalone
- * Create a standalone reminder with delay (e.g., "remind me in 2 hours")
+ * Create a standalone reminder with delay or specific time
+ * Accepts either delay_minutes (relative) or scheduled_at (ISO date string)
  */
 router.post('/standalone', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { title, delay_minutes, body, timezone } = req.body;
+    const { title, delay_minutes, scheduled_at, body, timezone } = req.body;
 
     if (!title) {
       res.status(400).json({ error: 'title is required' });
       return;
     }
 
-    if (!delay_minutes || typeof delay_minutes !== 'number' || delay_minutes <= 0) {
-      res.status(400).json({ error: 'delay_minutes must be a positive number' });
+    // Must provide either delay_minutes or scheduled_at
+    if (!delay_minutes && !scheduled_at) {
+      res.status(400).json({ error: 'Either delay_minutes or scheduled_at is required' });
       return;
     }
 
-    const reminder = await createStandaloneReminder(title, delay_minutes, { body, timezone });
+    let reminder;
+    if (scheduled_at) {
+      // Absolute time scheduling
+      const scheduledDate = new Date(scheduled_at);
+      if (isNaN(scheduledDate.getTime())) {
+        res.status(400).json({ error: 'scheduled_at must be a valid ISO date string' });
+        return;
+      }
+      if (scheduledDate <= new Date()) {
+        res.status(400).json({ error: 'scheduled_at must be in the future' });
+        return;
+      }
+      reminder = await createScheduledReminder(title, scheduledDate, { body, timezone });
+    } else {
+      // Relative time scheduling
+      if (typeof delay_minutes !== 'number' || delay_minutes <= 0) {
+        res.status(400).json({ error: 'delay_minutes must be a positive number' });
+        return;
+      }
+      reminder = await createStandaloneReminder(title, delay_minutes, { body, timezone });
+    }
+
     res.status(201).json(reminder);
   } catch (error) {
     console.error('Error creating standalone reminder:', error);
