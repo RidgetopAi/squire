@@ -297,7 +297,7 @@ export default function RemindersPage() {
     try {
       const res = await fetch(`${API_URL}/api/reminders/stats`);
       const data = await res.json();
-      setStats(data);
+      setStats(data.by_status || data);
     } catch (err) {
       console.error('Failed to fetch stats:', err);
     }
