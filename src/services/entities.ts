@@ -368,6 +368,144 @@ export function validateEntityType(
 }
 
 // =============================================================================
+// ENTITY DISAMBIGUATION
+// =============================================================================
+
+/**
+ * LLM prompt for disambiguating same-name entities
+ */
+const DISAMBIGUATION_PROMPT = `You are helping identify if a new mention refers to an existing person or a different person with the same name.
+
+Given this new mention:
+Name: "{name}"
+Context: "{context}"
+Relationship: "{relationship}"
+
+Is this the SAME PERSON as any of these existing entities?
+{candidates}
+
+Rules:
+- If the relationship context matches (e.g., both "brother-in-law"), it's the SAME person
+- If the relationship context conflicts (e.g., "brother-in-law" vs "flooring dealer"), it's DIFFERENT
+- If unclear, default to SAME unless strong evidence of difference
+
+Respond with ONLY one of:
+- A number (1, 2, etc.) if it matches that existing entity
+- "NEW" if this is definitely a different person with the same name
+
+Do not explain.`;
+
+/**
+ * Use LLM to disambiguate when relationship comparison is unclear
+ */
+async function llmDisambiguate(
+  newEntity: ExtractedEntityWithRelationship,
+  candidates: Entity[]
+): Promise<Entity | null> {
+  const candidateList = candidates
+    .map((c, i) => {
+      const rel = (c.attributes as Record<string, unknown>)?.initial_relationship || 'unknown';
+      const desc = c.description || 'no description';
+      return `${i + 1}. ${c.name} - relationship: ${rel} - ${desc}`;
+    })
+    .join('\n');
+
+  const prompt = DISAMBIGUATION_PROMPT
+    .replace('{name}', newEntity.name)
+    .replace('{context}', newEntity.context || '')
+    .replace('{relationship}', newEntity.relationship_type || 'unknown')
+    .replace('{candidates}', candidateList);
+
+  try {
+    const result = await complete(
+      [
+        { role: 'system', content: 'You disambiguate entity mentions. Respond with only a number or "NEW".' },
+        { role: 'user', content: prompt },
+      ],
+      { temperature: 0.1, maxTokens: 10 }
+    );
+
+    const response = result.content.trim().toUpperCase();
+
+    if (response === 'NEW') {
+      console.log(`[Disambiguation] LLM says "${newEntity.name}" is NEW entity`);
+      return null;
+    }
+
+    const matchIndex = parseInt(response, 10);
+    if (!isNaN(matchIndex) && matchIndex >= 1 && matchIndex <= candidates.length) {
+      const matched = candidates[matchIndex - 1];
+      if (matched) {
+        console.log(`[Disambiguation] LLM matched "${newEntity.name}" to candidate ${matchIndex}`);
+        return matched;
+      }
+    }
+
+    // Unclear response - default to first candidate (most mentioned)
+    const first = candidates[0];
+    if (first) {
+      console.log(`[Disambiguation] LLM unclear ("${response}"), defaulting to first candidate`);
+      return first;
+    }
+    return null;
+  } catch (error) {
+    console.error('[Disambiguation] LLM failed, defaulting to first candidate:', error);
+    return candidates[0] ?? null;
+  }
+}
+
+/**
+ * Disambiguate a new entity mention against existing candidates
+ *
+ * Handles the "two Ricks" problem:
+ * - Rick (brother-in-law) vs Rick (flooring dealer) should be separate
+ * - Multiple mentions of Rick (brother-in-law) should link to same entity
+ *
+ * @param newEntity - The newly extracted entity
+ * @param candidates - Existing entities with same name and type
+ * @returns Matched entity if same person, null if new person
+ */
+async function disambiguateEntity(
+  newEntity: ExtractedEntityWithRelationship,
+  candidates: Entity[]
+): Promise<Entity | null> {
+  if (candidates.length === 0) {
+    return null; // No candidates = definitely new
+  }
+
+  const newRel = newEntity.relationship_type?.toLowerCase();
+
+  // Single candidate - check relationship match
+  if (candidates.length === 1) {
+    const candidate = candidates[0]!; // We know length is 1
+    const candidateRel = ((candidate.attributes as Record<string, unknown>)?.initial_relationship as string)?.toLowerCase();
+
+    // Both have relationships - compare them
+    if (candidateRel && newRel) {
+      if (candidateRel === newRel) {
+        console.log(`[Disambiguation] Relationship match: "${newRel}" - same entity`);
+        return candidate;
+      }
+      // Different relationships = different people
+      console.log(`[Disambiguation] Relationship mismatch: "${candidateRel}" vs "${newRel}" - NEW entity`);
+      return null;
+    }
+
+    // Only one has relationship - check context similarity
+    if (newEntity.context && candidate.description) {
+      // If contexts seem very different, might be different person
+      // For now, default to same person (conservative)
+    }
+
+    // Default: assume same person if no conflicting info
+    return candidate;
+  }
+
+  // Multiple candidates - use LLM to pick best match or create new
+  return llmDisambiguate(newEntity, candidates);
+}
+
+// =============================================================================
 // LLM ENTITY EXTRACTION
 // =============================================================================
 
@@ -588,8 +726,15 @@ function canonicalize(name: string): string {
 }
 
 /**
- * Get or create an entity, handling deduplication
- * Now supports LLM extraction method and relationship attributes
+ * Get or create an entity, handling deduplication and disambiguation
+ *
+ * Key behavior (Phase 3 - disambiguation):
+ * - Finds candidates with same canonical name and type
+ * - Uses disambiguateEntity() to determine if truly same person
+ * - Creates new entity with distinguishing info if different person
+ *
+ * Handles the "two Ricks" problem:
+ * - "Rick (brother-in-law)" and "Rick (flooring dealer)" stay separate
  */
 export async function getOrCreateEntity(
   extracted: ExtractedEntity | ExtractedEntityWithRelationship
@@ -598,32 +743,58 @@ export async function getOrCreateEntity(
   const extractionMethod =
     'extraction_method' in extracted ? extracted.extraction_method : 'regex';
 
-  // Check if entity already exists
-  const existing = await pool.query(
+  // Step 1: Find candidates with same name and type
+  const candidates = await pool.query(
     `SELECT * FROM entities
      WHERE canonical_name = $1 AND entity_type = $2
-     AND is_merged = FALSE`,
+     AND is_merged = FALSE
+     ORDER BY mention_count DESC`,
     [canonical, extracted.type]
   );
 
-  if (existing.rows.length > 0) {
-    // Update last_seen and mention_count
-    const updated = await pool.query(
-      `UPDATE entities
-       SET last_seen_at = NOW(),
-           mention_count = mention_count + 1,
-           updated_at = NOW()
-       WHERE id = $1
-       RETURNING *`,
-      [existing.rows[0].id]
-    );
-    return updated.rows[0] as Entity;
+  // Step 2: Disambiguate if candidates exist
+  if (candidates.rows.length > 0) {
+    // Cast to ExtractedEntityWithRelationship for disambiguation
+    const extWithRel: ExtractedEntityWithRelationship = {
+      ...extracted,
+      extraction_method: extractionMethod,
+      relationship_type: 'relationship_type' in extracted ? extracted.relationship_type : undefined,
+    };
+
+    const match = await disambiguateEntity(extWithRel, candidates.rows as Entity[]);
+
+    if (match) {
+      // Same entity - update and return
+      const updated = await pool.query(
+        `UPDATE entities
+         SET last_seen_at = NOW(),
+             mention_count = mention_count + 1,
+             updated_at = NOW()
+         WHERE id = $1
+         RETURNING *`,
+        [match.id]
+      );
+      return updated.rows[0] as Entity;
+    }
+
+    // Different person with same name - fall through to create new
+    console.log(`[Entity] Creating new "${extracted.name}" (disambiguated from ${candidates.rows.length} existing)`);
   }
+
+  // Step 3: Create new entity
+  const relationshipType = 'relationship_type' in extracted ? extracted.relationship_type : undefined;
 
   // Build attributes JSONB (for relationship metadata)
   const attributes: Record<string, unknown> = {};
-  if ('relationship_type' in extracted && extracted.relationship_type) {
-    attributes.initial_relationship = extracted.relationship_type;
+  if (relationshipType) {
+    attributes.initial_relationship = relationshipType;
+  }
+
+  // Build aliases array for disambiguation (T3-04)
+  const aliases: string[] = [];
+  if (relationshipType) {
+    // Add relationship-qualified alias: "Rick (brother-in-law)"
+    aliases.push(`${extracted.name} (${relationshipType})`);
   }
 
   // Create new entity with embedding
@@ -637,15 +808,16 @@ export async function getOrCreateEntity(
 
   const result = await pool.query(
     `INSERT INTO entities (
-      name, canonical_name, entity_type, embedding,
+      name, canonical_name, entity_type, aliases, embedding,
       extraction_method, confidence, attributes
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     RETURNING *`,
     [
       extracted.name,
       canonical,
       extracted.type,
+      aliases,
       embeddingStr,
       extractionMethod,
       extracted.confidence,
