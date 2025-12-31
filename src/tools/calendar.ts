@@ -1,15 +1,11 @@
 /**
  * Calendar Tools
  *
- * LLM tools for reading user calendar events and commitments.
+ * LLM tools for reading user calendar events from Google Calendar.
+ * Queries the google_events table (synced from Google) for actual calendar events.
  */
 
-import {
-  listCommitmentsExpanded,
-  getUpcomingCommitments,
-  getOverdueCommitments,
-  type ExpandedCommitment,
-} from '../services/commitments.js';
+import { getAllEvents, type GoogleEvent } from '../services/google/events.js';
 import type { ToolHandler } from './types.js';
 
 // =============================================================================
@@ -23,43 +19,45 @@ interface GetUpcomingEventsArgs {
 }
 
 async function handleGetUpcomingEvents(args: GetUpcomingEventsArgs | null): Promise<string> {
-  const { days = 7, limit = 50, include_completed = false } = args ?? {};
+  const { days = 7, limit = 50 } = args ?? {};
 
   try {
     // Calculate date range
     const now = new Date();
     const endDate = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
 
-    const commitments = await listCommitmentsExpanded({
-      expand_recurring: true,
-      due_after: now,
-      due_before: endDate,
-      max_occurrences: limit,
-      status: include_completed ? undefined : ['open', 'in_progress'],
+    // Query actual Google Calendar events
+    const events = await getAllEvents({
+      timeMin: now,
+      timeMax: endDate,
     });
 
-    if (commitments.length === 0) {
+    // Apply limit
+    const limitedEvents = events.slice(0, limit);
+
+    if (limitedEvents.length === 0) {
       return JSON.stringify({
-        message: `No upcoming events in the next ${days} day(s)`,
+        message: `No calendar events in the next ${days} day(s)`,
+        date_range: {
+          from: now.toISOString(),
+          to: endDate.toISOString(),
+        },
         events: [],
       });
     }
 
-    // Separate calendar events (google synced) from regular commitments
-    const calendarEvents = commitments.filter((c) => c.google_event_id);
-    const scheduledCommitments = commitments.filter((c) => !c.google_event_id);
-
     // Format for LLM consumption
-    const formatItem = (c: ExpandedCommitment) => ({
-      id: c.id,
-      title: c.title,
-      description: c.description,
-      due_at: c.due_at,
-      all_day: c.all_day,
-      duration_minutes: c.duration_minutes,
-      status: c.status,
-      is_recurring: !!c.rrule,
-      tags: c.tags,
+    const formatEvent = (e: GoogleEvent & { calendar_name?: string }) => ({
+      id: e.id,
+      title: e.summary,
+      description: e.description,
+      start_time: e.start_time,
+      end_time: e.end_time,
+      all_day: e.all_day,
+      location: e.location,
+      status: e.status,
+      is_recurring: !!e.rrule || !!e.recurring_event_id,
+      calendar: e.calendar_name,
     });
 
     return JSON.stringify({
@@ -67,15 +65,8 @@ async function handleGetUpcomingEvents(args: GetUpcomingEventsArgs | null): Prom
         from: now.toISOString(),
         to: endDate.toISOString(),
       },
-      calendar_events: {
-        count: calendarEvents.length,
-        items: calendarEvents.map(formatItem),
-        note: calendarEvents.length === 0 ? 'No Google Calendar events synced' : undefined,
-      },
-      scheduled_commitments: {
-        count: scheduledCommitments.length,
-        items: scheduledCommitments.map(formatItem),
-      },
+      count: limitedEvents.length,
+      events: limitedEvents.map(formatEvent),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -118,7 +109,8 @@ interface GetTodaysEventsArgs {
 }
 
 async function handleGetTodaysEvents(args: GetTodaysEventsArgs | null): Promise<string> {
-  const { include_overdue = true } = args ?? {};
+  // include_overdue not applicable for calendar events
+  void args;
 
   try {
     // Today's range
@@ -128,74 +120,46 @@ async function handleGetTodaysEvents(args: GetTodaysEventsArgs | null): Promise<
     const endOfDay = new Date(now);
     endOfDay.setHours(23, 59, 59, 999);
 
-    // Get today's commitments
-    const commitments = await listCommitmentsExpanded({
-      expand_recurring: true,
-      due_after: startOfDay,
-      due_before: endOfDay,
-      status: ['open', 'in_progress'],
+    // Get today's Google Calendar events
+    const events = await getAllEvents({
+      timeMin: startOfDay,
+      timeMax: endOfDay,
     });
 
-    // Optionally include overdue items
-    let overdueCommitments: ExpandedCommitment[] = [];
-    if (include_overdue) {
-      const overdue = await getOverdueCommitments();
-      overdueCommitments = overdue.map((c): ExpandedCommitment => ({
-        ...c,
-        is_occurrence: false,
-        occurrence_index: 0,
-        recurring_commitment_id: c.id,
-        template_due_at: c.due_at,
-      }));
-    }
-
-    const allEvents = [...overdueCommitments, ...commitments];
-
-    // Remove duplicates (by id)
-    const uniqueEvents = allEvents.filter(
-      (event, index, self) => index === self.findIndex((e) => e.id === event.id)
-    );
-
-    // Sort by due_at
-    uniqueEvents.sort((a, b) => {
-      if (!a.due_at) return 1;
-      if (!b.due_at) return -1;
-      return new Date(a.due_at).getTime() - new Date(b.due_at).getTime();
-    });
-
-    if (uniqueEvents.length === 0) {
+    if (events.length === 0) {
       return JSON.stringify({
-        message: 'No events for today',
+        message: 'No calendar events for today',
         today: now.toISOString().split('T')[0],
         events: [],
-        overdue_count: 0,
       });
     }
 
     // Format for LLM consumption
-    const formattedEvents = uniqueEvents.map((c) => {
-      const dueDate = c.due_at ? new Date(c.due_at) : null;
-      const isOverdue = dueDate && dueDate < startOfDay;
+    const formatEvent = (e: GoogleEvent & { calendar_name?: string }) => {
+      const startTime = e.start_time ? new Date(e.start_time) : null;
+      const isPast = startTime && startTime < now;
 
       return {
-        id: c.id,
-        title: c.title,
-        description: c.description,
-        due_at: c.due_at,
-        all_day: c.all_day,
-        duration_minutes: c.duration_minutes,
-        status: c.status,
-        is_overdue: isOverdue,
-        tags: c.tags,
+        id: e.id,
+        title: e.summary,
+        description: e.description,
+        start_time: e.start_time,
+        end_time: e.end_time,
+        all_day: e.all_day,
+        location: e.location,
+        status: e.status,
+        is_past: isPast,
+        calendar: e.calendar_name,
       };
-    });
+    };
 
-    const overdueCount = formattedEvents.filter((e) => e.is_overdue).length;
+    const formattedEvents = events.map(formatEvent);
+    const upcomingCount = formattedEvents.filter((e) => !e.is_past).length;
 
     return JSON.stringify({
       today: now.toISOString().split('T')[0],
       count: formattedEvents.length,
-      overdue_count: overdueCount,
+      upcoming_count: upcomingCount,
       events: formattedEvents,
     });
   } catch (error) {
@@ -234,33 +198,41 @@ async function handleGetEventsDueSoon(args: GetEventsDueSoonArgs | null): Promis
   const { within_hours = 24 } = args ?? {};
 
   try {
-    const withinMinutes = within_hours * 60;
-    const commitments = await getUpcomingCommitments(withinMinutes);
+    const now = new Date();
+    const endTime = new Date(now.getTime() + within_hours * 60 * 60 * 1000);
 
-    if (commitments.length === 0) {
+    // Get Google Calendar events within the time window
+    const events = await getAllEvents({
+      timeMin: now,
+      timeMax: endTime,
+    });
+
+    if (events.length === 0) {
       return JSON.stringify({
-        message: `No events due within the next ${within_hours} hour(s)`,
+        message: `No calendar events within the next ${within_hours} hour(s)`,
+        within_hours,
         events: [],
       });
     }
 
     // Format for LLM consumption
-    const formattedEvents = commitments.map((c) => {
-      const dueAt = c.due_at ? new Date(c.due_at) : null;
-      const now = new Date();
-      const minutesUntilDue = dueAt
-        ? Math.round((dueAt.getTime() - now.getTime()) / (1000 * 60))
+    const formattedEvents = events.map((e: GoogleEvent & { calendar_name?: string }) => {
+      const startTime = e.start_time ? new Date(e.start_time) : null;
+      const minutesUntilStart = startTime
+        ? Math.round((startTime.getTime() - now.getTime()) / (1000 * 60))
         : null;
 
       return {
-        id: c.id,
-        title: c.title,
-        description: c.description,
-        due_at: c.due_at,
-        all_day: c.all_day,
-        minutes_until_due: minutesUntilDue,
-        status: c.status,
-        tags: c.tags,
+        id: e.id,
+        title: e.summary,
+        description: e.description,
+        start_time: e.start_time,
+        end_time: e.end_time,
+        all_day: e.all_day,
+        location: e.location,
+        minutes_until_start: minutesUntilStart,
+        status: e.status,
+        calendar: e.calendar_name,
       };
     });
 
