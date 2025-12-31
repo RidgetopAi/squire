@@ -305,6 +305,69 @@ function deduplicateEntities(entities: ExtractedEntity[]): ExtractedEntity[] {
 }
 
 // =============================================================================
+// ENTITY TYPE VALIDATION
+// =============================================================================
+
+/**
+ * Type indicator patterns for entity validation
+ * These override LLM/regex type assignments when entity name contains these suffixes
+ */
+const TYPE_INDICATORS: Record<EntityType, RegExp[]> = {
+  // Place indicators (e.g., "Appomattox County" → place, not person)
+  place: [
+    /\b(County|City|State|Village|Township|Province|District|Region|Island|Mountains?|Valley|Lake|River|Park|Beach|Harbor|Airport)\b/i,
+  ],
+  // Organization indicators (e.g., "Gastro Oncology" → org, not person)
+  organization: [
+    /\b(Hospital|Clinic|Oncology|Medical|Dental|Flooring|Restaurant|Church|School|University|College|Institute|Center|Centre|Foundation|Corporation|Company|Inc|LLC|Ltd|Co|Corp|Group|Association|Society|Agency|Department|Ministry|Commission|Council|Board|Authority|Office|Bank|Credit Union)\b/i,
+  ],
+  // Product/concept indicators (e.g., "Google Calendar" → concept, not person)
+  concept: [
+    /\b(Calendar|Maps|Drive|Docs|Sheets|Slides|Gmail|Outlook|Teams|Slack|Discord|Zoom|App|Software|Platform|System|Service|API|SDK|Framework|Library|Tool|Dashboard|Portal)\b/i,
+  ],
+  // These types don't have indicator overrides
+  person: [],
+  project: [],
+};
+
+/**
+ * Validate and potentially correct entity type based on name indicators
+ *
+ * This function corrects misclassifications like:
+ * - "Appomattox County" as person → should be place
+ * - "Gastro Oncology" as person → should be organization
+ * - "Google Calendar" as person → should be concept
+ *
+ * @param name - The entity name
+ * @param proposedType - The type assigned by LLM or regex extraction
+ * @param _context - The surrounding context (reserved for future use)
+ * @returns The validated (potentially corrected) entity type
+ */
+export function validateEntityType(
+  name: string,
+  proposedType: EntityType,
+  _context: string
+): EntityType {
+  // Check each type's indicators
+  for (const [type, patterns] of Object.entries(TYPE_INDICATORS)) {
+    for (const pattern of patterns) {
+      if (pattern.test(name)) {
+        // Found an indicator - override the proposed type
+        if (type !== proposedType) {
+          console.log(
+            `[EntityValidation] Corrected "${name}" from ${proposedType} to ${type}`
+          );
+        }
+        return type as EntityType;
+      }
+    }
+  }
+
+  // No indicator found - keep the proposed type
+  return proposedType;
+}
+
+// =============================================================================
 // LLM ENTITY EXTRACTION
 // =============================================================================
 
@@ -714,6 +777,10 @@ export async function extractAndStoreEntities(
   const mentions: EntityMention[] = [];
 
   for (const ext of allExtracted) {
+    // Step 4: Validate/correct entity type based on name indicators
+    const validatedType = validateEntityType(ext.name, ext.type, ext.context || '');
+    ext.type = validatedType;
+
     const entity = await getOrCreateEntity(ext);
     entities.push(entity);
 
