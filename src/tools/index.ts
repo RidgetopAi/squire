@@ -159,5 +159,65 @@ import {
   timeToolHandler,
 } from './time.js';
 
+import {
+  searchNotesToolName,
+  searchNotesToolDescription,
+  searchNotesToolParameters,
+  searchNotesToolHandler,
+  getPinnedNotesToolName,
+  getPinnedNotesToolDescription,
+  getPinnedNotesToolParameters,
+  getPinnedNotesToolHandler,
+  listRecentNotesToolName,
+  listRecentNotesToolDescription,
+  listRecentNotesToolParameters,
+  listRecentNotesToolHandler,
+} from './notes.js';
+
+import {
+  searchListsToolName,
+  searchListsToolDescription,
+  searchListsToolParameters,
+  searchListsToolHandler,
+  getListItemsToolName,
+  getListItemsToolDescription,
+  getListItemsToolParameters,
+  getListItemsToolHandler,
+  listAllListsToolName,
+  listAllListsToolDescription,
+  listAllListsToolParameters,
+  listAllListsToolHandler,
+} from './lists.js';
+
+import {
+  getUpcomingEventsToolName,
+  getUpcomingEventsToolDescription,
+  getUpcomingEventsToolParameters,
+  getUpcomingEventsToolHandler,
+  getTodaysEventsToolName,
+  getTodaysEventsToolDescription,
+  getTodaysEventsToolParameters,
+  getTodaysEventsToolHandler,
+  getEventsDueSoonToolName,
+  getEventsDueSoonToolDescription,
+  getEventsDueSoonToolParameters,
+  getEventsDueSoonToolHandler,
+} from './calendar.js';
+
 // Register time tool
 registerTool(timeToolName, timeToolDescription, timeToolParameters, timeToolHandler);
+
+// Register notes tools
+registerTool(searchNotesToolName, searchNotesToolDescription, searchNotesToolParameters, searchNotesToolHandler);
+registerTool(getPinnedNotesToolName, getPinnedNotesToolDescription, getPinnedNotesToolParameters, getPinnedNotesToolHandler);
+registerTool(listRecentNotesToolName, listRecentNotesToolDescription, listRecentNotesToolParameters, listRecentNotesToolHandler);
+
+// Register lists tools
+registerTool(searchListsToolName, searchListsToolDescription, searchListsToolParameters, searchListsToolHandler);
+registerTool(getListItemsToolName, getListItemsToolDescription, getListItemsToolParameters, getListItemsToolHandler);
+registerTool(listAllListsToolName, listAllListsToolDescription, listAllListsToolParameters, listAllListsToolHandler);
+
+// Register calendar tools
+registerTool(getUpcomingEventsToolName, getUpcomingEventsToolDescription, getUpcomingEventsToolParameters, getUpcomingEventsToolHandler);
+registerTool(getTodaysEventsToolName, getTodaysEventsToolDescription, getTodaysEventsToolParameters, getTodaysEventsToolHandler);
+registerTool(getEventsDueSoonToolName, getEventsDueSoonToolDescription, getEventsDueSoonToolParameters, getEventsDueSoonToolHandler);
