@@ -95,6 +95,34 @@ export async function createReminder(input: CreateReminderInput): Promise<Remind
     throw new Error('Reminder must have either commitment_id or title');
   }
 
+  // Deduplication: check for existing reminder with same title/commitment and same date
+  // This prevents duplicates when extraction runs on both real-time and consolidation paths
+  if (title) {
+    const existing = await pool.query(
+      `SELECT * FROM reminders
+       WHERE title = $1 AND DATE(scheduled_for) = DATE($2)
+       AND status NOT IN ('canceled', 'acknowledged')`,
+      [title, scheduled_for]
+    );
+    if (existing.rows.length > 0) {
+      console.log(`[Reminders] Skipping duplicate reminder: "${title}" on ${scheduled_for.toDateString()}`);
+      return existing.rows[0] as Reminder;
+    }
+  }
+
+  if (commitment_id) {
+    const existing = await pool.query(
+      `SELECT * FROM reminders
+       WHERE commitment_id = $1 AND DATE(scheduled_for) = DATE($2)
+       AND status NOT IN ('canceled', 'acknowledged')`,
+      [commitment_id, scheduled_for]
+    );
+    if (existing.rows.length > 0) {
+      console.log(`[Reminders] Skipping duplicate commitment reminder for ${commitment_id}`);
+      return existing.rows[0] as Reminder;
+    }
+  }
+
   const result = await pool.query(
     `INSERT INTO reminders (
       commitment_id, title, body,

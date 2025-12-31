@@ -107,6 +107,34 @@ export async function createCommitment(input: CreateCommitmentInput): Promise<Co
     metadata = {},
   } = input;
 
+  // Deduplication: check for existing commitment with same title and same date
+  // This prevents duplicates when extraction runs on both real-time and consolidation paths
+  if (due_at) {
+    const existing = await pool.query(
+      `SELECT * FROM commitments
+       WHERE title = $1 AND DATE(due_at) = DATE($2)
+       AND status NOT IN ('completed', 'canceled')`,
+      [title, due_at]
+    );
+    if (existing.rows.length > 0) {
+      console.log(`[Commitments] Skipping duplicate commitment: "${title}" on ${due_at.toDateString()}`);
+      return existing.rows[0] as Commitment;
+    }
+  } else {
+    // No due date - check for exact title match within last hour (to catch rapid duplicates)
+    const existing = await pool.query(
+      `SELECT * FROM commitments
+       WHERE title = $1 AND due_at IS NULL
+       AND status NOT IN ('completed', 'canceled')
+       AND created_at > NOW() - INTERVAL '1 hour'`,
+      [title]
+    );
+    if (existing.rows.length > 0) {
+      console.log(`[Commitments] Skipping duplicate commitment (no date): "${title}"`);
+      return existing.rows[0] as Commitment;
+    }
+  }
+
   // Generate embedding for resolution matching (combine title + description)
   const textForEmbedding = description ? `${title}. ${description}` : title;
   const embedding = await generateEmbedding(textForEmbedding);

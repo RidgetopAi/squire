@@ -106,19 +106,21 @@ const PATTERNS = {
 
   // Projects: Explicit project references
   // "the Quantum project", "Project Alpha", "working on Nebula"
+  // NOTE: Use /g not /gi - the /i flag makes [A-Z] match lowercase, causing false positives like "two"
   project: [
     // "the X project" or "X project" (but not "project deadline" etc)
-    /\b(?:the\s+)?([A-Z][a-zA-Z0-9]+)\s+project(?:\s|$|[,.])/gi,
+    /\b(?:the\s+)?([A-Z][a-zA-Z0-9]+)\s+project(?:\s|$|[,.])/g,
     // "Project X"
     /\bProject\s+([A-Z][a-zA-Z0-9]+)\b/g,
     // "working on X"
-    /\bworking on\s+(?:the\s+)?([A-Z][a-zA-Z0-9]+)\b/gi,
+    /\bworking on\s+(?:the\s+)?([A-Z][a-zA-Z0-9]+)\b/g,
   ],
 
   // Organizations: Company patterns
   // "at Google", "Apple Inc", "the ACME Corporation"
+  // NOTE: Use /g not /gi to require proper capitalization
   organization: [
-    /\b([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)\s+(?:Inc|Corp|LLC|Ltd|Co|Company|Corporation|Industries|Group|Foundation)\b/gi,
+    /\b([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)\s+(?:Inc|Corp|LLC|Ltd|Co|Company|Corporation|Industries|Group|Foundation)\b/g,
   ],
 
   // Places: Location patterns
@@ -170,6 +172,18 @@ const STOP_WORDS = new Set([
   'Some', 'some', 'Any', 'any', 'All', 'all', 'Most', 'most', 'Many', 'many', 'Few', 'few',
   // Titles/roles without names
   'CTO', 'CEO', 'CFO', 'COO', 'VP',
+  // Place/organization indicators (false positives from audit)
+  'County', 'Oncology', 'Hospital', 'Clinic', 'Center', 'Calendar', 'Palace',
+  'Chinese', 'Restaurant', 'Church', 'School', 'University', 'Medical', 'Dental',
+  'Flooring', 'Command', 'Gastro',
+  // Numbers that get capitalized in sentences
+  'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
+  'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+  // Verbs that match project patterns (-ing words)
+  'Connecting', 'Integrating', 'Working', 'Planning', 'Meeting', 'Starting',
+  'connecting', 'integrating', 'working', 'planning', 'meeting', 'starting',
+  // Common phrases that create false positives
+  'Side', 'side', 'Plan', 'plan',
 ]);
 
 // =============================================================================
