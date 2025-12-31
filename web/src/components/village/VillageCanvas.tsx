@@ -37,6 +37,20 @@ function SimpleGround() {
 }
 
 // ============================================
+// ATMOSPHERE (FOG)
+// ============================================
+
+/**
+ * Atmospheric fog for depth perception
+ * Uses linear fog with dark purple color matching the scene
+ */
+function Atmosphere() {
+  return (
+    <fog attach="fog" args={['#1a1525', 30, 120]} />
+  );
+}
+
+// ============================================
 // LIGHTING
 // ============================================
 
@@ -233,6 +247,7 @@ function VillageContent({
   return (
     <>
       <CameraRig bounds={layout.bounds} />
+      <Atmosphere />
       <Lighting />
 
       {/* District accent lights */}
