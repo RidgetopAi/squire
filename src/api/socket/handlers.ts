@@ -508,6 +508,12 @@ async function streamGroqResponse(
               };
 
               const delta = parsed.choices[0]?.delta;
+              const finishReason = parsed.choices[0]?.finish_reason;
+
+              // Debug: log tool calls and finish reasons
+              if (delta?.tool_calls || finishReason) {
+                console.log(`[Socket] Stream delta: finish_reason=${finishReason}, tool_calls=${JSON.stringify(delta?.tool_calls)}`);
+              }
 
               // Handle text content
               if (delta?.content) {
@@ -543,8 +549,6 @@ async function streamGroqResponse(
                   }
                 }
               }
-
-              const finishReason = parsed.choices[0]?.finish_reason;
 
               if (finishReason === 'tool_calls') {
                 // Model wants to call tools
