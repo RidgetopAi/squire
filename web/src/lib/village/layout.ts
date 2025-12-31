@@ -206,6 +206,10 @@ function placeBuildingsInDistricts(
 
     // Get district center offset
     const districtOffset = DISTRICT_LAYOUT[category];
+    if (!districtOffset) {
+      console.warn('[placeBuildingsInDistricts] No district offset for category:', category);
+      continue;
+    }
 
     // Scale the district offset for spacing
     const scaledOffset: HexCoord = {
@@ -216,13 +220,36 @@ function placeBuildingsInDistricts(
     // Generate spiral positions for this district
     const spiralPositions = spiralHexPositions(memories.length);
 
+    console.log(`[placeBuildingsInDistricts] ${category}: ${memories.length} memories, ${spiralPositions.length} positions`);
+
     for (let i = 0; i < memories.length; i++) {
       const memory = memories[i];
       const localHex = spiralPositions[i];
 
+      // Safety check for missing spiral position
+      if (!localHex) {
+        console.warn(`[placeBuildingsInDistricts] Missing spiral position at index ${i} for ${category}`);
+        continue;
+      }
+
       // Combine district offset with local position
       const hexCoord = hexAdd(scaledOffset, localHex);
       const position = hexToWorld(hexCoord, opts.hexSize);
+
+      // Validate position
+      if (!Number.isFinite(position.x) || !Number.isFinite(position.z)) {
+        console.warn('[placeBuildingsInDistricts] NaN position:', {
+          memoryId: memory.id,
+          category,
+          index: i,
+          localHex,
+          scaledOffset,
+          hexCoord,
+          position,
+          hexSize: opts.hexSize,
+        });
+        continue;
+      }
 
       // Extract memory attributes
       const salience = (memory.attributes?.salience as number) ?? 0.5;

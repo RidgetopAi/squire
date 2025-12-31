@@ -27,6 +27,16 @@ export const DEFAULT_HEX_SIZE = 2;
  * @returns World position (x, z)
  */
 export function hexToWorld(coord: HexCoord, hexSize: number = DEFAULT_HEX_SIZE): VillagePosition {
+  // Validate inputs
+  if (!coord || !Number.isFinite(coord.q) || !Number.isFinite(coord.r)) {
+    console.warn('[hexToWorld] Invalid coord:', coord);
+    return { x: 0, z: 0 };
+  }
+  if (!Number.isFinite(hexSize) || hexSize <= 0) {
+    console.warn('[hexToWorld] Invalid hexSize:', hexSize);
+    return { x: 0, z: 0 };
+  }
+
   const { q, r } = coord;
 
   // Pointy-top hex layout
@@ -202,6 +212,10 @@ export function calculateBounds(positions: VillagePosition[]): {
  * Add two hex coordinates together
  */
 export function hexAdd(a: HexCoord, b: HexCoord): HexCoord {
+  if (!a || !b) {
+    console.warn('[hexAdd] Invalid input:', { a, b });
+    return { q: 0, r: 0 };
+  }
   return { q: a.q + b.q, r: a.r + b.r };
 }
 
