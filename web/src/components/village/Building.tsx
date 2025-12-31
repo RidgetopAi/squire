@@ -6,9 +6,9 @@
 // Renders a memory as a 3D building using GLTF models
 // P3-T7: Performance optimizations with memoization and LOD
 
-import { memo, useRef, useMemo, useCallback, Suspense, useState } from 'react';
+import React, { memo, useRef, useMemo, useCallback, Suspense, useState, useLayoutEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { Detailed, Html } from '@react-three/drei';
+import { Html } from '@react-three/drei';
 import * as THREE from 'three';
 import type { Group, Mesh } from 'three';
 import type { VillageBuilding } from '@/lib/types/village';
@@ -32,6 +32,46 @@ function SimpleBuilding({ scale, color }: SimpleBuildingProps) {
       <boxGeometry args={[0.8 * scale, 1.2 * scale, 0.8 * scale]} />
       <meshStandardMaterial color={color} roughness={0.8} />
     </mesh>
+  );
+}
+
+// Native THREE.LOD component - bypasses drei's Detailed which may have bugs
+interface NativeLODProps {
+  distances: number[];
+  children: React.ReactNode;
+}
+
+function NativeLOD({ distances, children }: NativeLODProps) {
+  const lodRef = useRef<THREE.LOD>(null);
+  const { camera } = useThree();
+  
+  // Convert children to array
+  const childArray = React.Children.toArray(children);
+  
+  useLayoutEffect(() => {
+    const lod = lodRef.current;
+    if (!lod) return;
+    
+    // Clear existing levels
+    lod.levels.length = 0;
+    
+    // Add levels using THREE.LOD.addLevel which handles sorting
+    lod.children.forEach((child, index) => {
+      const distance = distances[index] ?? 0;
+      // addLevel properly sorts by distance
+      lod.addLevel(child, distance);
+    });
+  }, [distances, childArray.length]);
+  
+  // Update LOD each frame
+  useFrame(() => {
+    lodRef.current?.update(camera);
+  });
+  
+  return (
+    <lOD ref={lodRef}>
+      {children}
+    </lOD>
   );
 }
 
@@ -164,10 +204,10 @@ export const Building = memo(function Building({
       
       {/* Animated wrapper for hover lift */}
       <group ref={groupRef} position={[0, baseY, 0]}>
-        {/* Suspense MUST wrap Detailed, not be inside children - otherwise LOD breaks */}
+        {/* Suspense wraps the LOD - NativeLOD bypasses drei's buggy Detailed */}
         <Suspense fallback={<SimpleBuilding scale={baseScale} color={building.color} />}>
-          {/* LOD: child[0] shown when < 40 units, child[1] when >= 40 units */}
-          <Detailed distances={[0, 40]}>
+          {/* LOD: child[0] at distance 0 (near), child[1] at distance 40 (far) */}
+          <NativeLOD distances={[0, 40]}>
             {/* Near: Full GLTF model (shown when camera < 40 units) */}
             <BuildingModel
               buildingType={building.buildingType}
@@ -179,7 +219,7 @@ export const Building = memo(function Building({
             />
             {/* Far: Simple box geometry (shown when camera >= 40 units) */}
             <SimpleBuilding scale={baseScale} color={building.color} />
-          </Detailed>
+          </NativeLOD>
         </Suspense>
       </group>
     </group>
