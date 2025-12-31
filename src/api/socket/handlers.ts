@@ -474,8 +474,35 @@ async function streamGroqResponse(
         buffer = lines.pop() || '';
 
         for (const line of lines) {
+          // Handle SSE error events from Groq
+          if (line.startsWith('event: error')) {
+            console.log(`[Socket] Groq SSE error event received`);
+            continue; // Next line will have the error data
+          }
+
           if (line.startsWith('data: ')) {
             const data = line.slice(6);
+
+            // Check if this is an error response
+            try {
+              const errorCheck = JSON.parse(data);
+              if (errorCheck.error) {
+                console.log(`[Socket] Groq API error: ${errorCheck.error.message}`);
+                // If tool calling failed, retry without tools
+                if (errorCheck.error.code === 'tool_use_failed') {
+                  console.log(`[Socket] Tool use failed, retrying without tools...`);
+                  return await streamGroqResponse(socket, conversationId, messages, signal, undefined);
+                }
+                socket.emit('chat:error', {
+                  conversationId,
+                  error: errorCheck.error.message,
+                  code: 'GROQ_API_ERROR',
+                });
+                return { content: '', usage: { promptTokens: 0, completionTokens: 0 } };
+              }
+            } catch {
+              // Not an error, continue normal processing
+            }
 
             if (data === '[DONE]') {
               console.log(`[Socket] Stream [DONE] received. Tool calls accumulated: ${accumulatedToolCalls.size}`);
