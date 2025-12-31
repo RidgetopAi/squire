@@ -44,46 +44,51 @@ export interface BuildingModelConfig {
  * - barracks: building_barracks_blue
  * - house: building_home_A_blue
  */
+/**
+ * Model configurations tuned for hex size of 2 units.
+ * KayKit models designed for 1-unit hexes, so base scale ~2.0.
+ * Rotation values add visual variety and proper orientation.
+ */
 export const BUILDING_MODEL_CONFIGS: Record<BuildingType, BuildingModelConfig> = {
   tavern: {
     path: `${MODELS_BASE_PATH}/tavern.gltf`,
-    scale: 1.0,
-    rotationY: 0,
+    scale: 2.0,
+    rotationY: Math.PI / 6, // 30° - angled for visual interest
     yOffset: 0,
   },
   library: {
     path: `${MODELS_BASE_PATH}/library.gltf`,
-    scale: 1.0,
+    scale: 2.0,
     rotationY: 0,
     yOffset: 0,
   },
   blacksmith: {
     path: `${MODELS_BASE_PATH}/blacksmith.gltf`,
-    scale: 1.0,
-    rotationY: 0,
+    scale: 2.0,
+    rotationY: -Math.PI / 6, // -30°
     yOffset: 0,
   },
   church: {
     path: `${MODELS_BASE_PATH}/church.gltf`,
-    scale: 1.0,
-    rotationY: 0,
+    scale: 2.0,
+    rotationY: Math.PI / 3, // 60° - face forward prominently
     yOffset: 0,
   },
   market: {
     path: `${MODELS_BASE_PATH}/market.gltf`,
-    scale: 1.0,
-    rotationY: 0,
+    scale: 2.0,
+    rotationY: Math.PI / 4, // 45°
     yOffset: 0,
   },
   barracks: {
     path: `${MODELS_BASE_PATH}/barracks.gltf`,
-    scale: 1.0,
-    rotationY: 0,
+    scale: 2.0,
+    rotationY: -Math.PI / 4, // -45°
     yOffset: 0,
   },
   house: {
     path: `${MODELS_BASE_PATH}/house.gltf`,
-    scale: 1.0,
+    scale: 1.8, // Slightly smaller for houses
     rotationY: 0,
     yOffset: 0,
   },
