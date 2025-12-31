@@ -7,32 +7,27 @@
 
 import { useCallback } from 'react';
 import { useThree } from '@react-three/fiber';
-import { OrbitControls, PerspectiveCamera, Grid } from '@react-three/drei';
+import { OrbitControls, PerspectiveCamera } from '@react-three/drei';
 import { useVillageLayout, useVillageSelection } from '@/lib/hooks/useVillageLayout';
 import { BuildingsLayer } from './Building';
 import { RoadsLayer } from './Road';
+import { VillageGround } from './DistrictGround';
 import type { VillageBuilding, VillageLayout } from '@/lib/types/village';
 
 // ============================================
-// GROUND COMPONENT
+// SIMPLE GROUND (for loading/empty states)
 // ============================================
 
-function Ground() {
+function SimpleGround() {
   return (
     <>
-      <Grid
-        args={[50, 50]}
-        cellSize={1}
-        cellColor="#1a1a2e"
-        sectionSize={5}
-        sectionColor="#2a2a4e"
-        fadeDistance={60}
-        fadeStrength={1}
-        infiniteGrid
-        position={[0, 0, 0]}
-      />
-      {/* Shadow receiver plane */}
+      {/* Simple dark ground plane for loading/empty states */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
+        <circleGeometry args={[30, 32]} />
+        <meshStandardMaterial color="#1a1a2e" />
+      </mesh>
+      {/* Shadow receiver */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
         <planeGeometry args={[100, 100]} />
         <shadowMaterial opacity={0.3} />
       </mesh>
@@ -181,7 +176,9 @@ function VillageContent({
     <>
       <CameraRig bounds={layout.bounds} />
       <Lighting />
-      <Ground />
+
+      {/* District hex tile ground */}
+      <VillageGround layout={layout} />
 
       {/* Roads (render first so buildings appear on top) */}
       <RoadsLayer
@@ -254,7 +251,7 @@ export function VillageCanvas({ onBuildingSelect }: VillageCanvasProps) {
       <>
         <CameraRig bounds={defaultBounds} />
         <Lighting />
-        <Ground />
+        <SimpleGround />
         <LoadingState />
       </>
     );
@@ -266,7 +263,7 @@ export function VillageCanvas({ onBuildingSelect }: VillageCanvasProps) {
       <>
         <CameraRig bounds={defaultBounds} />
         <Lighting />
-        <Ground />
+        <SimpleGround />
         <EmptyState />
       </>
     );
@@ -278,7 +275,7 @@ export function VillageCanvas({ onBuildingSelect }: VillageCanvasProps) {
       <>
         <CameraRig bounds={defaultBounds} />
         <Lighting />
-        <Ground />
+        <SimpleGround />
         <EmptyState />
       </>
     );
