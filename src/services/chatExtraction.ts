@@ -1296,10 +1296,25 @@ async function extractIdentityRealTime(
     /(?:^|\s)(?:actually|no,?)\s+(?:i'?m|i am|my name is|it's)\s+([A-Z][a-z]+)(?:\s|$|,|\.)/i,
   ];
 
+  // Extended list of common words that could be mistakenly matched as names
+  // CRITICAL: "confident" was matched as a name causing identity replacement bug
   const commonWords = [
+    // States/feelings
     'here', 'there', 'ready', 'done', 'back', 'home', 'good', 'fine', 'great',
     'sorry', 'sure', 'happy', 'excited', 'interested', 'curious', 'wondering',
     'thinking', 'going', 'looking', 'working', 'trying', 'just', 'really',
+    // Confidence/certainty words (bug fix: "I'm confident" matched as name)
+    'confident', 'certain', 'positive', 'convinced', 'hopeful', 'optimistic',
+    'worried', 'concerned', 'afraid', 'scared', 'nervous', 'anxious',
+    // Common adjectives after "I'm"
+    'tired', 'exhausted', 'busy', 'free', 'available', 'okay', 'alright',
+    'glad', 'pleased', 'proud', 'impressed', 'surprised', 'shocked',
+    'confused', 'lost', 'stuck', 'frustrated', 'annoyed', 'angry',
+    // Activity states
+    'writing', 'reading', 'coding', 'building', 'fixing', 'testing', 'debugging',
+    'planning', 'learning', 'starting', 'finishing', 'waiting', 'running',
+    // Time/situation
+    'late', 'early', 'still', 'almost', 'nearly', 'finally', 'currently',
   ];
 
   for (const pattern of namePatterns) {
