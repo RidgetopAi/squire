@@ -8,6 +8,22 @@
 import { getAllEvents, type GoogleEvent } from '../services/google/events.js';
 import type { ToolHandler } from './types.js';
 
+/**
+ * Format event time for LLM consumption.
+ * All-day events return just the date (YYYY-MM-DD) to avoid timezone confusion.
+ * Timed events return the full ISO timestamp.
+ */
+function formatEventTime(time: Date | null, allDay: boolean): string | null {
+  if (!time) return null;
+  if (allDay) {
+    // For all-day events, extract just the date portion
+    // The time is stored as midnight UTC, so we use UTC methods to get the correct date
+    const iso = time.toISOString();
+    return iso.substring(0, 10); // YYYY-MM-DD
+  }
+  return time.toISOString();
+}
+
 // =============================================================================
 // GET UPCOMING EVENTS TOOL
 // =============================================================================
@@ -51,8 +67,8 @@ async function handleGetUpcomingEvents(args: GetUpcomingEventsArgs | null): Prom
       id: e.id,
       title: e.summary,
       description: e.description,
-      start_time: e.start_time,
-      end_time: e.end_time,
+      start_time: formatEventTime(e.start_time, e.all_day),
+      end_time: formatEventTime(e.end_time, e.all_day),
       all_day: e.all_day,
       location: e.location,
       status: e.status,
@@ -137,14 +153,14 @@ async function handleGetTodaysEvents(args: GetTodaysEventsArgs | null): Promise<
     // Format for LLM consumption
     const formatEvent = (e: GoogleEvent & { calendar_name?: string }) => {
       const startTime = e.start_time ? new Date(e.start_time) : null;
-      const isPast = startTime && startTime < now;
+      const isPast = startTime && !e.all_day && startTime < now;
 
       return {
         id: e.id,
         title: e.summary,
         description: e.description,
-        start_time: e.start_time,
-        end_time: e.end_time,
+        start_time: formatEventTime(e.start_time, e.all_day),
+        end_time: formatEventTime(e.end_time, e.all_day),
         all_day: e.all_day,
         location: e.location,
         status: e.status,
@@ -218,7 +234,8 @@ async function handleGetEventsDueSoon(args: GetEventsDueSoonArgs | null): Promis
     // Format for LLM consumption
     const formattedEvents = events.map((e: GoogleEvent & { calendar_name?: string }) => {
       const startTime = e.start_time ? new Date(e.start_time) : null;
-      const minutesUntilStart = startTime
+      // For all-day events, don't calculate minutes (not meaningful)
+      const minutesUntilStart = startTime && !e.all_day
         ? Math.round((startTime.getTime() - now.getTime()) / (1000 * 60))
         : null;
 
@@ -226,8 +243,8 @@ async function handleGetEventsDueSoon(args: GetEventsDueSoonArgs | null): Promis
         id: e.id,
         title: e.summary,
         description: e.description,
-        start_time: e.start_time,
-        end_time: e.end_time,
+        start_time: formatEventTime(e.start_time, e.all_day),
+        end_time: formatEventTime(e.end_time, e.all_day),
         all_day: e.all_day,
         location: e.location,
         minutes_until_start: minutesUntilStart,
