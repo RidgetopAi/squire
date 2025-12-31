@@ -73,8 +73,8 @@ export function useVillageLayout(
     refetch,
   } = useGraphVisualization({
     // Request enough nodes to fill the village
+    // Don't set entityLimit - layout algorithm filters for memories
     memoryLimit: maxBuildings,
-    entityLimit: 0, // We only use memories for buildings
     minSalience,
     includeEdges: true,
     enabled,
