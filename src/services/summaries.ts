@@ -62,12 +62,20 @@ export interface MemorySummaryLink {
  */
 function isIdentityContent(content: string): boolean {
   const identityPatterns = [
+    // Standard "The user" format
     /the user'?s? name is/i,
     /user is named/i,
     /user'?s? (?:wife|husband|spouse|partner|son|daughter|child|mother|father|parent|sibling|brother|sister) is (?:named )?/i,
     /the user is \d+ years? old/i,
     /the user works at/i,
     /the user (?:is|has|works|lives)/i,
+
+    // Name-based patterns (for memories created before identity-first fix)
+    // These catch "Brian's wife is...", "Brian created...", etc.
+    /Brian'?s?\s+(?:wife|husband|spouse|partner|child|children|daughter|son|mother|father|family)/i,
+    /Brian\s+(?:is|has|works|lives|created|built|developed)/i,
+    /Brian\s+is\s+(?:a\s+)?\d+\s*(?:years?\s*old)?/i,
+    /Brian\s+works\s+(?:at|for|on)/i,
   ];
   return identityPatterns.some(pattern => pattern.test(content));
 }

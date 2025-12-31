@@ -1023,6 +1023,112 @@ program
   });
 
 /**
+ * reclassify-identity - Reclassify memories that mention the user by name
+ * One-time migration for memories created before identity-first classification fix
+ */
+program
+  .command('reclassify-identity')
+  .description('Reclassify memories mentioning user by name (one-time migration)')
+  .option('-n, --name <name>', 'User name to search for', 'Brian')
+  .option('-l, --limit <limit>', 'Maximum memories to process', '100')
+  .option('--dry-run', 'Show what would be reclassified without doing it')
+  .option('--regenerate', 'Also regenerate personality summary after reclassification')
+  .action(async (options: { name: string; limit: string; dryRun?: boolean; regenerate?: boolean }) => {
+    try {
+      const name = options.name;
+      const limit = parseInt(options.limit, 10);
+
+      console.log(`\n🔍 Searching for memories mentioning "${name}"...\n`);
+
+      // Find memories mentioning the name that aren't linked to personality
+      const result = await pool.query<{ id: string; content: string; categories: string | null }>(
+        `SELECT
+          m.id,
+          m.content,
+          STRING_AGG(msl.summary_category, ', ') as categories
+        FROM memories m
+        LEFT JOIN memory_summary_links msl ON m.id = msl.memory_id
+        WHERE m.content ILIKE $1
+        GROUP BY m.id, m.content
+        HAVING NOT EXISTS (
+          SELECT 1 FROM memory_summary_links msl2
+          WHERE msl2.memory_id = m.id
+          AND msl2.summary_category = 'personality'
+        )
+        ORDER BY m.created_at DESC
+        LIMIT $2`,
+        [`%${name}%`, limit]
+      );
+
+      const memories = result.rows;
+
+      if (memories.length === 0) {
+        console.log(`✅ No memories mentioning "${name}" need reclassification.`);
+        console.log('   All relevant memories are already linked to personality.\n');
+        return;
+      }
+
+      console.log(`Found ${memories.length} memories mentioning "${name}" not linked to personality:\n`);
+
+      for (const mem of memories) {
+        const preview = mem.content.length > 60
+          ? mem.content.substring(0, 60) + '...'
+          : mem.content;
+        const existing = mem.categories || '(none)';
+        console.log(`  📝 ${mem.id.substring(0, 8)}: ${preview}`);
+        console.log(`     Current categories: ${existing}`);
+      }
+
+      if (options.dryRun) {
+        console.log('\n🔶 DRY RUN - no changes made.');
+        console.log(`   Run without --dry-run to reclassify these memories.\n`);
+        return;
+      }
+
+      console.log('\n🔄 Reclassifying memories...\n');
+
+      let reclassified = 0;
+      let newLinks = 0;
+
+      for (const mem of memories) {
+        const preview = mem.content.length > 40
+          ? mem.content.substring(0, 40) + '...'
+          : mem.content;
+        process.stdout.write(`\r  [${reclassified + 1}/${memories.length}] ${preview.padEnd(45)}`);
+
+        // Re-run classification with enhanced identity detection
+        const classifications = await classifyMemoryCategories(mem.content);
+        if (classifications.length > 0) {
+          await linkMemoryToCategories(mem.id, classifications);
+          newLinks += classifications.length;
+        }
+        reclassified++;
+      }
+
+      console.log(`\n\n✅ Reclassification complete!`);
+      console.log(`   Memories processed: ${reclassified}`);
+      console.log(`   Category links created/updated: ${newLinks}`);
+
+      // Optionally regenerate personality summary
+      if (options.regenerate) {
+        console.log('\n🔄 Regenerating personality summary...');
+        const genResult = await generateSummary('personality');
+        console.log(`   ✅ Personality summary updated (v${genResult.summary.version})`);
+        console.log(`   Memories incorporated: ${genResult.memoriesProcessed}`);
+      } else {
+        console.log(`\n💡 Run 'squire summary personality --regenerate' to update the personality summary.`);
+      }
+
+      console.log('');
+    } catch (error) {
+      console.error('Reclassification failed:', error);
+      process.exit(1);
+    } finally {
+      await closePool();
+    }
+  });
+
+/**
  * beliefs - List all beliefs
  */
 program
