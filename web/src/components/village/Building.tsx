@@ -6,7 +6,7 @@
 // Renders a memory as a 3D building using GLTF models
 // P3-T7: Performance optimizations with memoization and LOD
 
-import { memo, useRef, useMemo, useCallback } from 'react';
+import { memo, useRef, useMemo, useCallback, Suspense } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Detailed } from '@react-three/drei';
 import type { Group, Mesh } from 'three';
@@ -123,20 +123,23 @@ export const Building = memo(function Building({
     >
       {/* Animated wrapper for hover lift */}
       <group ref={groupRef} position={[0, baseY, 0]}>
-        {/* LOD: child[0] shown when < 40 units, child[1] when >= 40 units */}
-        <Detailed distances={[0, 40]}>
-          {/* Near: Full GLTF model (shown when camera < 40 units) */}
-          <BuildingModel
-            buildingType={building.buildingType}
-            scale={baseScale}
-            emissiveIntensity={emissiveIntensity}
-            emissiveColor={building.color}
-            castShadow
-            receiveShadow
-          />
-          {/* Far: Simple box geometry (shown when camera >= 40 units) */}
-          <SimpleBuilding scale={baseScale} color={building.color} />
-        </Detailed>
+        {/* Suspense MUST wrap Detailed, not be inside children - otherwise LOD breaks */}
+        <Suspense fallback={<SimpleBuilding scale={baseScale} color={building.color} />}>
+          {/* LOD: child[0] shown when < 40 units, child[1] when >= 40 units */}
+          <Detailed distances={[0, 40]}>
+            {/* Near: Full GLTF model (shown when camera < 40 units) */}
+            <BuildingModel
+              buildingType={building.buildingType}
+              scale={baseScale}
+              emissiveIntensity={emissiveIntensity}
+              emissiveColor={building.color}
+              castShadow
+              receiveShadow
+            />
+            {/* Far: Simple box geometry (shown when camera >= 40 units) */}
+            <SimpleBuilding scale={baseScale} color={building.color} />
+          </Detailed>
+        </Suspense>
       </group>
     </group>
   );

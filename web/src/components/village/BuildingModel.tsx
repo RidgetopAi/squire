@@ -129,7 +129,22 @@ function FallbackBox({
  *   emissiveColor="#f472b6"
  * />
  */
+/**
+ * BuildingModel - Renders a GLTF model for a building type
+ * 
+ * NOTE: Does NOT include Suspense - caller must wrap in Suspense if needed.
+ * This is important for LOD (Detailed) compatibility where Suspense inside
+ * children breaks the distance-based visibility logic.
+ */
 export function BuildingModel(props: BuildingModelProps) {
+  return <GLTFModel {...props} />;
+}
+
+/**
+ * BuildingModelWithSuspense - BuildingModel wrapped in Suspense
+ * Use this when NOT inside a Detailed/LOD component
+ */
+export function BuildingModelWithSuspense(props: BuildingModelProps) {
   return (
     <Suspense
       fallback={
