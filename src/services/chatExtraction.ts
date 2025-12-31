@@ -1087,70 +1087,10 @@ export async function processMessageRealTime(message: string): Promise<{
     identityExtracted: null as { name: string; memoryId: string } | null,
   };
 
-  // === IDENTITY DETECTION (HIGHEST PRIORITY) ===
-  // Detect self-introductions immediately and create identity memory
-  const identityPatterns = [
-    /(?:^|\s)(?:i'?m|i am|my name is|call me|this is)\s+([A-Z][a-z]+)(?:\s|$|,|\.)/i,
-    /(?:^|\s)(?:hello|hi|hey),?\s+(?:i'?m|i am)\s+([A-Z][a-z]+)(?:\s|$|,|\.)/i,
-  ];
-
-  for (const pattern of identityPatterns) {
-    const match = message.match(pattern);
-    if (match && match[1]) {
-      const name = match[1];
-      // Validate it looks like a name (not a common word)
-      const commonWords = ['here', 'there', 'ready', 'done', 'back', 'home', 'good', 'fine', 'great', 'sorry', 'sure', 'happy', 'excited', 'interested', 'curious', 'wondering', 'thinking', 'going', 'looking', 'working', 'trying'];
-      if (!commonWords.includes(name.toLowerCase())) {
-        try {
-          // Check if we already have this identity stored
-          const personalitySummary = await getSummary('personality');
-          const nameAlreadyKnown = personalitySummary?.content?.toLowerCase().includes(`name is ${name.toLowerCase()}`);
-
-          if (!nameAlreadyKnown) {
-            // Create high-salience identity memory
-            const memoryContent = `The user's name is ${name}`;
-            const { memory } = await createMemory({
-              content: memoryContent,
-              source: 'chat',
-              content_type: 'identity',
-              source_metadata: {
-                extraction_type: 'identity',
-                real_time: true,
-                salience_hint: 10,
-              },
-            });
-
-            // Force high salience on the memory
-            await pool.query(
-              `UPDATE memories SET salience_score = 10.0 WHERE id = $1`,
-              [memory.id]
-            );
-
-            // Link to personality category with highest relevance
-            await linkMemoryToCategories(memory.id, [{
-              category: 'personality',
-              relevance: 1.0,
-              reason: 'User self-introduction - core identity',
-            }]);
-
-            // Update personality summary to include name
-            if (personalitySummary) {
-              const updatedContent = personalitySummary.content
-                ? `Your name is ${name}. ${personalitySummary.content.replace(/^Your name is \w+\.\s*/i, '')}`
-                : `Your name is ${name}.`;
-              await updateSummary('personality', updatedContent, 'real-time-extraction', 0);
-            }
-
-            result.identityExtracted = { name, memoryId: memory.id };
-            console.log(`[RealTimeExtraction] Extracted identity: "${name}" with memory ${memory.id}`);
-          }
-        } catch (error) {
-          console.error('[RealTimeExtraction] Identity extraction error:', error);
-        }
-        break; // Only extract one name per message
-      }
-    }
-  }
+  // === IDENTITY & RELATIONSHIP DETECTION (HIGHEST PRIORITY) ===
+  // Detect self-introductions and key relationships immediately
+  await extractIdentityRealTime(message, result);
+  await extractRelationshipsRealTime(message);
 
   // Quick keyword checks to avoid unnecessary LLM calls
   const commitmentKeywords = /\b(need to|have to|should|must|want to|going to|will|promise|commit|schedule|plan to|deadline|by|due|tomorrow|next week|today)\b/i;
@@ -1338,6 +1278,262 @@ export async function processMessageRealTime(message: string): Promise<{
   }
 
   return result;
+}
+
+// === REAL-TIME IDENTITY HELPERS ===
+
+/**
+ * Extract user's name from self-introductions with proper replacement
+ * Handles "Actually I'm X" / "My name is X" scenarios
+ */
+async function extractIdentityRealTime(
+  message: string,
+  result: { identityExtracted: { name: string; memoryId: string } | null }
+): Promise<void> {
+  const namePatterns = [
+    /(?:^|\s)(?:i'?m|i am|my name is|call me|this is)\s+([A-Z][a-z]+)(?:\s|$|,|\.)/i,
+    /(?:^|\s)(?:hello|hi|hey),?\s+(?:i'?m|i am)\s+([A-Z][a-z]+)(?:\s|$|,|\.)/i,
+    /(?:^|\s)(?:actually|no,?)\s+(?:i'?m|i am|my name is|it's)\s+([A-Z][a-z]+)(?:\s|$|,|\.)/i,
+  ];
+
+  const commonWords = [
+    'here', 'there', 'ready', 'done', 'back', 'home', 'good', 'fine', 'great',
+    'sorry', 'sure', 'happy', 'excited', 'interested', 'curious', 'wondering',
+    'thinking', 'going', 'looking', 'working', 'trying', 'just', 'really',
+  ];
+
+  for (const pattern of namePatterns) {
+    const match = message.match(pattern);
+    if (match && match[1]) {
+      const newName = match[1];
+      if (commonWords.includes(newName.toLowerCase())) continue;
+
+      try {
+        const personalitySummary = await getSummary('personality');
+        const summaryContent = personalitySummary?.content || '';
+
+        // Check if this exact name is already known
+        const nameAlreadyKnown =
+          summaryContent.toLowerCase().includes(`name is ${newName.toLowerCase()}`) ||
+          summaryContent.toLowerCase().includes(`you're ${newName.toLowerCase()}`) ||
+          summaryContent.toLowerCase().includes(`you are ${newName.toLowerCase()}`);
+
+        if (nameAlreadyKnown) {
+          console.log(`[RealTimeExtraction] Name "${newName}" already known, skipping`);
+          return;
+        }
+
+        // Check if a DIFFERENT name exists (for replacement scenario)
+        const existingNameMatch = summaryContent.match(
+          /(?:Your name is|You're|You are)\s+([A-Z][a-z]+)/i
+        );
+        const existingName = existingNameMatch ? existingNameMatch[1] : null;
+
+        // If different name exists, we're doing a replacement
+        if (existingName && existingName.toLowerCase() !== newName.toLowerCase()) {
+          console.log(`[RealTimeExtraction] Replacing name "${existingName}" with "${newName}"`);
+
+          // Archive old name memories (set low salience so they fade)
+          await pool.query(
+            `UPDATE memories
+             SET salience_score = 0.5,
+                 source_metadata = jsonb_set(
+                   COALESCE(source_metadata, '{}'::jsonb),
+                   '{superseded_by}',
+                   $2::jsonb
+                 )
+             WHERE content ILIKE $1
+               AND content_type = 'identity'`,
+            [`%user's name is ${existingName}%`, JSON.stringify(newName)]
+          );
+        }
+
+        // Create new identity memory
+        const memoryContent = `The user's name is ${newName}`;
+        const { memory } = await createMemory({
+          content: memoryContent,
+          source: 'chat',
+          content_type: 'identity',
+          source_metadata: {
+            extraction_type: 'identity',
+            real_time: true,
+            salience_hint: 10,
+            replaces: existingName || undefined,
+          },
+        });
+
+        // Force high salience
+        await pool.query(
+          `UPDATE memories SET salience_score = 10.0 WHERE id = $1`,
+          [memory.id]
+        );
+
+        // Link to personality category
+        await linkMemoryToCategories(memory.id, [{
+          category: 'personality',
+          relevance: 1.0,
+          reason: existingName
+            ? `User name update: ${existingName} → ${newName}`
+            : 'User self-introduction - core identity',
+        }]);
+
+        // Update personality summary - handle multiple formats
+        if (personalitySummary) {
+          let updatedContent = summaryContent;
+
+          // Replace various name patterns
+          updatedContent = updatedContent
+            .replace(/Your name is \w+\.\s*/gi, '')
+            .replace(/You're (\w+),/gi, `You're ${newName},`)
+            .replace(/You're (\w+)\./gi, `You're ${newName}.`)
+            .replace(/You are (\w+),/gi, `You are ${newName},`)
+            .replace(/You are (\w+)\./gi, `You are ${newName}.`);
+
+          // If no replacement happened (name not in expected format), prepend
+          if (!updatedContent.toLowerCase().includes(newName.toLowerCase())) {
+            updatedContent = `Your name is ${newName}. ${updatedContent}`;
+          }
+
+          await updateSummary('personality', updatedContent.trim(), 'real-time-extraction', 0);
+        }
+
+        result.identityExtracted = { name: newName, memoryId: memory.id };
+        console.log(`[RealTimeExtraction] Extracted identity: "${newName}" with memory ${memory.id}`);
+        return;
+      } catch (error) {
+        console.error('[RealTimeExtraction] Identity extraction error:', error);
+      }
+    }
+  }
+}
+
+/**
+ * Extract key relationships in real-time (spouse, children, job, age)
+ * These are high-value identity facts that shouldn't wait for consolidation
+ */
+async function extractRelationshipsRealTime(message: string): Promise<void> {
+  const relationshipPatterns: Array<{
+    pattern: RegExp;
+    template: (match: RegExpMatchArray) => string;
+    categories: Array<{ category: 'personality' | 'relationships'; relevance: number }>;
+  }> = [
+    // Spouse patterns
+    {
+      pattern: /my (?:wife|spouse|partner)(?:'s name)? is (\w+)/i,
+      template: (m) => `The user's wife/partner is named ${m[1]}`,
+      categories: [
+        { category: 'personality', relevance: 0.9 },
+        { category: 'relationships', relevance: 1.0 },
+      ],
+    },
+    {
+      pattern: /my (?:husband|spouse|partner)(?:'s name)? is (\w+)/i,
+      template: (m) => `The user's husband/partner is named ${m[1]}`,
+      categories: [
+        { category: 'personality', relevance: 0.9 },
+        { category: 'relationships', relevance: 1.0 },
+      ],
+    },
+    {
+      pattern: /(?:i'm|i am) married to (\w+)/i,
+      template: (m) => `The user is married to ${m[1]}`,
+      categories: [
+        { category: 'personality', relevance: 0.9 },
+        { category: 'relationships', relevance: 1.0 },
+      ],
+    },
+    // Children patterns
+    {
+      pattern: /my (?:son|daughter|child)(?:'s name)? is (\w+)/i,
+      template: (m) => `The user has a child named ${m[1]}`,
+      categories: [
+        { category: 'personality', relevance: 0.8 },
+        { category: 'relationships', relevance: 1.0 },
+      ],
+    },
+    {
+      pattern: /i have (?:a )?(\d+) (?:kids?|children)/i,
+      template: (m) => `The user has ${m[1]} children`,
+      categories: [
+        { category: 'personality', relevance: 0.9 },
+        { category: 'relationships', relevance: 0.8 },
+      ],
+    },
+    // Job patterns
+    {
+      pattern: /i (?:work|am employed) (?:at|for) (.+?)(?:\.|,|$)/i,
+      template: (m) => `The user works at ${(m[1] || '').trim()}`,
+      categories: [{ category: 'personality', relevance: 1.0 }],
+    },
+    {
+      pattern: /(?:i'm|i am) (?:a|an) (.+?) (?:at|for|by profession)/i,
+      template: (m) => `The user is a ${(m[1] || '').trim()}`,
+      categories: [{ category: 'personality', relevance: 1.0 }],
+    },
+    // Age patterns
+    {
+      pattern: /(?:i'm|i am) (\d+) (?:years? old)?/i,
+      template: (m) => `The user is ${m[1] || ''} years old`,
+      categories: [{ category: 'personality', relevance: 1.0 }],
+    },
+    // Location patterns
+    {
+      pattern: /i live in (.+?)(?:\.|,|$)/i,
+      template: (m) => `The user lives in ${(m[1] || '').trim()}`,
+      categories: [{ category: 'personality', relevance: 0.9 }],
+    },
+  ];
+
+  for (const { pattern, template, categories } of relationshipPatterns) {
+    const match = message.match(pattern);
+    if (match) {
+      const content = template(match);
+
+      try {
+        // Check if we already have this info stored
+        const existing = await pool.query(
+          `SELECT id FROM memories
+           WHERE content ILIKE $1
+           AND created_at > NOW() - INTERVAL '30 days'
+           LIMIT 1`,
+          [`%${content.substring(0, 30)}%`]
+        );
+
+        if (existing.rows.length > 0) {
+          console.log(`[RealTimeExtraction] Relationship already known: "${content.substring(0, 40)}..."`);
+          continue;
+        }
+
+        // Create memory
+        const { memory } = await createMemory({
+          content,
+          source: 'chat',
+          content_type: 'identity',
+          source_metadata: {
+            extraction_type: 'relationship',
+            real_time: true,
+            salience_hint: 8,
+          },
+        });
+
+        // Set high salience
+        await pool.query(
+          `UPDATE memories SET salience_score = 8.0 WHERE id = $1`,
+          [memory.id]
+        );
+
+        // Link to categories
+        await linkMemoryToCategories(
+          memory.id,
+          categories.map((c) => ({ ...c, reason: 'Real-time relationship extraction' }))
+        );
+
+        console.log(`[RealTimeExtraction] Extracted relationship: "${content}"`);
+      } catch (error) {
+        console.error('[RealTimeExtraction] Relationship extraction error:', error);
+      }
+    }
+  }
 }
 
 /**
