@@ -11,7 +11,7 @@ import { complete, type LLMMessage } from '../providers/llm.js';
 import { config } from '../config/index.js';
 import { createMemory } from './memories.js';
 import { processMemoryForBeliefs } from './beliefs.js';
-import { classifyMemoryCategories, linkMemoryToCategories } from './summaries.js';
+import { classifyMemoryCategories, linkMemoryToCategories, getSummary, updateSummary } from './summaries.js';
 import { createCommitment } from './commitments.js';
 import { createStandaloneReminder, createScheduledReminder } from './reminders.js';
 import { processMessagesForResolutions, type ResolutionCandidate } from './resolution.js';
@@ -68,8 +68,19 @@ Your job is to identify information worth remembering long-term:
 - Important events they've discussed
 - Preferences they've expressed
 
+CRITICAL - IDENTITY EXTRACTION:
+When the user introduces themselves or states their name (e.g., "I'm Brian", "My name is Brian", "Hello I'm Sarah"),
+you MUST extract an explicit identity fact: "The user's name is [NAME]" with salience_hint: 10.
+This is the HIGHEST priority extraction - never skip self-introductions.
+
+Similarly, when they mention key relationships with names:
+- "My wife is Sarah" → "The user's wife is named Sarah" (salience_hint: 8)
+- "My son Jake" → "The user has a son named Jake" (salience_hint: 8)
+
+Always use "The user" format for identity and personal facts to ensure proper categorization.
+
 Skip:
-- Greetings and small talk ("hello", "thanks", "bye")
+- Generic greetings without identity info ("hello", "thanks", "bye")
 - Meta-conversation about the AI/chat itself
 - Questions without meaningful context
 - Repeated information (only extract once)
@@ -77,16 +88,27 @@ Skip:
 Return a JSON array of memories to extract. Each memory should be a clear, standalone statement.
 
 Example input:
+User: Hello I'm Brian
 User: I've been working on this AI memory project called Squire for about 2 months now
-User: My wife Sarah thinks I spend too much time coding
-User: I really want to ship this by January
+User: My wife Sherrie thinks I spend too much time coding
 
 Example output:
 [
-  {"content": "Brian has been working on an AI memory project called Squire for approximately 2 months", "type": "fact", "salience_hint": 7},
-  {"content": "Brian's wife is named Sarah", "type": "fact", "salience_hint": 6},
-  {"content": "Sarah thinks Brian spends too much time coding", "type": "fact", "salience_hint": 5},
-  {"content": "Brian wants to ship Squire by January", "type": "goal", "salience_hint": 8}
+  {"content": "The user's name is Brian", "type": "fact", "salience_hint": 10},
+  {"content": "The user has been working on an AI memory project called Squire for approximately 2 months", "type": "fact", "salience_hint": 7},
+  {"content": "The user's wife is named Sherrie", "type": "fact", "salience_hint": 8},
+  {"content": "Sherrie thinks the user spends too much time coding", "type": "fact", "salience_hint": 5}
+]
+
+Example input:
+User: I really want to ship this by January
+User: I'm 56 years old and work at Elias Wilf
+
+Example output:
+[
+  {"content": "The user wants to ship their project by January", "type": "goal", "salience_hint": 8},
+  {"content": "The user is 56 years old", "type": "fact", "salience_hint": 9},
+  {"content": "The user works at Elias Wilf", "type": "fact", "salience_hint": 8}
 ]
 
 If there's nothing worth remembering, return: []
@@ -1054,6 +1076,7 @@ export async function processMessageRealTime(message: string): Promise<{
   noteCreated: { id: string; title: string | null; content: string } | null;
   listCreated: { id: string; name: string } | null;
   listItemCreated: { id: string; list_id: string; list_name: string; content: string } | null;
+  identityExtracted: { name: string; memoryId: string } | null;
 }> {
   const result = {
     commitmentCreated: null as { id: string; title: string } | null,
@@ -1061,7 +1084,73 @@ export async function processMessageRealTime(message: string): Promise<{
     noteCreated: null as { id: string; title: string | null; content: string } | null,
     listCreated: null as { id: string; name: string } | null,
     listItemCreated: null as { id: string; list_id: string; list_name: string; content: string } | null,
+    identityExtracted: null as { name: string; memoryId: string } | null,
   };
+
+  // === IDENTITY DETECTION (HIGHEST PRIORITY) ===
+  // Detect self-introductions immediately and create identity memory
+  const identityPatterns = [
+    /(?:^|\s)(?:i'?m|i am|my name is|call me|this is)\s+([A-Z][a-z]+)(?:\s|$|,|\.)/i,
+    /(?:^|\s)(?:hello|hi|hey),?\s+(?:i'?m|i am)\s+([A-Z][a-z]+)(?:\s|$|,|\.)/i,
+  ];
+
+  for (const pattern of identityPatterns) {
+    const match = message.match(pattern);
+    if (match && match[1]) {
+      const name = match[1];
+      // Validate it looks like a name (not a common word)
+      const commonWords = ['here', 'there', 'ready', 'done', 'back', 'home', 'good', 'fine', 'great', 'sorry', 'sure', 'happy', 'excited', 'interested', 'curious', 'wondering', 'thinking', 'going', 'looking', 'working', 'trying'];
+      if (!commonWords.includes(name.toLowerCase())) {
+        try {
+          // Check if we already have this identity stored
+          const personalitySummary = await getSummary('personality');
+          const nameAlreadyKnown = personalitySummary?.content?.toLowerCase().includes(`name is ${name.toLowerCase()}`);
+
+          if (!nameAlreadyKnown) {
+            // Create high-salience identity memory
+            const memoryContent = `The user's name is ${name}`;
+            const { memory } = await createMemory({
+              content: memoryContent,
+              source: 'chat',
+              content_type: 'identity',
+              source_metadata: {
+                extraction_type: 'identity',
+                real_time: true,
+                salience_hint: 10,
+              },
+            });
+
+            // Force high salience on the memory
+            await pool.query(
+              `UPDATE memories SET salience_score = 10.0 WHERE id = $1`,
+              [memory.id]
+            );
+
+            // Link to personality category with highest relevance
+            await linkMemoryToCategories(memory.id, [{
+              category: 'personality',
+              relevance: 1.0,
+              reason: 'User self-introduction - core identity',
+            }]);
+
+            // Update personality summary to include name
+            if (personalitySummary) {
+              const updatedContent = personalitySummary.content
+                ? `Your name is ${name}. ${personalitySummary.content.replace(/^Your name is \w+\.\s*/i, '')}`
+                : `Your name is ${name}.`;
+              await updateSummary('personality', updatedContent, 'real-time-extraction', 0);
+            }
+
+            result.identityExtracted = { name, memoryId: memory.id };
+            console.log(`[RealTimeExtraction] Extracted identity: "${name}" with memory ${memory.id}`);
+          }
+        } catch (error) {
+          console.error('[RealTimeExtraction] Identity extraction error:', error);
+        }
+        break; // Only extract one name per message
+      }
+    }
+  }
 
   // Quick keyword checks to avoid unnecessary LLM calls
   const commitmentKeywords = /\b(need to|have to|should|must|want to|going to|will|promise|commit|schedule|plan to|deadline|by|due|tomorrow|next week|today)\b/i;

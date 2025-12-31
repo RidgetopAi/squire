@@ -35,7 +35,9 @@ type TypedIO = Server<ClientToServerEvents, ServerToClientEvents, object, Socket
 const activeStreams = new Map<string, AbortController>();
 
 // Auto-sleep configuration
-const AUTO_SLEEP_HOURS = 1; // Trigger consolidation after 1 hour of inactivity
+// Reduced from 1 hour to 15 minutes to ensure memories are extracted more promptly
+// This is critical for identity information and conversational context
+const AUTO_SLEEP_HOURS = 0.25; // Trigger consolidation after 15 minutes of inactivity
 
 /**
  * Check if auto-sleep should trigger based on last activity

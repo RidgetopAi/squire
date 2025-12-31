@@ -572,6 +572,8 @@ export async function generateContext(
 
   if (queryEmbedding) {
     const embeddingStr = `[${queryEmbedding.join(',')}]`;
+    // When we have a query, ORDER BY SIMILARITY to get truly relevant memories
+    // Minimum similarity threshold of 0.25 to exclude unrelated content
     memoriesQuery = `
       SELECT
         id, content, created_at, salience_score, current_strength,
@@ -581,7 +583,8 @@ export async function generateContext(
         AND salience_score >= $2
         AND current_strength >= $3
         AND created_at >= $4
-      ORDER BY salience_score DESC, created_at DESC
+        AND 1 - (embedding <=> $1::vector) >= 0.25
+      ORDER BY similarity DESC, salience_score DESC
       LIMIT 100
     `;
     queryParams = [embeddingStr, profile.min_salience, profile.min_strength, lookbackDate];
@@ -617,10 +620,16 @@ export async function generateContext(
     );
 
     // Categorize based on primary characteristic
+    // When there's a query, high_salience still requires reasonable similarity
     let category: 'high_salience' | 'relevant' | 'recent';
-    if (row.salience_score >= 6.0) {
+    const hasGoodSimilarity = row.similarity && row.similarity >= 0.35;
+    const hasHighSalience = row.salience_score >= 6.0;
+
+    if (hasHighSalience && (hasGoodSimilarity || !row.similarity)) {
+      // High salience AND (similar OR no query)
       category = 'high_salience';
-    } else if (row.similarity && row.similarity >= 0.5) {
+    } else if (row.similarity && row.similarity >= 0.4) {
+      // Good semantic match
       category = 'relevant';
     } else {
       category = 'recent';

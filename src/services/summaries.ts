@@ -57,21 +57,44 @@ export interface MemorySummaryLink {
 // === CATEGORY CLASSIFICATION ===
 
 /**
+ * Check if content contains identity-related patterns
+ * Returns true if this is clearly about user identity
+ */
+function isIdentityContent(content: string): boolean {
+  const identityPatterns = [
+    /the user'?s? name is/i,
+    /user is named/i,
+    /user'?s? (?:wife|husband|spouse|partner|son|daughter|child|mother|father|parent|sibling|brother|sister) is (?:named )?/i,
+    /the user is \d+ years? old/i,
+    /the user works at/i,
+    /the user (?:is|has|works|lives)/i,
+  ];
+  return identityPatterns.some(pattern => pattern.test(content));
+}
+
+/**
  * Classify which categories a memory touches using LLM
+ * With pre-check for identity content
  */
 export async function classifyMemoryCategories(
   content: string
 ): Promise<CategoryClassification[]> {
+  // Pre-check: If this is clearly identity content, ensure personality is included
+  const isIdentity = isIdentityContent(content);
+
   const systemPrompt = `You are a memory classifier. Given a memory/observation, determine which categories it touches.
 
 Categories:
-- personality: Identity, self-story, who you are, personal traits, values
+- personality: Identity, self-story, who you are, personal traits, values, name, age, job, core facts about the user
 - goals: Aspirations, objectives, things being worked toward
 - relationships: People, social connections, family, friends, colleagues
 - projects: Active work, tasks, professional or personal projects
 - interests: Hobbies, passions, things enjoyed, entertainment preferences
 - wellbeing: Health, mood, emotional states, physical/mental wellness
 - commitments: Promises, obligations, things owed to others or by others
+
+IMPORTANT: Memories about the user's name, age, job, or core identity MUST include "personality" with high relevance (0.9+).
+Memories about the user's relationships (wife, husband, children) should include BOTH "personality" AND "relationships".
 
 Return ONLY a JSON array of relevant categories with relevance scores (0.0-1.0).
 Only include categories that are clearly relevant (relevance >= 0.3).
@@ -92,6 +115,10 @@ Which categories does this memory touch? Return JSON array only.`;
     // Parse JSON response
     const jsonMatch = response.match(/\[[\s\S]*?\]/);
     if (!jsonMatch) {
+      // If LLM fails but we detected identity, return personality
+      if (isIdentity) {
+        return [{ category: 'personality', relevance: 1.0, reason: 'Identity content detected' }];
+      }
       return [];
     }
 
@@ -102,7 +129,7 @@ Which categories does this memory touch? Return JSON array only.`;
     }>;
 
     // Validate and filter
-    return classifications
+    let result = classifications
       .filter(
         (c) =>
           SUMMARY_CATEGORIES.includes(c.category as SummaryCategory) &&
@@ -113,8 +140,23 @@ Which categories does this memory touch? Return JSON array only.`;
         relevance: Math.min(1.0, Math.max(0.0, c.relevance)),
         reason: c.reason || '',
       }));
+
+    // Ensure identity content ALWAYS includes personality
+    if (isIdentity && !result.some(c => c.category === 'personality')) {
+      result.push({
+        category: 'personality',
+        relevance: 1.0,
+        reason: 'Identity content - forced inclusion',
+      });
+    }
+
+    return result;
   } catch (error) {
     console.error('Category classification failed:', error);
+    // Even on error, if we detected identity, return personality
+    if (isIdentity) {
+      return [{ category: 'personality', relevance: 1.0, reason: 'Identity content (fallback)' }];
+    }
     return [];
   }
 }
