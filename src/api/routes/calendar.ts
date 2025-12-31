@@ -5,6 +5,18 @@ import { listSyncEnabledAccounts } from '../../services/google/auth.js';
 
 const router = Router();
 
+/**
+ * Adjust all-day event times to noon UTC to prevent timezone date-shifting.
+ * All-day events are stored as midnight UTC, which can display as the previous
+ * day in western timezones. Setting to noon UTC keeps the date stable.
+ */
+function adjustAllDayTime(time: Date | null, allDay: boolean): Date | null {
+  if (!time || !allDay) return time;
+  const adjusted = new Date(time);
+  adjusted.setUTCHours(12, 0, 0, 0);
+  return adjusted;
+}
+
 export interface CalendarEvent {
   id: string;
   source: 'squire' | 'google';
@@ -77,8 +89,8 @@ router.get('/events', async (req: Request, res: Response): Promise<void> => {
             source: 'google',
             title: event.summary || '(No title)',
             description: event.description || null,
-            start: event.start_time,
-            end: event.end_time || null,
+            start: adjustAllDayTime(event.start_time, event.all_day) || event.start_time,
+            end: adjustAllDayTime(event.end_time, event.all_day),
             allDay: event.all_day,
             timezone: event.timezone || null,
             status: event.status,
@@ -327,8 +339,8 @@ async function getEventsInRange(start: Date, end: Date): Promise<CalendarEvent[]
           source: 'google',
           title: event.summary || '(No title)',
           description: event.description || null,
-          start: event.start_time,
-          end: event.end_time || null,
+          start: adjustAllDayTime(event.start_time, event.all_day) || event.start_time,
+          end: adjustAllDayTime(event.end_time, event.all_day),
           allDay: event.all_day,
           timezone: event.timezone || null,
           status: event.status,
