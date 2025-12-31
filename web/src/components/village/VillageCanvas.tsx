@@ -280,21 +280,21 @@ function VillageContent({
 
 export interface VillageCanvasProps {
   /** Callback when a building is selected */
-  onBuildingSelect?: (memoryId: string | null) => void;
+  onBuildingSelect?: (building: VillageBuilding | null) => void;
+  /** Callback when a building is hovered */
+  onBuildingHover?: (building: VillageBuilding | null) => void;
 }
 
 /**
  * Main village canvas content
  * Fetches graph data and renders the village layout
  */
-export function VillageCanvas({ onBuildingSelect }: VillageCanvasProps) {
+export function VillageCanvas({ onBuildingSelect, onBuildingHover }: VillageCanvasProps) {
   // Fetch layout data
   const { layout, isLoading, isError, isEmpty } = useVillageLayout({
     maxBuildings: 120,
     minSalience: 0,
   });
-
-  console.log('[VillageCanvas] State:', { isLoading, isError, isEmpty, buildings: layout.buildings.length });
 
   // Selection state
   const {
@@ -308,15 +308,17 @@ export function VillageCanvas({ onBuildingSelect }: VillageCanvasProps) {
     const isAlreadySelected = selection.buildingId === building.id;
     const newBuildingId = isAlreadySelected ? null : building.id;
     const newMemoryId = isAlreadySelected ? null : building.memoryId;
+    const newBuilding = isAlreadySelected ? null : building;
 
     selectBuilding(newBuildingId, newMemoryId);
-    onBuildingSelect?.(newMemoryId);
+    onBuildingSelect?.(newBuilding);
   }, [selection.buildingId, selectBuilding, onBuildingSelect]);
 
   // Handle building hover
   const handleBuildingHover = useCallback((building: VillageBuilding | null) => {
     hoverBuilding(building?.id ?? null);
-  }, [hoverBuilding]);
+    onBuildingHover?.(building);
+  }, [hoverBuilding, onBuildingHover]);
 
   // Default camera for loading/empty states
   const defaultBounds = { minX: -10, maxX: 10, minZ: -10, maxZ: 10 };
