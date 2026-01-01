@@ -23,7 +23,9 @@ import googleRouter from './routes/google.js';
 import calendarRouter from './routes/calendar.js';
 import notesRouter from './routes/notes.js';
 import listsRouter from './routes/lists.js';
+import identityRouter from './routes/identity.js';
 import { initScheduler, shutdownScheduler } from '../services/scheduler.js';
+import { migrateFromPersonalitySummary } from '../services/identity.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -66,6 +68,7 @@ app.use('/api/integrations/google', googleRouter);
 app.use('/api/calendar', calendarRouter);
 app.use('/api/notes', notesRouter);
 app.use('/api/lists', listsRouter);
+app.use('/api/identity', identityRouter);
 
 // 404 handler
 app.use((_req, res) => {
@@ -80,10 +83,20 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 
 const port = config.server.port;
 
-httpServer.listen(port, () => {
+httpServer.listen(port, async () => {
   console.log(`Squire API server running on http://localhost:${port}`);
   console.log(`Health check: http://localhost:${port}/api/health`);
   console.log(`Socket.IO enabled for real-time events`);
+
+  // Migrate user identity from personality summary if not already set
+  try {
+    const identity = await migrateFromPersonalitySummary();
+    if (identity) {
+      console.log(`User identity locked: ${identity.name}`);
+    }
+  } catch (error) {
+    console.error('Identity migration failed:', error);
+  }
 
   // Start the reminder scheduler
   initScheduler();

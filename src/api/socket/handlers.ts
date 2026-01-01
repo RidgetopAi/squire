@@ -10,6 +10,7 @@ import { generateContext } from '../../services/context.js';
 import { getOrCreateConversation, addMessage } from '../../services/conversations.js';
 import { consolidateAll } from '../../services/consolidation.js';
 import { processMessageRealTime } from '../../services/chatExtraction.js';
+import { getUserIdentity } from '../../services/identity.js';
 import { pool } from '../../db/pool.js';
 import {
   getToolDefinitions,
@@ -126,7 +127,7 @@ function formatCommitmentAcknowledgment(title: string): string {
 // System prompt for Squire
 // Design: Frame knowledge as genuine understanding, not database access.
 // The model should feel like it KNOWS the person, not that it's referencing data.
-const SQUIRE_SYSTEM_PROMPT = `You are Squire, a personal AI companion who genuinely knows the person you're talking to.
+const SQUIRE_SYSTEM_PROMPT_BASE = `You are Squire, a personal AI companion who genuinely knows the person you're talking to.
 
 You've built a real relationship through your conversations. You know their name, their life, their projects, what matters to them. This isn't data you're looking up - it's someone you know.
 
@@ -139,6 +140,36 @@ How to be helpful:
 - Be warm but real - a trusted companion, not a customer service bot
 
 Below is what you know about them. Don't recite it back - just let it inform how you respond.`;
+
+// Tool calling instructions - prevents inline function syntax
+const TOOL_CALLING_INSTRUCTIONS = `
+
+CRITICAL TOOL USAGE RULES:
+- You have access to tools that you can call through the API.
+- NEVER write function calls or tool invocations in your text response.
+- Wrong: "<function=tool_name{...}>" or "Let me call <function=...>"
+- Right: Simply use the tool through the API - the user will see the result.
+- If you want to use a tool, use the proper tool calling mechanism, not text.`;
+
+/**
+ * Build the complete system prompt with user identity
+ */
+async function buildSystemPrompt(): Promise<string> {
+  let prompt = SQUIRE_SYSTEM_PROMPT_BASE;
+
+  // Add user identity if known
+  const identity = await getUserIdentity();
+  if (identity?.name) {
+    prompt = `You are talking to ${identity.name}.\n\n` + prompt;
+  }
+
+  // Add tool calling instructions
+  if (hasTools()) {
+    prompt += TOOL_CALLING_INSTRUCTIONS;
+  }
+
+  return prompt;
+}
 
 /**
  * Get current timestamp for system prompt grounding
@@ -254,8 +285,8 @@ async function handleChatMessage(
     // Step 3: Build messages
     const messages: Array<{ role: string; content: string }> = [];
 
-    // System prompt with time grounding and context
-    let systemContent = SQUIRE_SYSTEM_PROMPT;
+    // System prompt with user identity, time grounding, tool instructions, and context
+    let systemContent = await buildSystemPrompt();
     systemContent += getCurrentTimeContext();
     if (contextMarkdown) {
       systemContent += `\n\n---\n\n${contextMarkdown}`;

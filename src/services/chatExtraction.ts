@@ -18,6 +18,7 @@ import { processMessagesForResolutions, type ResolutionCandidate } from './resol
 import { createNote } from './notes.js';
 import { createList, addItem, findListByName } from './lists.js';
 import { searchEntities } from './entities.js';
+import { getUserIdentity, setInitialIdentity } from './identity.js';
 
 // === TYPES ===
 
@@ -1380,11 +1381,23 @@ async function detectIdentityWithLLM(message: string): Promise<IdentityDetection
 /**
  * Extract user's name from self-introductions with LLM validation
  * Uses LLM to understand intent - no more regex false positives
+ *
+ * IMPORTANT: If identity is already locked, this function does NOTHING.
+ * Identity can only be changed via explicit /rename command.
  */
 async function extractIdentityRealTime(
   message: string,
   result: { identityExtracted: { name: string; memoryId: string } | null }
 ): Promise<void> {
+  // CRITICAL: Check if identity is already locked
+  // If locked, skip ALL identity detection - name is immutable
+  const existingIdentity = await getUserIdentity();
+  if (existingIdentity?.is_locked) {
+    // Identity is locked - do not attempt to detect or change name
+    // This is the core protection against accidental name changes
+    return;
+  }
+
   // Use LLM to detect identity - this is the robust approach
   const detection = await detectIdentityWithLLM(message);
 
@@ -1402,46 +1415,20 @@ async function extractIdentityRealTime(
   const newName = detection.name;
 
   try {
-    const personalitySummary = await getSummary('personality');
-    const summaryContent = personalitySummary?.content || '';
-
-    // Check if this exact name is already known
-    const nameAlreadyKnown =
-      summaryContent.toLowerCase().includes(`name is ${newName.toLowerCase()}`) ||
-      summaryContent.toLowerCase().includes(`you're ${newName.toLowerCase()}`) ||
-      summaryContent.toLowerCase().includes(`you are ${newName.toLowerCase()}`);
-
-    if (nameAlreadyKnown) {
-      console.log(`[RealTimeExtraction] Name "${newName}" already known, skipping`);
+    // If we already have an identity (but it wasn't locked), don't override
+    // This is a safety check - normally identity should be locked
+    if (existingIdentity) {
+      console.log(`[RealTimeExtraction] Identity exists but unlocked: "${existingIdentity.name}" - not overriding`);
       return;
     }
 
-    // Check if a DIFFERENT name exists (for replacement scenario)
-    const existingNameMatch = summaryContent.match(
-      /(?:Your name is|You're|You are)\s+([A-Z][a-z]+)/i
-    );
-    const existingName = existingNameMatch ? existingNameMatch[1] : null;
+    // First-time identity detection - set and lock it
+    console.log(`[RealTimeExtraction] First-time identity detected: "${newName}" (confidence: ${detection.confidence})`);
 
-    // If different name exists, we're doing a replacement
-    if (existingName && existingName.toLowerCase() !== newName.toLowerCase()) {
-      console.log(`[RealTimeExtraction] LLM validated replacement: "${existingName}" → "${newName}" (confidence: ${detection.confidence})`);
+    // Create the locked identity record
+    await setInitialIdentity(newName, 'auto_detection');
 
-      // Archive old name memories (set low salience so they fade)
-      await pool.query(
-        `UPDATE memories
-         SET salience_score = 0.5,
-             source_metadata = jsonb_set(
-               COALESCE(source_metadata, '{}'::jsonb),
-               '{superseded_by}',
-               $2::jsonb
-             )
-         WHERE content ILIKE $1
-           AND content_type = 'identity'`,
-        [`%user's name is ${existingName}%`, JSON.stringify(newName)]
-      );
-    }
-
-    // Create new identity memory
+    // Create identity memory
     const memoryContent = `The user's name is ${newName}`;
     const { memory } = await createMemory({
       content: memoryContent,
@@ -1451,10 +1438,10 @@ async function extractIdentityRealTime(
         extraction_type: 'identity',
         real_time: true,
         salience_hint: 10,
-        replaces: existingName || undefined,
         llm_validated: true,
         llm_confidence: detection.confidence,
         llm_reasoning: detection.reasoning,
+        identity_locked: true,
       },
     });
 
@@ -1468,33 +1455,21 @@ async function extractIdentityRealTime(
     await linkMemoryToCategories(memory.id, [{
       category: 'personality',
       relevance: 1.0,
-      reason: existingName
-        ? `User name update: ${existingName} → ${newName} (LLM validated)`
-        : 'User self-introduction - core identity (LLM validated)',
+      reason: 'User self-introduction - core identity (locked)',
     }]);
 
-    // Update personality summary - handle multiple formats
+    // Update personality summary with the name
+    const personalitySummary = await getSummary('personality');
     if (personalitySummary) {
-      let updatedContent = summaryContent;
-
-      // Replace various name patterns
-      updatedContent = updatedContent
-        .replace(/Your name is \w+\.\s*/gi, '')
-        .replace(/You're (\w+),/gi, `You're ${newName},`)
-        .replace(/You're (\w+)\./gi, `You're ${newName}.`)
-        .replace(/You are (\w+),/gi, `You are ${newName},`)
-        .replace(/You are (\w+)\./gi, `You are ${newName}.`);
-
-      // If no replacement happened (name not in expected format), prepend
-      if (!updatedContent.toLowerCase().includes(newName.toLowerCase())) {
-        updatedContent = `Your name is ${newName}. ${updatedContent}`;
+      const summaryContent = personalitySummary.content || '';
+      if (!summaryContent.toLowerCase().includes(newName.toLowerCase())) {
+        const updatedContent = `Your name is ${newName}. ${summaryContent}`;
+        await updateSummary('personality', updatedContent.trim(), 'real-time-extraction', 0);
       }
-
-      await updateSummary('personality', updatedContent.trim(), 'real-time-extraction', 0);
     }
 
     result.identityExtracted = { name: newName, memoryId: memory.id };
-    console.log(`[RealTimeExtraction] LLM-validated identity: "${newName}" (confidence: ${detection.confidence}) with memory ${memory.id}`);
+    console.log(`[RealTimeExtraction] Identity locked: "${newName}" - will never auto-change again`);
   } catch (error) {
     console.error('[RealTimeExtraction] Identity extraction error:', error);
   }
