@@ -552,64 +552,57 @@ export function generateProps(
     }
   });
 
-  // 2. Add trees around district edges
-  layout.districts.forEach((district, districtIdx) => {
-    const numTrees = Math.floor(district.buildingCount * treeDensity);
-    const { minX, maxX, minZ, maxZ } = district.bounds;
-    const padding = 3;
-
-    for (let i = 0; i < numTrees; i++) {
-      // Place trees at edges of district
-      const edge = i % 4;
-      let x: number, z: number;
-
-      switch (edge) {
-        case 0: // Top edge
-          x = minX - padding + Math.random() * (maxX - minX + padding * 2);
-          z = minZ - padding - Math.random() * 2;
-          break;
-        case 1: // Bottom edge
-          x = minX - padding + Math.random() * (maxX - minX + padding * 2);
-          z = maxZ + padding + Math.random() * 2;
-          break;
-        case 2: // Left edge
-          x = minX - padding - Math.random() * 2;
-          z = minZ - padding + Math.random() * (maxZ - minZ + padding * 2);
-          break;
-        default: // Right edge
-          x = maxX + padding + Math.random() * 2;
-          z = minZ - padding + Math.random() * (maxZ - minZ + padding * 2);
-      }
-
-      if (isOccupied(x, z) || !isOnValidTile(x, z)) continue;
-
-      props.push({
-        id: `tree-${district.category}-${i}`,
-        propType: TREE_TYPES[(districtIdx + i) % TREE_TYPES.length],
-        position: { x, z },
-        rotation: Math.random() * Math.PI * 2,
-        scale: 0.9 + Math.random() * 0.3,
-      });
-      addOccupied(x, z);
-    }
+  // 2. Add trees and rocks on valid hex tiles (edge areas of districts)
+  // Convert valid tiles to array for sampling
+  const validTileArray = Array.from(validHexTiles).map(key => {
+    const [q, r] = key.split(',').map(Number);
+    return hexToWorld({ q, r }, hexSize);
   });
+  
+  // Shuffle for random distribution (seeded by layout size for consistency)
+  const shuffled = [...validTileArray].sort(() => Math.random() - 0.5);
+  
+  // Place trees on outer tiles (those not occupied by buildings)
+  const numTrees = Math.floor(layout.buildings.length * treeDensity * 1.5);
+  let treeCount = 0;
+  for (let i = 0; i < shuffled.length && treeCount < numTrees; i++) {
+    const pos = shuffled[i];
+    // Add small random offset within the hex
+    const x = pos.x + (Math.random() - 0.5) * hexSize * 0.8;
+    const z = pos.z + (Math.random() - 0.5) * hexSize * 0.8;
+    
+    if (isOccupied(x, z)) continue;
+    
+    props.push({
+      id: `tree-${treeCount}`,
+      propType: TREE_TYPES[treeCount % TREE_TYPES.length],
+      position: { x, z },
+      rotation: Math.random() * Math.PI * 2,
+      scale: 0.9 + Math.random() * 0.3,
+    });
+    addOccupied(x, z);
+    treeCount++;
+  }
 
-  // 3. Add scattered rocks
+  // 3. Add scattered rocks on valid tiles
   const numRocks = Math.floor(layout.buildings.length * 0.15);
-  for (let i = 0; i < numRocks; i++) {
-    const x = layout.bounds.minX + Math.random() * (layout.bounds.maxX - layout.bounds.minX);
-    const z = layout.bounds.minZ + Math.random() * (layout.bounds.maxZ - layout.bounds.minZ);
+  let rockCount = 0;
+  for (let i = shuffled.length - 1; i >= 0 && rockCount < numRocks; i--) {
+    const pos = shuffled[i];
+    const x = pos.x + (Math.random() - 0.5) * hexSize * 0.6;
+    const z = pos.z + (Math.random() - 0.5) * hexSize * 0.6;
 
-    if (isOccupied(x, z) || !isOnValidTile(x, z)) continue;
+    if (isOccupied(x, z)) continue;
 
     props.push({
-      id: `rock-${i}`,
-      propType: ROCK_TYPES[i % ROCK_TYPES.length],
+      id: `rock-${rockCount}`,
+      propType: ROCK_TYPES[rockCount % ROCK_TYPES.length],
       position: { x, z },
       rotation: Math.random() * Math.PI * 2,
       scale: 0.7 + Math.random() * 0.6,
     });
     addOccupied(x, z);
+    rockCount++;
   }
 
   return props;
