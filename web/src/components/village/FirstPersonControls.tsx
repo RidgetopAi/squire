@@ -22,6 +22,9 @@ const WALK_SPEED = 5; // Units per second
 const SPRINT_SPEED = 10; // Sprint speed
 const INTERACTION_DISTANCE = 4; // Distance to highlight buildings
 
+// Module-level: persists across component remounts (mode switches)
+let lastWalkPosition: { x: number; z: number } | null = null;
+
 // ============================================
 // KEYBOARD STATE
 // ============================================
@@ -252,18 +255,27 @@ export function FirstPersonControls({
   const { camera } = useThree();
   const setPointerLocked = useSetPointerLocked();
   const keyboard = useKeyboardState();
-  const initializedRef = useRef(false);
 
   // Set initial camera position (only once on mount)
+  // Uses saved position if returning from fly mode, otherwise center of village
   useEffect(() => {
-    if (initializedRef.current) return;
-    initializedRef.current = true;
+    if (lastWalkPosition) {
+      // Returning from fly mode - restore saved position
+      camera.position.set(lastWalkPosition.x, EYE_HEIGHT, lastWalkPosition.z);
+    } else {
+      // First time entering walk mode - start at center
+      const centerX = initialPosition?.x ?? (bounds.minX + bounds.maxX) / 2;
+      const centerZ = initialPosition?.z ?? (bounds.minZ + bounds.maxZ) / 2;
+      camera.position.set(centerX, EYE_HEIGHT, centerZ);
+      camera.lookAt(centerX, EYE_HEIGHT, centerZ - 10);
+    }
 
-    const centerX = initialPosition?.x ?? (bounds.minX + bounds.maxX) / 2;
-    const centerZ = initialPosition?.z ?? (bounds.minZ + bounds.maxZ) / 2;
-    camera.position.set(centerX, EYE_HEIGHT, centerZ);
-    camera.lookAt(centerX, EYE_HEIGHT, centerZ - 10);
-  }, [camera, bounds, initialPosition]);
+    // Save position on unmount (for when returning from fly mode)
+    return () => {
+      lastWalkPosition = { x: camera.position.x, z: camera.position.z };
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps - only run once per mount
 
   // Handle pointer lock events
   const handleLock = useCallback(() => {
