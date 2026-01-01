@@ -185,6 +185,7 @@ function CameraRig({ bounds }: CameraRigProps) {
         maxDistance={100}
         maxPolarAngle={Math.PI / 2.1}
         minPolarAngle={0.2}
+        zoomSpeed={0.3}
       />
     </>
   );
