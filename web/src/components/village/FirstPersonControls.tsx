@@ -252,9 +252,13 @@ export function FirstPersonControls({
   const { camera } = useThree();
   const setPointerLocked = useSetPointerLocked();
   const keyboard = useKeyboardState();
+  const initializedRef = useRef(false);
 
-  // Set initial camera position
+  // Set initial camera position (only once on mount)
   useEffect(() => {
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+
     const centerX = initialPosition?.x ?? (bounds.minX + bounds.maxX) / 2;
     const centerZ = initialPosition?.z ?? (bounds.minZ + bounds.maxZ) / 2;
     camera.position.set(centerX, EYE_HEIGHT, centerZ);
