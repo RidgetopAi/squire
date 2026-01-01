@@ -6,7 +6,7 @@
 // Loads and renders GLTF models for buildings
 // Uses KayKit Medieval Hexagon Pack models
 
-import { Suspense, useMemo } from 'react';
+import { Suspense, useMemo, useEffect, useRef } from 'react';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import type { BuildingType } from '@/lib/types/village';
@@ -49,19 +49,19 @@ function GLTFModel({
 }: BuildingModelProps) {
   const config = getModelConfig(buildingType);
   const { scene } = useGLTF(config.path);
+  const materialsRef = useRef<THREE.MeshStandardMaterial[]>([]);
 
-  // Clone the scene so each instance is independent
+  // Clone the scene ONCE - stable reference prevents re-mounting
   const clonedScene = useMemo(() => {
     const clone = scene.clone(true);
+    const materials: THREE.MeshStandardMaterial[] = [];
 
-    // Apply emissive to all meshes for hover/select glow
+    // Clone materials once for independence, collect refs for updates
     clone.traverse((child) => {
       if (child instanceof THREE.Mesh && child.material) {
-        // Clone material to avoid affecting other instances
         const material = child.material.clone();
         if (material instanceof THREE.MeshStandardMaterial) {
-          material.emissive = new THREE.Color(emissiveColor);
-          material.emissiveIntensity = emissiveIntensity;
+          materials.push(material);
         }
         child.material = material;
         child.castShadow = castShadow;
@@ -69,8 +69,18 @@ function GLTFModel({
       }
     });
 
+    materialsRef.current = materials;
     return clone;
-  }, [scene, emissiveIntensity, emissiveColor, castShadow, receiveShadow]);
+  }, [scene, castShadow, receiveShadow]); // NO emissive deps - stable clone!
+
+  // Update emissive properties imperatively - no re-clone needed
+  useEffect(() => {
+    const color = new THREE.Color(emissiveColor);
+    materialsRef.current.forEach((material) => {
+      material.emissive = color;
+      material.emissiveIntensity = emissiveIntensity;
+    });
+  }, [emissiveIntensity, emissiveColor]);
 
   // Apply config transforms
   const finalScale = scale * config.scale;
