@@ -1,10 +1,14 @@
 'use client';
 
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useCallback, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useWebSocket } from '@/lib/hooks/useWebSocket';
 import { joinConversationRoom } from '@/lib/hooks/useWebSocket';
 import { initWebSocketListeners, useChatStore } from '@/lib/stores/chatStore';
+
+// Debounce delay for graph invalidation (ms)
+// Prevents rapid rebuilds during consolidation bursts
+const GRAPH_INVALIDATION_DEBOUNCE = 2000;
 
 interface WebSocketProviderProps {
   children: ReactNode;
@@ -36,7 +40,43 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
     useChatStore.getState().loadRecentConversation();
   }, []);
 
-  // Handle memory:created events - invalidate memory queries (P6-T5)
+  // Debounced graph invalidation ref
+  const graphInvalidationTimer = useRef<NodeJS.Timeout | null>(null);
+  const pendingGraphInvalidation = useRef(false);
+
+  // Debounced function to invalidate graph queries
+  const invalidateGraphQueries = useCallback(() => {
+    // Mark that we have a pending invalidation
+    pendingGraphInvalidation.current = true;
+
+    // Clear existing timer if any
+    if (graphInvalidationTimer.current) {
+      clearTimeout(graphInvalidationTimer.current);
+    }
+
+    // Set new debounced timer
+    graphInvalidationTimer.current = setTimeout(() => {
+      if (pendingGraphInvalidation.current) {
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[WebSocketProvider] Invalidating graph queries (debounced)');
+        }
+        // Invalidate all graph-related queries (visualization, stats, subgraphs)
+        queryClient.invalidateQueries({ queryKey: ['graph'] });
+        pendingGraphInvalidation.current = false;
+      }
+    }, GRAPH_INVALIDATION_DEBOUNCE);
+  }, [queryClient]);
+
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (graphInvalidationTimer.current) {
+        clearTimeout(graphInvalidationTimer.current);
+      }
+    };
+  }, []);
+
+  // Handle memory:created events - invalidate memory and graph queries
   useEffect(() => {
     const unsubscribe = onMemoryCreated((payload) => {
       if (process.env.NODE_ENV === 'development') {
@@ -45,10 +85,14 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 
       // Invalidate all memory-related queries so lists refresh
       queryClient.invalidateQueries({ queryKey: ['memories'] });
+
+      // Debounced invalidation of graph queries for Memory Village
+      // This prevents rapid rebuilds during consolidation bursts
+      invalidateGraphQueries();
     });
 
     return unsubscribe;
-  }, [onMemoryCreated, queryClient]);
+  }, [onMemoryCreated, queryClient, invalidateGraphQueries]);
 
   // Handle insight:created events - invalidate insight queries (P6-T5)
   useEffect(() => {

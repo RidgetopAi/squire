@@ -10,3 +10,4 @@ export { DistrictGround, VillageGround } from './DistrictGround';
 export { PropsLayer, OptimizedPropsLayer, InstancedPropGroup } from './InstancedProps';
 export type { PropPlacement } from './InstancedProps';
 export { VillagersLayer, VillagerFigure } from './Villager';
+export { FirstPersonControls } from './FirstPersonControls';

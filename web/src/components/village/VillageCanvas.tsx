@@ -5,18 +5,20 @@
 // ============================================
 // Main 3D scene content for Memory Village
 
-import { useCallback } from 'react';
-// useThree removed - using frameloop="always" now
-import { OrbitControls, PerspectiveCamera } from '@react-three/drei';
+import { useCallback, useState } from 'react';
+import { OrbitControls, PerspectiveCamera, Html } from '@react-three/drei';
 import { useVillageLayout, useVillageSelection } from '@/lib/hooks/useVillageLayout';
+import { useCameraMode } from '@/lib/stores';
 import { BuildingsLayer } from './Building';
 import { LightBeamsLayer } from './LightBeamRoad';
 import { VillageGround } from './DistrictGround';
 import { DISTRICT_EDGE_COLORS } from './HexTile';
 import { PropsLayer } from './InstancedProps';
 import { VillagersLayer } from './Villager';
+import { FirstPersonControls } from './FirstPersonControls';
 import { preloadAllBuildingModels, preloadAllPropModels } from '@/lib/village/models';
 import type { VillageBuilding, VillageLayout, VillageDistrict, VillageProp, VillageVillager } from '@/lib/types/village';
+import type { CameraMode } from '@/lib/stores';
 
 // Preload all GLTF models at module load time
 // This starts fetching models before the scene renders
@@ -155,9 +157,13 @@ function DistrictLights({ districts }: DistrictLightsProps) {
 
 interface CameraRigProps {
   bounds: VillageLayout['bounds'];
+  mode: CameraMode;
+  buildings: VillageBuilding[];
+  onBuildingProximity?: (building: VillageBuilding | null) => void;
+  onBuildingInteract?: (building: VillageBuilding) => void;
 }
 
-function CameraRig({ bounds }: CameraRigProps) {
+function CameraRig({ bounds, mode, buildings, onBuildingProximity, onBuildingInteract }: CameraRigProps) {
   // Calculate camera position based on layout bounds
   const centerX = (bounds.minX + bounds.maxX) / 2;
   const centerZ = (bounds.minZ + bounds.maxZ) / 2;
@@ -165,9 +171,30 @@ function CameraRig({ bounds }: CameraRigProps) {
   const rangeZ = bounds.maxZ - bounds.minZ;
   const maxRange = Math.max(rangeX, rangeZ, 20);
 
-  // Position camera to see entire village
+  // Position camera to see entire village (fly mode)
   const cameraDistance = maxRange * 0.8;
 
+  if (mode === 'walk') {
+    return (
+      <>
+        <PerspectiveCamera
+          makeDefault
+          fov={70}
+          near={0.1}
+          far={500}
+        />
+        <FirstPersonControls
+          bounds={bounds}
+          buildings={buildings}
+          onBuildingProximity={onBuildingProximity}
+          onBuildingInteract={onBuildingInteract}
+          initialPosition={{ x: centerX, z: centerZ }}
+        />
+      </>
+    );
+  }
+
+  // Fly mode (default OrbitControls)
   return (
     <>
       <PerspectiveCamera
@@ -232,6 +259,31 @@ function LoadingState() {
 }
 
 // ============================================
+// UPDATING INDICATOR (DOM OVERLAY)
+// ============================================
+
+function UpdatingIndicator() {
+  return (
+    <Html
+      position={[0, 0, 0]}
+      center
+      style={{
+        position: 'fixed',
+        top: '16px',
+        right: '16px',
+        transform: 'none',
+      }}
+      calculatePosition={() => [window.innerWidth - 120, 16, 0]}
+    >
+      <div className="flex items-center gap-2 rounded-lg border border-violet-500/30 bg-background/90 px-3 py-1.5 backdrop-blur-sm">
+        <div className="h-2 w-2 animate-pulse rounded-full bg-violet-500" />
+        <span className="text-xs text-violet-400">Updating...</span>
+      </div>
+    </Html>
+  );
+}
+
+// ============================================
 // VILLAGE CONTENT
 // ============================================
 
@@ -241,8 +293,11 @@ interface VillageContentProps {
   villagers: VillageVillager[];
   selectedBuildingId: string | null;
   hoveredBuildingId: string | null;
+  nearbyBuildingId: string | null;
+  cameraMode: CameraMode;
   onBuildingClick: (building: VillageBuilding) => void;
   onBuildingHover: (building: VillageBuilding | null) => void;
+  onBuildingProximity: (building: VillageBuilding | null) => void;
 }
 
 function VillageContent({
@@ -251,12 +306,24 @@ function VillageContent({
   villagers,
   selectedBuildingId,
   hoveredBuildingId,
+  nearbyBuildingId,
+  cameraMode,
   onBuildingClick,
   onBuildingHover,
+  onBuildingProximity,
 }: VillageContentProps) {
+  // Combine hover and proximity for highlighting
+  const highlightedBuildingId = hoveredBuildingId || nearbyBuildingId;
+
   return (
     <>
-      <CameraRig bounds={layout.bounds} />
+      <CameraRig
+        bounds={layout.bounds}
+        mode={cameraMode}
+        buildings={layout.buildings}
+        onBuildingProximity={onBuildingProximity}
+        onBuildingInteract={onBuildingClick}
+      />
       <Atmosphere />
       <Lighting />
 
@@ -282,7 +349,7 @@ function VillageContent({
       <BuildingsLayer
         buildings={layout.buildings}
         selectedBuildingId={selectedBuildingId}
-        hoveredBuildingId={hoveredBuildingId}
+        hoveredBuildingId={highlightedBuildingId}
         onBuildingClick={onBuildingClick}
         onBuildingHover={onBuildingHover}
       />
@@ -307,10 +374,16 @@ export interface VillageCanvasProps {
  */
 export function VillageCanvas({ onBuildingSelect, onBuildingHover }: VillageCanvasProps) {
   // Fetch layout data
-  const { layout, props, villagers, isLoading, isError, isEmpty } = useVillageLayout({
+  const { layout, props, villagers, isLoading, isFetching, isError, isEmpty } = useVillageLayout({
     maxBuildings: 120,
     minSalience: 0,
   });
+
+  // Track if we're updating (fetching but not initial load)
+  const isUpdating = isFetching && !isLoading;
+
+  // Camera mode from store
+  const cameraMode = useCameraMode();
 
   // Selection state
   const {
@@ -318,6 +391,9 @@ export function VillageCanvas({ onBuildingSelect, onBuildingHover }: VillageCanv
     selectBuilding,
     hoverBuilding,
   } = useVillageSelection();
+
+  // Track nearby building for walk mode proximity
+  const [nearbyBuildingId, setNearbyBuildingId] = useState<string | null>(null);
 
   // Handle building click
   const handleBuildingClick = useCallback((building: VillageBuilding) => {
@@ -330,20 +406,27 @@ export function VillageCanvas({ onBuildingSelect, onBuildingHover }: VillageCanv
     onBuildingSelect?.(newBuilding);
   }, [selection.buildingId, selectBuilding, onBuildingSelect]);
 
-  // Handle building hover
+  // Handle building hover (fly mode)
   const handleBuildingHover = useCallback((building: VillageBuilding | null) => {
     hoverBuilding(building?.id ?? null);
     onBuildingHover?.(building);
   }, [hoverBuilding, onBuildingHover]);
 
+  // Handle building proximity (walk mode)
+  const handleBuildingProximity = useCallback((building: VillageBuilding | null) => {
+    setNearbyBuildingId(building?.id ?? null);
+    // Also update hover state for tooltip display
+    onBuildingHover?.(building);
+  }, [onBuildingHover]);
+
   // Default camera for loading/empty states
   const defaultBounds = { minX: -10, maxX: 10, minZ: -10, maxZ: 10 };
 
-  // Loading state
+  // Loading state - always use fly mode
   if (isLoading) {
     return (
       <>
-        <CameraRig bounds={defaultBounds} />
+        <CameraRig bounds={defaultBounds} mode="fly" buildings={[]} />
         <Lighting />
         <SimpleGround />
         <LoadingState />
@@ -351,11 +434,11 @@ export function VillageCanvas({ onBuildingSelect, onBuildingHover }: VillageCanv
     );
   }
 
-  // Error state
+  // Error state - always use fly mode
   if (isError) {
     return (
       <>
-        <CameraRig bounds={defaultBounds} />
+        <CameraRig bounds={defaultBounds} mode="fly" buildings={[]} />
         <Lighting />
         <SimpleGround />
         <EmptyState />
@@ -363,11 +446,11 @@ export function VillageCanvas({ onBuildingSelect, onBuildingHover }: VillageCanv
     );
   }
 
-  // Empty state
+  // Empty state - always use fly mode
   if (isEmpty) {
     return (
       <>
-        <CameraRig bounds={defaultBounds} />
+        <CameraRig bounds={defaultBounds} mode="fly" buildings={[]} />
         <Lighting />
         <SimpleGround />
         <EmptyState />
@@ -377,15 +460,22 @@ export function VillageCanvas({ onBuildingSelect, onBuildingHover }: VillageCanv
 
   // Main content
   return (
-    <VillageContent
-      layout={layout}
-      props={props}
-      villagers={villagers}
-      selectedBuildingId={selection.buildingId}
-      hoveredBuildingId={selection.hoveredBuildingId}
-      onBuildingClick={handleBuildingClick}
-      onBuildingHover={handleBuildingHover}
-    />
+    <>
+      <VillageContent
+        layout={layout}
+        props={props}
+        villagers={villagers}
+        selectedBuildingId={selection.buildingId}
+        hoveredBuildingId={selection.hoveredBuildingId}
+        nearbyBuildingId={nearbyBuildingId}
+        cameraMode={cameraMode}
+        onBuildingClick={handleBuildingClick}
+        onBuildingHover={handleBuildingHover}
+        onBuildingProximity={handleBuildingProximity}
+      />
+      {/* Subtle updating indicator during refetch */}
+      {isUpdating && <UpdatingIndicator />}
+    </>
   );
 }
 

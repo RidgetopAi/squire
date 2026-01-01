@@ -32,8 +32,10 @@ export interface UseVillageLayoutResult {
   props: VillageProp[];
   /** Generated villagers from entities */
   villagers: VillageVillager[];
-  /** Whether the layout is currently loading */
+  /** Whether the layout is currently loading (initial load) */
   isLoading: boolean;
+  /** Whether data is being fetched (includes refetches) */
+  isFetching: boolean;
   /** Whether there's an error */
   isError: boolean;
   /** Error message if any */
@@ -72,6 +74,7 @@ export function useVillageLayout(
   const {
     data: graphData,
     isLoading,
+    isFetching,
     isError,
     error,
     refetch,
@@ -133,6 +136,7 @@ export function useVillageLayout(
     props,
     villagers,
     isLoading,
+    isFetching,
     isError,
     error: error as Error | null,
     isEmpty,

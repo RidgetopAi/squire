@@ -39,3 +39,16 @@ export {
   useCloseDetailModal,
   type DetailItem,
 } from './detailModalStore';
+
+export {
+  useCameraStore,
+  useCameraMode,
+  useIsWalkMode,
+  useIsFlyMode,
+  useIsPointerLocked,
+  useSetCameraMode,
+  useToggleCameraMode,
+  useSetPointerLocked,
+  cameraActions,
+  type CameraMode,
+} from './cameraStore';
