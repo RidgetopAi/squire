@@ -8,7 +8,6 @@
 
 import React, { memo, useRef, useMemo, useCallback, Suspense, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { Html } from '@react-three/drei';
 import * as THREE from 'three';
 import type { Group, Mesh } from 'three';
 import type { VillageBuilding } from '@/lib/types/village';
@@ -64,40 +63,6 @@ function DistanceLOD({ threshold, near, far }: DistanceLODProps) {
   );
 }
 
-// Debug component to show camera distance to LOD object
-function DebugDistance({ show }: { show: boolean }) {
-  const groupRef = useRef<THREE.Group>(null);
-  const { camera } = useThree();
-  const [distance, setDistance] = useState(0);
-
-  useFrame(() => {
-    if (!groupRef.current || !show) return;
-    const camPos = camera.getWorldPosition(new THREE.Vector3());
-    const lodPos = groupRef.current.getWorldPosition(new THREE.Vector3());
-    setDistance(camPos.distanceTo(lodPos));
-  });
-
-  if (!show) return <group ref={groupRef} />;
-
-  return (
-    <group ref={groupRef}>
-      <Html position={[0, 3, 0]} center style={{ pointerEvents: 'none' }}>
-        <div style={{ 
-          background: 'rgba(0,0,0,0.8)', 
-          color: distance < 40 ? '#4ade80' : '#f87171',
-          padding: '4px 8px', 
-          borderRadius: '4px',
-          fontSize: '12px',
-          fontFamily: 'monospace',
-          whiteSpace: 'nowrap'
-        }}>
-          d={distance.toFixed(1)} {distance < 40 ? '(GLTF)' : '(BOX)'}
-        </div>
-      </Html>
-    </group>
-  );
-}
-
 // ============================================
 // BUILDING COMPONENT
 // ============================================
@@ -113,8 +78,6 @@ interface BuildingProps {
   /** Hover handlers */
   onPointerOver?: (building: VillageBuilding) => void;
   onPointerOut?: () => void;
-  /** Show debug distance overlay */
-  showDebug?: boolean;
 }
 
 /**
@@ -133,7 +96,6 @@ export const Building = memo(function Building({
   onClick,
   onPointerOver,
   onPointerOut,
-  showDebug = false,
 }: BuildingProps) {
   const groupRef = useRef<Group>(null);
 
@@ -188,9 +150,6 @@ export const Building = memo(function Building({
       onPointerOut={handlePointerOut}
       onClick={handleClick}
     >
-      {/* Debug distance display */}
-      <DebugDistance show={showDebug} />
-      
       {/* Animated wrapper for hover lift */}
       <group ref={groupRef} position={[0, baseY, 0]}>
         {/* Distance-based LOD: GLTF when close, simple box when far */}
@@ -262,7 +221,6 @@ export const BuildingsLayer = memo(function BuildingsLayer({
           onClick={onBuildingClick}
           onPointerOver={handlePointerOver}
           onPointerOut={handlePointerOut}
-          showDebug={index < 3} // Debug first 3 buildings
         />
       ))}
     </group>
