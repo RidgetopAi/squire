@@ -18,6 +18,7 @@ export const SUMMARY_CATEGORIES = [
   'interests', // hobbies, passions
   'wellbeing', // health, mood, emotional patterns
   'commitments', // promises, obligations, things owed
+  'significant_dates', // key dates and what they mean (birthdays, anniversaries, pivotal moments)
 ] as const;
 
 export type SummaryCategory = (typeof SUMMARY_CATEGORIES)[number];
@@ -81,6 +82,37 @@ function isIdentityContent(content: string): boolean {
 }
 
 /**
+ * Check if content contains significant date patterns
+ * Returns true if this is clearly about a meaningful date/event
+ */
+function isSignificantDateContent(content: string): boolean {
+  const significantDatePatterns = [
+    // Life events
+    /\b(?:birthday|anniversary|wedding|married|engagement|engaged)\b/i,
+    /\b(?:graduated|graduation|first day|last day)\b/i,
+    /\b(?:died|passed away|funeral|memorial)\b/i,
+    /\b(?:born|birth of|gave birth)\b/i,
+    /\b(?:retired|retirement|started (?:new )?job)\b/i,
+
+    // Pivotal moments
+    /\b(?:turning point|life.?changing|pivotal|watershed)\b/i,
+    /\b(?:where it all started|began|origin|first time)\b/i,
+    /\b(?:moment (?:when|that)|the day (?:when|that|I))\b/i,
+
+    // Date patterns with context
+    /(?:on|since|remember)\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}/i,
+    /(?:on|since|remember)\s+\d{1,2}\/\d{1,2}(?:\/\d{2,4})?/i,
+    /(?:on|since|remember)\s+\d{4}-\d{2}-\d{2}/i,
+
+    // Significance markers
+    /\bsignificant (?:date|day|moment|event)\b/i,
+    /\bthis (?:date|day) means?\b/i,
+    /\bspecial (?:day|date|occasion)\b/i,
+  ];
+  return significantDatePatterns.some(pattern => pattern.test(content));
+}
+
+/**
  * Classify which categories a memory touches using LLM
  * With pre-check for identity content
  */
@@ -89,6 +121,8 @@ export async function classifyMemoryCategories(
 ): Promise<CategoryClassification[]> {
   // Pre-check: If this is clearly identity content, ensure personality is included
   const isIdentity = isIdentityContent(content);
+  // Pre-check: If this is clearly about a significant date, ensure significant_dates is included
+  const isSignificantDate = isSignificantDateContent(content);
 
   const systemPrompt = `You are a memory classifier. Given a memory/observation, determine which categories it touches.
 
@@ -100,9 +134,11 @@ Categories:
 - interests: Hobbies, passions, things enjoyed, entertainment preferences
 - wellbeing: Health, mood, emotional states, physical/mental wellness
 - commitments: Promises, obligations, things owed to others or by others
+- significant_dates: Key dates in life and what they mean (birthdays, anniversaries, pivotal events, turning points, origin stories)
 
 IMPORTANT: Memories about the user's name, age, job, or core identity MUST include "personality" with high relevance (0.9+).
 Memories about the user's relationships (wife, husband, children) should include BOTH "personality" AND "relationships".
+Memories about specific meaningful dates (birthdays, anniversaries, pivotal moments, "the day X happened") should include "significant_dates".
 
 Return ONLY a JSON array of relevant categories with relevance scores (0.0-1.0).
 Only include categories that are clearly relevant (relevance >= 0.3).
@@ -158,14 +194,27 @@ Which categories does this memory touch? Return JSON array only.`;
       });
     }
 
+    // Ensure significant date content ALWAYS includes significant_dates
+    if (isSignificantDate && !result.some(c => c.category === 'significant_dates')) {
+      result.push({
+        category: 'significant_dates',
+        relevance: 0.9,
+        reason: 'Significant date content - forced inclusion',
+      });
+    }
+
     return result;
   } catch (error) {
     console.error('Category classification failed:', error);
-    // Even on error, if we detected identity, return personality
+    // Even on error, if we detected identity or significant date, return appropriate category
+    const fallbacks: CategoryClassification[] = [];
     if (isIdentity) {
-      return [{ category: 'personality', relevance: 1.0, reason: 'Identity content (fallback)' }];
+      fallbacks.push({ category: 'personality', relevance: 1.0, reason: 'Identity content (fallback)' });
     }
-    return [];
+    if (isSignificantDate) {
+      fallbacks.push({ category: 'significant_dates', relevance: 0.9, reason: 'Significant date content (fallback)' });
+    }
+    return fallbacks;
   }
 }
 
@@ -357,8 +406,25 @@ export async function generateSummary(
     return { summary: current, memoriesProcessed: 0 };
   }
 
-  // Build prompt for incremental update
-  const systemPrompt = `You are a personal memory summarizer. Your job is to maintain a living summary of ${getCategoryDescription(category)}.
+  // Build prompt for incremental update - use special format for significant_dates
+  const systemPrompt = category === 'significant_dates'
+    ? `You are a personal memory summarizer. Your job is to maintain a chronological list of significant dates and what they mean.
+
+Rules:
+1. Format as a chronological list - each date on its own line
+2. Format each entry as: "**[Date]** - [What happened] | [Why it matters/emotional significance]"
+3. If the exact date is unknown, use approximate dates or seasons (e.g., "Early 2025", "Spring 2024")
+4. Preserve all existing dates unless they are clearly duplicates
+5. Add new dates from the new memories
+6. Use second person ("you") when referring to the person
+7. Focus on emotional significance - why this date matters
+8. Keep entries concise but meaningful
+9. Order chronologically, oldest to newest
+
+Example format:
+**February 16, 2025** - First conversation with AI at Mills Floor Covering | The moment your journey with AI companions began
+**March 15, 2025** - Started building Squire | When you decided to create your own memory system`
+    : `You are a personal memory summarizer. Your job is to maintain a living summary of ${getCategoryDescription(category)}.
 
 Rules:
 1. If there's an existing summary, UPDATE it incrementally - don't rewrite from scratch
@@ -438,6 +504,7 @@ function getCategoryDescription(category: SummaryCategory): string {
     interests: 'hobbies, passions, things you enjoy, and entertainment preferences',
     wellbeing: 'your health, mood, emotional patterns, and physical/mental wellness',
     commitments: 'promises, obligations, and things you owe to others or are owed',
+    significant_dates: 'key dates in your life and what they mean (birthdays, anniversaries, pivotal moments, origin stories)',
   };
   return descriptions[category];
 }
