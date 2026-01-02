@@ -7,6 +7,8 @@
 import { Server, Socket } from 'socket.io';
 import { config } from '../../config/index.js';
 import { generateContext } from '../../services/context.js';
+import { detectStoryIntent, isStoryIntent, describeIntent } from '../../services/storyIntent.js';
+import { generateStory, type StoryResult } from '../../services/storyEngine.js';
 import { getOrCreateConversation, addMessage } from '../../services/conversations.js';
 import { consolidateAll } from '../../services/consolidation.js';
 import { processMessageRealTime } from '../../services/chatExtraction.js';
@@ -246,36 +248,93 @@ async function handleChatMessage(
       return { commitmentCreated: null, reminderCreated: null };
     });
 
-    // Step 2: Fetch context if requested
+    // Step 2: Check for Story Intent and generate context
     let contextMarkdown: string | undefined;
+    let storyResult: StoryResult | undefined;
+
     if (includeContext) {
       try {
-        console.log(`[Socket] Step 2: Generating context...`);
-        const contextPackage = await generateContext({
-          query: message,
-          profile: contextProfile,
-        });
-        console.log(`[Socket] Context generated: ${contextPackage.memories.length} memories`);
+        // Phase 1: Story Engine - detect if this is a biographical/narrative query
+        console.log(`[Socket] Step 2a: Detecting story intent...`);
+        const intent = await detectStoryIntent(message);
 
-        contextMarkdown = contextPackage.markdown;
-        memoryIds = contextPackage.memories.map((m) => m.id);
-        disclosureId = contextPackage.disclosure_id;
+        if (isStoryIntent(intent)) {
+          // This is a story query - use Story Engine instead of RAG
+          console.log(`[Socket] Story intent detected: ${describeIntent(intent)}`);
 
-        // Emit context to client
-        socket.emit('chat:context', {
-          conversationId,
-          memories: contextPackage.memories.map((m) => ({
-            id: m.id,
-            content: m.content.substring(0, 200),
-            salience: m.salience_score,
-          })),
-          entities: contextPackage.entities.map((e) => ({
-            id: e.id,
-            name: e.name,
-            type: e.type,
-          })),
-          summaries: contextPackage.summaries.map((s) => s.category),
-        });
+          try {
+            storyResult = await generateStory({ query: message, intent });
+            console.log(`[Socket] Story generated with ${storyResult.evidence.length} evidence nodes`);
+
+            // Use story narrative as context for the LLM
+            contextMarkdown = `## Personal Story Context
+
+The user is asking about something personal. Here is the synthesized narrative from their memories:
+
+${storyResult.narrative}
+
+---
+
+### Evidence Used (${storyResult.evidence.length} items):
+${storyResult.evidence.slice(0, 10).map((e) => `- ${e.content.substring(0, 150)}...`).join('\n')}
+
+---
+
+Use this narrative to respond naturally. You can expand on it or answer follow-up questions based on this context.`;
+
+            memoryIds = storyResult.evidence
+              .filter((e) => e.type === 'memory')
+              .map((e) => e.id);
+
+            // Emit story context to client
+            socket.emit('chat:context', {
+              conversationId,
+              memories: storyResult.evidence
+                .filter((e) => e.type === 'memory')
+                .slice(0, 10)
+                .map((e) => ({
+                  id: e.id,
+                  content: e.content.substring(0, 200),
+                  salience: e.salience ?? 5,
+                })),
+              entities: [],
+              summaries: [],
+            });
+          } catch (storyError) {
+            console.error('[Socket] Story generation failed, falling back to RAG:', storyError);
+            // Fall through to regular context generation
+          }
+        }
+
+        // If no story was generated, use regular RAG context
+        if (!storyResult) {
+          console.log(`[Socket] Step 2b: Generating RAG context...`);
+          const contextPackage = await generateContext({
+            query: message,
+            profile: contextProfile,
+          });
+          console.log(`[Socket] Context generated: ${contextPackage.memories.length} memories`);
+
+          contextMarkdown = contextPackage.markdown;
+          memoryIds = contextPackage.memories.map((m) => m.id);
+          disclosureId = contextPackage.disclosure_id;
+
+          // Emit context to client
+          socket.emit('chat:context', {
+            conversationId,
+            memories: contextPackage.memories.map((m) => ({
+              id: m.id,
+              content: m.content.substring(0, 200),
+              salience: m.salience_score,
+            })),
+            entities: contextPackage.entities.map((e) => ({
+              id: e.id,
+              name: e.name,
+              type: e.type,
+            })),
+            summaries: contextPackage.summaries.map((s) => s.category),
+          });
+        }
       } catch (error) {
         console.error('[Socket] Context generation failed:', error);
         // Continue without context
