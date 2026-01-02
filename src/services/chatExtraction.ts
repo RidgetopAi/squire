@@ -126,6 +126,71 @@ export function calibrateSalienceForBiographical(
   return base;
 }
 
+// === EVENT DATE EXTRACTION ===
+
+/**
+ * Extract a normalized date from event-type memory content
+ * 
+ * Part of Phase 2: Memory Graph Traversal
+ * Enables date-based seeds for Story Engine queries like "What does February 16th mean to me?"
+ */
+export function extractEventDate(content: string): Date | null {
+  const text = content.toLowerCase();
+
+  // Month names and abbreviations
+  const months: Record<string, number> = {
+    january: 0, jan: 0,
+    february: 1, feb: 1,
+    march: 2, mar: 2,
+    april: 3, apr: 3,
+    may: 4,
+    june: 5, jun: 5,
+    july: 6, jul: 6,
+    august: 7, aug: 7,
+    september: 8, sep: 8, sept: 8,
+    october: 9, oct: 9,
+    november: 10, nov: 10,
+    december: 11, dec: 11,
+  };
+
+  // Pattern: "Month Day, Year" or "Month Day Year" (e.g., "February 16, 2025")
+  const fullDateMatch = text.match(
+    /\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s*(\d{4})\b/i
+  );
+  if (fullDateMatch && fullDateMatch[1] && fullDateMatch[2] && fullDateMatch[3]) {
+    const month = months[fullDateMatch[1].toLowerCase()];
+    const day = parseInt(fullDateMatch[2], 10);
+    const year = parseInt(fullDateMatch[3], 10);
+    if (month !== undefined && day >= 1 && day <= 31 && year >= 1900 && year <= 2100) {
+      return new Date(year, month, day);
+    }
+  }
+
+  // Pattern: "MM/DD/YYYY" or "M/D/YYYY"
+  const numericMatch = text.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/);
+  if (numericMatch && numericMatch[1] && numericMatch[2] && numericMatch[3]) {
+    const month = parseInt(numericMatch[1], 10) - 1;
+    const day = parseInt(numericMatch[2], 10);
+    const year = parseInt(numericMatch[3], 10);
+    if (month >= 0 && month <= 11 && day >= 1 && day <= 31 && year >= 1900 && year <= 2100) {
+      return new Date(year, month, day);
+    }
+  }
+
+  // Pattern: "YYYY-MM-DD" (ISO format)
+  const isoMatch = text.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+  if (isoMatch && isoMatch[1] && isoMatch[2] && isoMatch[3]) {
+    const year = parseInt(isoMatch[1], 10);
+    const month = parseInt(isoMatch[2], 10) - 1;
+    const day = parseInt(isoMatch[3], 10);
+    if (month >= 0 && month <= 11 && day >= 1 && day <= 31 && year >= 1900 && year <= 2100) {
+      return new Date(year, month, day);
+    }
+  }
+
+  return null;
+}
+
 export interface ConversationForExtraction {
   id: string;
   client_id: string | null;
@@ -1049,6 +1114,23 @@ async function extractFromConversation(
           }
         } catch (calibrationError) {
           console.error('[ChatExtraction] Salience calibration failed:', calibrationError);
+        }
+
+        // Extract event_date for event-type memories (Phase 2)
+        // Enables date-based graph traversal for Story Engine
+        if (mem.type === 'event') {
+          try {
+            const eventDate = extractEventDate(mem.content);
+            if (eventDate) {
+              await pool.query(
+                `UPDATE memories SET event_date = $1 WHERE id = $2`,
+                [eventDate, memory.id]
+              );
+              console.log(`[ChatExtraction] Extracted event_date: ${eventDate.toISOString().split('T')[0]}`);
+            }
+          } catch (dateError) {
+            console.error('[ChatExtraction] Event date extraction failed:', dateError);
+          }
         }
 
         // Process for beliefs (decisions, preferences often become beliefs)

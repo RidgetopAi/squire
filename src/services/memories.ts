@@ -21,6 +21,7 @@ export interface Memory {
   current_strength: number;
   processing_status: string;
   processed_at: Date | null;
+  event_date: Date | null; // Normalized date for event-type memories
 }
 
 export interface CreateMemoryInput {

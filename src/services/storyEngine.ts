@@ -18,8 +18,12 @@ import { complete, type LLMMessage } from '../providers/llm.js';
 import { generateEmbedding } from '../providers/embeddings.js';
 import type { StoryIntent } from './storyIntent.js';
 import type { Memory } from './memories.js';
-import { getRelatedMemories } from './edges.js';
 import { getNonEmptySummaries } from './summaries.js';
+import {
+  getNeighborhoodFromMemories,
+  flattenNeighborhoods,
+  type GraphNode,
+} from './memoryGraph.js';
 
 // === TYPES ===
 
@@ -238,53 +242,66 @@ async function fetchMemoriesForSelf(): Promise<StoryEvidenceNode[]> {
 
 /**
  * Expand evidence set by traversing memory graph edges
+ * Uses memoryGraph service for SIMILAR, ENTITY, and SUMMARY traversal
  */
 async function expandEvidenceViaGraph(
   seedNodes: StoryEvidenceNode[],
-  maxAdditional: number = 15
+  maxAdditional: number = 20
 ): Promise<StoryEvidenceNode[]> {
   if (seedNodes.length === 0) return [];
 
-  const additionalNodes: StoryEvidenceNode[] = [];
   const seenIds = new Set(seedNodes.map((n) => n.id));
 
-  // Take top 5 seed nodes for graph expansion
-  const topSeeds = seedNodes.slice(0, 5);
+  // Get memory IDs from seed nodes
+  const memorySeeds = seedNodes
+    .filter((n) => n.type === 'memory')
+    .slice(0, 5)
+    .map((n) => n.id);
 
-  for (const seed of topSeeds) {
-    if (seed.type !== 'memory') continue;
+  if (memorySeeds.length === 0) return [];
 
-    try {
-      const related = await getRelatedMemories(seed.id, {
-        edgeType: 'SIMILAR',
-        minWeight: 0.5,
-        limit: 5,
-      });
+  try {
+    // Use memoryGraph for multi-edge-type traversal
+    const neighborhoods = await getNeighborhoodFromMemories(memorySeeds, {
+      maxDepth: 2,
+      maxNodes: maxAdditional + 10,
+      minWeight: 0.3,
+      minSalience: 1.0,
+      edgeTypes: ['SIMILAR', 'ENTITY', 'SUMMARY'],
+    });
 
-      for (const rel of related) {
-        if (seenIds.has(rel.id)) continue;
-        seenIds.add(rel.id);
+    // Flatten and convert to StoryEvidenceNode
+    const graphNodes = flattenNeighborhoods(neighborhoods);
 
-        additionalNodes.push({
-          id: rel.id,
-          type: 'memory',
-          source: rel.source,
-          content: rel.content,
-          weight: (rel.edge_weight ?? 0.5) * 0.8,
-          created_at: rel.created_at,
-          salience: rel.salience_score,
-        });
+    const additionalNodes: StoryEvidenceNode[] = [];
+    for (const node of graphNodes) {
+      if (seenIds.has(node.id)) continue;
+      if (additionalNodes.length >= maxAdditional) break;
 
-        if (additionalNodes.length >= maxAdditional) break;
-      }
-    } catch {
-      // Graph traversal failed, continue with seeds only
+      seenIds.add(node.id);
+      additionalNodes.push(graphNodeToEvidence(node));
     }
 
-    if (additionalNodes.length >= maxAdditional) break;
+    return additionalNodes;
+  } catch (error) {
+    console.error('[StoryEngine] Graph traversal failed:', error);
+    return [];
   }
+}
 
-  return additionalNodes;
+/**
+ * Convert a GraphNode to StoryEvidenceNode
+ */
+function graphNodeToEvidence(node: GraphNode): StoryEvidenceNode {
+  return {
+    id: node.id,
+    type: node.kind as EvidenceType,
+    source: node.source ?? `${node.kind}`,
+    content: node.content,
+    weight: node.score * 0.8, // Slightly lower weight for graph-discovered nodes
+    created_at: node.created_at ?? undefined,
+    salience: node.salience,
+  };
 }
 
 /**
