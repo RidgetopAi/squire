@@ -537,7 +537,14 @@ export async function generateContext(
   if (queryEmbedding) {
     const embeddingStr = `[${queryEmbedding.join(',')}]`;
     // When we have a query, ORDER BY SIMILARITY to get truly relevant memories
-    // Minimum similarity threshold of 0.25 to exclude unrelated content
+    // 
+    // Phase 0 Enhancement: For personal-story profile or high-salience memories,
+    // use a much lower similarity threshold (0.15) to avoid filtering out
+    // biographical content that may use different vocabulary than the query.
+    // High-salience memories (>= 6.0) bypass the similarity filter entirely.
+    const isStoryMode = profile.name === 'personal-story';
+    const similarityThreshold = isStoryMode ? 0.15 : 0.25;
+    
     memoriesQuery = `
       SELECT
         id, content, created_at, salience_score, current_strength,
@@ -547,11 +554,15 @@ export async function generateContext(
         AND salience_score >= $2
         AND current_strength >= $3
         AND created_at >= $4
-        AND 1 - (embedding <=> $1::vector) >= 0.25
+        AND (
+          -- High-salience memories bypass similarity filter (biographical content)
+          salience_score >= 6.0
+          OR 1 - (embedding <=> $1::vector) >= $5
+        )
       ORDER BY similarity DESC, salience_score DESC
       LIMIT 100
     `;
-    queryParams = [embeddingStr, profile.min_salience, profile.min_strength, lookbackDate];
+    queryParams = [embeddingStr, profile.min_salience, profile.min_strength, lookbackDate, similarityThreshold];
   } else {
     memoriesQuery = `
       SELECT
@@ -584,16 +595,26 @@ export async function generateContext(
     );
 
     // Categorize based on primary characteristic
-    // When there's a query, high_salience still requires reasonable similarity
+    // Phase 0 Enhancement: High-salience memories (biographical content) are 
+    // always categorized as high_salience, regardless of similarity score.
+    // This ensures origin stories and key life facts are never deprioritized.
     let category: 'high_salience' | 'relevant' | 'recent';
-    const hasGoodSimilarity = row.similarity && row.similarity >= 0.35;
     const hasHighSalience = row.salience_score >= 6.0;
+    const hasVeryHighSalience = row.salience_score >= 8.0;
+    const hasGoodSimilarity = row.similarity && row.similarity >= 0.35;
+    const hasAnySimilarity = row.similarity && row.similarity >= 0.15;
 
-    if (hasHighSalience && (hasGoodSimilarity || !row.similarity)) {
-      // High salience AND (similar OR no query)
+    if (hasVeryHighSalience) {
+      // Very high salience (8+) = biographical/origin content → always high_salience
+      category = 'high_salience';
+    } else if (hasHighSalience && (hasAnySimilarity || !row.similarity)) {
+      // High salience (6+) with any relevance → high_salience
       category = 'high_salience';
     } else if (row.similarity && row.similarity >= 0.4) {
       // Good semantic match
+      category = 'relevant';
+    } else if (hasGoodSimilarity) {
+      // Moderate semantic match
       category = 'relevant';
     } else {
       category = 'recent';

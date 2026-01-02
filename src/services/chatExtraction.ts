@@ -11,7 +11,7 @@ import { complete, type LLMMessage } from '../providers/llm.js';
 import { config } from '../config/index.js';
 import { createMemory } from './memories.js';
 import { processMemoryForBeliefs } from './beliefs.js';
-import { classifyMemoryCategories, linkMemoryToCategories, getSummary, updateSummary } from './summaries.js';
+import { classifyMemoryCategories, linkMemoryToCategories, getSummary, updateSummary, type CategoryClassification } from './summaries.js';
 import { createCommitment } from './commitments.js';
 import { createStandaloneReminder, createScheduledReminder } from './reminders.js';
 import { processMessagesForResolutions, type ResolutionCandidate } from './resolution.js';
@@ -26,6 +26,104 @@ export interface ExtractedMemory {
   content: string;
   type: 'fact' | 'decision' | 'goal' | 'event' | 'preference';
   salience_hint: number;
+}
+
+// === SALIENCE CALIBRATION ===
+
+/**
+ * Calibrate salience score for biographical/origin content
+ * 
+ * The LLM extraction often undervalues origin stories and life-changing moments.
+ * This function boosts salience for content that matches biographical patterns.
+ * 
+ * Part of Phase 0: "Generate Not Retrieve" memory system
+ */
+export function calibrateSalienceForBiographical(
+  mem: ExtractedMemory,
+  classifications?: Array<{ category: string; relevance: number }>
+): number {
+  const base = mem.salience_hint ?? 5;
+  const content = mem.content.toLowerCase();
+
+  // Check classifications if provided
+  const hasPersonality = classifications?.some(
+    (c) => c.category === 'personality' && c.relevance >= 0.6
+  ) ?? false;
+  const hasRelationships = classifications?.some(
+    (c) => c.category === 'relationships' && c.relevance >= 0.6
+  ) ?? false;
+
+  // Identity and core personality facts → highest salience
+  if (hasPersonality && (mem.type === 'fact' || mem.type === 'event')) {
+    // User's name, core identity → 10
+    if (content.includes("user's name is") || content.includes('name is')) {
+      return 10;
+    }
+    return Math.max(base, 9);
+  }
+
+  // Origin story patterns - these should NEVER be filtered out
+  const originPatterns = [
+    'first time',
+    'where it all started',
+    'origin story',
+    'this is how',
+    'this is why',
+    'changed my life',
+    'life-changing',
+    'pivotal moment',
+    'turning point',
+    'when i realized',
+    'when i decided',
+    'the day i',
+    'the moment i',
+    'began my journey',
+    'started my',
+    'how i got into',
+    'how it all began',
+  ];
+
+  const hasOriginPattern = originPatterns.some((p) => content.includes(p));
+  if (hasOriginPattern && (mem.type === 'event' || mem.type === 'fact')) {
+    return Math.max(base, 9);
+  }
+
+  // Significant dates with emotional/biographical meaning
+  const datePatterns = [
+    /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}/i,
+    /\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/,
+    /\b(birthday|anniversary|wedding|graduation|funeral|passed away|died)\b/i,
+  ];
+  
+  const hasSignificantDate = datePatterns.some((p) => p.test(content));
+  if (hasSignificantDate && (mem.type === 'event' || mem.type === 'fact')) {
+    return Math.max(base, 8);
+  }
+
+  // Relationship-defining content → high salience
+  if (hasRelationships && mem.type === 'event') {
+    return Math.max(base, 8);
+  }
+
+  // Key life facts: age, occupation, location
+  const lifeFactPatterns = [
+    /\b\d+\s*years?\s*old\b/i,
+    /works?\s+(at|for)\b/i,
+    /lives?\s+in\b/i,
+    /(wife|husband|spouse|partner|daughter|son|child|mother|father|parent)/i,
+  ];
+  
+  const hasLifeFact = lifeFactPatterns.some((p) => p.test(content));
+  if (hasLifeFact && mem.type === 'fact') {
+    return Math.max(base, 8);
+  }
+
+  // Goals and aspirations → moderately high
+  if (mem.type === 'goal') {
+    return Math.max(base, 7);
+  }
+
+  return base;
 }
 
 export interface ConversationForExtraction {
@@ -926,14 +1024,31 @@ async function extractFromConversation(
         memoriesCreated++;
 
         // Classify memory for living summaries
+        let classifications: CategoryClassification[] = [];
         try {
-          const classifications = await classifyMemoryCategories(mem.content);
+          classifications = await classifyMemoryCategories(mem.content);
           if (classifications.length > 0) {
             await linkMemoryToCategories(memory.id, classifications);
           }
         } catch (classifyError) {
           // Log but don't fail - summary classification is secondary
           console.error('[ChatExtraction] Summary classification failed:', classifyError);
+        }
+
+        // Apply salience calibration for biographical content (Phase 0)
+        // This ensures origin stories, life-changing moments, and key facts
+        // are never filtered out by min_salience thresholds
+        try {
+          const calibratedSalience = calibrateSalienceForBiographical(mem, classifications);
+          if (calibratedSalience > memory.salience_score) {
+            await pool.query(
+              `UPDATE memories SET salience_score = $1 WHERE id = $2`,
+              [calibratedSalience, memory.id]
+            );
+            console.log(`[ChatExtraction] Boosted salience for biographical content: ${mem.salience_hint} → ${calibratedSalience}`);
+          }
+        } catch (calibrationError) {
+          console.error('[ChatExtraction] Salience calibration failed:', calibrationError);
         }
 
         // Process for beliefs (decisions, preferences often become beliefs)
