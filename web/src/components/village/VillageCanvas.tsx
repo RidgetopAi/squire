@@ -334,12 +334,18 @@ function VillageContent({
         color3="#7c3aed"
       />
 
-      {/* Floating particles - small, sparse, drifting through village */}
+      {/* Floating particles - small, sparse, drifting through village (tight bounds) */}
       <DreamParticles
         count={80}
-        bounds={effectBounds}
+        bounds={{
+          minX: layout.bounds.minX,
+          maxX: layout.bounds.maxX,
+          minZ: layout.bounds.minZ,
+          maxZ: layout.bounds.maxZ,
+        }}
         color1="#c4b5fd"
         color2="#86efac"
+        size={10}
       />
 
       {/* District hex tile ground */}
