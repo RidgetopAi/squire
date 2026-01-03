@@ -17,8 +17,8 @@ import { DISTRICT_EDGE_COLORS } from './HexTile';
 import { PropsLayer } from './InstancedProps';
 import { VillagersLayer } from './Villager';
 import { FirstPersonControls } from './FirstPersonControls';
-import { DreamParticles } from './DreamParticles';
 import { GroundMist, EtherealWisps } from './GroundMist';
+import { AuroraSky } from './AuroraSky';
 import { DreamEffects } from './DreamEffects';
 import { DreamLighting, DreamAtmosphere } from './DreamLighting';
 import { preloadAllBuildingModels, preloadAllPropModels } from '@/lib/village/models';
@@ -324,8 +324,8 @@ function VillageContent({
       {/* Ethereal wisps - vertical mist columns */}
       <EtherealWisps count={6} bounds={effectBounds} />
 
-      {/* Floating particles - dust motes and fireflies (reduced for performance) */}
-      <DreamParticles count={150} bounds={effectBounds} />
+      {/* Aurora sky - animated color bands (replaces particles for performance) */}
+      <AuroraSky intensity={0.35} />
 
       {/* District hex tile ground */}
       <VillageGround layout={layout} />

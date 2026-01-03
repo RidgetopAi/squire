@@ -12,6 +12,7 @@ export type { PropPlacement } from './InstancedProps';
 export { VillagersLayer, VillagerFigure } from './Villager';
 export { FirstPersonControls } from './FirstPersonControls';
 export { DreamParticles, Fireflies } from './DreamParticles';
+export { AuroraSky } from './AuroraSky';
 export { GroundMist, EtherealWisps } from './GroundMist';
 export { DreamEffects, DreamEffectsSoft, DreamEffectsIntense, DreamEffectsNostalgic } from './DreamEffects';
 export { DreamLighting, DreamAtmosphere, AnimatedHemisphereLight, PulsingPointLight } from './DreamLighting';
