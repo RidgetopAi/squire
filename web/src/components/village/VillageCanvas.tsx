@@ -18,9 +18,11 @@ import { PropsLayer } from './InstancedProps';
 import { VillagersLayer } from './Villager';
 import { FirstPersonControls } from './FirstPersonControls';
 import { GroundMist, EtherealWisps } from './GroundMist';
+import { MistPuffs } from './MistPuffs';
 import { AuroraSky } from './AuroraSky';
 import { DreamParticles } from './DreamParticles';
-import { DreamEffects } from './DreamEffects';
+// DreamEffects (post-processing) removed - too GPU heavy
+// import { DreamEffects } from './DreamEffects';
 import { DreamLighting, DreamAtmosphere } from './DreamLighting';
 import { preloadAllBuildingModels, preloadAllPropModels } from '@/lib/village/models';
 import type { VillageBuilding, VillageLayout, VillageDistrict, VillageProp, VillageVillager } from '@/lib/types/village';
@@ -326,6 +328,18 @@ function VillageContent({
       {/* Ethereal wisps - vertical mist columns */}
       <EtherealWisps count={10} bounds={effectBounds} color="#a855f7" />
 
+      {/* Drifting mist puffs - large soft fog patches floating through */}
+      <MistPuffs
+        count={15}
+        bounds={effectBounds}
+        color="#c4b5fd"
+        opacity={0.12}
+        minSize={5}
+        maxSize={12}
+        minHeight={1}
+        maxHeight={5}
+      />
+
       {/* Aurora sky - purple/green, wraps horizon */}
       <AuroraSky
         intensity={0.6}
@@ -372,13 +386,7 @@ function VillageContent({
         onBuildingHover={onBuildingHover}
       />
 
-      {/* Post-processing effects - bloom, vignette, chromatic aberration */}
-      <DreamEffects
-        bloomIntensity={0.4}
-        vignetteDarkness={0.35}
-        chromaticOffset={0.001}
-        enableNoise={false}
-      />
+      {/* Post-processing removed - too GPU heavy */}
     </>
   );
 }
