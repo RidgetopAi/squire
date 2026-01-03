@@ -37,35 +37,50 @@ const auroraFragmentShader = /* glsl */ `
   varying vec2 vUv;
 
   void main() {
-    // Only show aurora in upper hemisphere
-    float height = normalize(vWorldPosition).y;
-    if (height < 0.1) discard;
+    // Normalize to get sphere position
+    vec3 dir = normalize(vWorldPosition);
+    float height = dir.y;
+
+    // Show aurora from horizon (-0.1) to top
+    // Discard only below horizon
+    if (height < -0.15) discard;
 
     // Horizontal position for wave pattern
     float angle = atan(vWorldPosition.x, vWorldPosition.z);
 
-    // Animated waves
-    float wave1 = sin(angle * 3.0 + uTime * 0.3) * 0.5 + 0.5;
-    float wave2 = sin(angle * 5.0 - uTime * 0.2 + 1.5) * 0.5 + 0.5;
-    float wave3 = sin(angle * 2.0 + uTime * 0.15 + 3.0) * 0.5 + 0.5;
+    // Animated waves - slower, more dreamy
+    float wave1 = sin(angle * 2.0 + uTime * 0.2) * 0.5 + 0.5;
+    float wave2 = sin(angle * 4.0 - uTime * 0.15 + 1.5) * 0.5 + 0.5;
+    float wave3 = sin(angle * 1.5 + uTime * 0.1 + 3.0) * 0.5 + 0.5;
 
     // Combine waves
     float pattern = wave1 * 0.5 + wave2 * 0.3 + wave3 * 0.2;
 
-    // Vertical curtain effect - aurora bands
-    float curtain = smoothstep(0.3, 0.6, height) * smoothstep(0.95, 0.7, height);
+    // Curtain effect - strongest near horizon, fading up
+    // This creates the "surrounding" feel
+    float curtain = smoothstep(-0.1, 0.2, height) * smoothstep(0.9, 0.4, height);
+
+    // Add extra band near horizon
+    float horizonBand = smoothstep(-0.1, 0.05, height) * smoothstep(0.3, 0.1, height);
+    curtain = max(curtain, horizonBand * 0.7);
+
     curtain *= pattern;
 
-    // Shimmer
-    float shimmer = 0.8 + 0.2 * sin(uTime * 2.0 + angle * 10.0);
+    // Gentle shimmer
+    float shimmer = 0.85 + 0.15 * sin(uTime * 1.5 + angle * 8.0);
 
-    // Color blend based on pattern
+    // Color blend - more variety
     vec3 color = mix(uColor1, uColor2, wave1);
-    color = mix(color, uColor3, wave2 * 0.5);
+    color = mix(color, uColor3, wave2 * 0.4);
 
-    // Final alpha
-    float alpha = curtain * uIntensity * shimmer;
-    alpha *= smoothstep(0.1, 0.3, height); // Fade at horizon
+    // Warmer tint near horizon
+    color = mix(color, uColor1 * 1.2, horizonBand * 0.3);
+
+    // Final alpha - stronger overall
+    float alpha = curtain * uIntensity * shimmer * 1.3;
+
+    // Smooth fade at very bottom
+    alpha *= smoothstep(-0.15, 0.0, height);
 
     gl_FragColor = vec4(color, alpha);
   }

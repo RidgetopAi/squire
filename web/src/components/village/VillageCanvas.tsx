@@ -313,19 +313,19 @@ function VillageContent({
       {/* District accent lights */}
       <DistrictLights districts={layout.districts} />
 
-      {/* Ground mist - swirling fog layers (reduced for performance) */}
+      {/* Ground mist - swirling fog layers */}
       <GroundMist
         size={Math.max(effectBounds.maxX - effectBounds.minX, effectBounds.maxZ - effectBounds.minZ) + 20}
-        height={0.3}
-        opacity={0.3}
+        height={0.2}
+        opacity={0.45}
         layers={2}
       />
 
       {/* Ethereal wisps - vertical mist columns */}
-      <EtherealWisps count={6} bounds={effectBounds} />
+      <EtherealWisps count={8} bounds={effectBounds} />
 
-      {/* Aurora sky - animated color bands (replaces particles for performance) */}
-      <AuroraSky intensity={0.35} />
+      {/* Aurora sky - wraps around horizon */}
+      <AuroraSky intensity={0.5} />
 
       {/* District hex tile ground */}
       <VillageGround layout={layout} />
