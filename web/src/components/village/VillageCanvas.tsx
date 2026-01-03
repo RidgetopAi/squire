@@ -17,6 +17,10 @@ import { DISTRICT_EDGE_COLORS } from './HexTile';
 import { PropsLayer } from './InstancedProps';
 import { VillagersLayer } from './Villager';
 import { FirstPersonControls } from './FirstPersonControls';
+import { DreamParticles } from './DreamParticles';
+import { GroundMist, EtherealWisps } from './GroundMist';
+import { DreamEffects } from './DreamEffects';
+import { DreamLighting, DreamAtmosphere } from './DreamLighting';
 import { preloadAllBuildingModels, preloadAllPropModels } from '@/lib/village/models';
 import type { VillageBuilding, VillageLayout, VillageDistrict, VillageProp, VillageVillager } from '@/lib/types/village';
 import type { CameraMode } from '@/lib/stores';
@@ -48,77 +52,10 @@ function SimpleGround() {
 }
 
 // ============================================
-// ATMOSPHERE (FOG)
+// ATMOSPHERE & LIGHTING
 // ============================================
-
-/**
- * Atmospheric fog for depth perception
- * Uses linear fog with dark purple color matching the scene
- */
-function Atmosphere() {
-  return (
-    <fog attach="fog" args={['#1a1525', 30, 120]} />
-  );
-}
-
-// ============================================
-// LIGHTING
-// ============================================
-
-function Lighting() {
-  return (
-    <>
-      {/* Ambient base - slightly warm */}
-      <ambientLight intensity={0.25} color="#ffe4c4" />
-
-      {/* Main sun light - golden hour angle from southwest */}
-      <directionalLight
-        position={[-20, 25, -15]}
-        intensity={1.4}
-        color="#ffeedd"
-        castShadow
-        shadow-mapSize={[2048, 2048]}
-        shadow-camera-far={100}
-        shadow-camera-left={-40}
-        shadow-camera-right={40}
-        shadow-camera-top={40}
-        shadow-camera-bottom={-40}
-        shadow-bias={-0.0001}
-        shadow-radius={2}
-      />
-
-      {/* Cool fill light from opposite side (simulates sky bounce) */}
-      <directionalLight
-        position={[15, 12, 20]}
-        intensity={0.25}
-        color="#b4d4ff"
-      />
-
-      {/* Rim light from behind for depth */}
-      <directionalLight
-        position={[0, 8, -25]}
-        intensity={0.15}
-        color="#ffd4a8"
-      />
-
-      {/* Hemisphere light - purple sky, warm ground for fantasy feel */}
-      <hemisphereLight
-        color="#8b5cf6"
-        groundColor="#2d1f47"
-        intensity={0.35}
-      />
-
-      {/* Subtle point light at world center for warmth */}
-      <pointLight
-        position={[0, 6, 0]}
-        intensity={0.3}
-        color="#ffa500"
-        distance={30}
-        decay={2}
-      />
-    </>
-  );
-}
+// Now using DreamAtmosphere and DreamLighting from DreamLighting.tsx
+// for enhanced dreamy effects with animated color shifts
 
 // ============================================
 // DISTRICT ACCENT LIGHTS
@@ -351,6 +288,14 @@ function VillageContent({
   // Combine hover and proximity for highlighting
   const highlightedBuildingId = hoveredBuildingId || nearbyBuildingId;
 
+  // Calculate bounds for atmospheric effects
+  const effectBounds = useMemo(() => ({
+    minX: layout.bounds.minX - 10,
+    maxX: layout.bounds.maxX + 10,
+    minZ: layout.bounds.minZ - 10,
+    maxZ: layout.bounds.maxZ + 10,
+  }), [layout.bounds]);
+
   return (
     <>
       <CameraRig
@@ -360,11 +305,27 @@ function VillageContent({
         onBuildingProximity={onBuildingProximity}
         onBuildingInteract={onBuildingClick}
       />
-      <Atmosphere />
-      <Lighting />
+
+      {/* Dream World Atmosphere */}
+      <DreamAtmosphere fogNear={20} fogFar={90} />
+      <DreamLighting enableAnimation />
 
       {/* District accent lights */}
       <DistrictLights districts={layout.districts} />
+
+      {/* Ground mist - swirling fog layers */}
+      <GroundMist
+        size={Math.max(effectBounds.maxX - effectBounds.minX, effectBounds.maxZ - effectBounds.minZ) + 20}
+        height={0.3}
+        opacity={0.35}
+        layers={3}
+      />
+
+      {/* Ethereal wisps - vertical mist columns */}
+      <EtherealWisps count={12} bounds={effectBounds} />
+
+      {/* Floating particles - dust motes and fireflies */}
+      <DreamParticles count={400} bounds={effectBounds} />
 
       {/* District hex tile ground */}
       <VillageGround layout={layout} />
@@ -388,6 +349,14 @@ function VillageContent({
         hoveredBuildingId={highlightedBuildingId}
         onBuildingClick={onBuildingClick}
         onBuildingHover={onBuildingHover}
+      />
+
+      {/* Post-processing effects - bloom, vignette, chromatic aberration */}
+      <DreamEffects
+        bloomIntensity={0.5}
+        vignetteDarkness={0.45}
+        chromaticOffset={0.0015}
+        enableNoise
       />
     </>
   );
@@ -463,7 +432,8 @@ export function VillageCanvas({ onBuildingSelect, onBuildingHover }: VillageCanv
     return (
       <>
         <CameraRig bounds={defaultBounds} mode="fly" buildings={[]} />
-        <Lighting />
+        <DreamLighting enableAnimation={false} />
+        <DreamAtmosphere />
         <SimpleGround />
         <LoadingState />
       </>
@@ -475,7 +445,8 @@ export function VillageCanvas({ onBuildingSelect, onBuildingHover }: VillageCanv
     return (
       <>
         <CameraRig bounds={defaultBounds} mode="fly" buildings={[]} />
-        <Lighting />
+        <DreamLighting enableAnimation={false} />
+        <DreamAtmosphere />
         <SimpleGround />
         <EmptyState />
       </>
@@ -487,7 +458,8 @@ export function VillageCanvas({ onBuildingSelect, onBuildingHover }: VillageCanv
     return (
       <>
         <CameraRig bounds={defaultBounds} mode="fly" buildings={[]} />
-        <Lighting />
+        <DreamLighting enableAnimation={false} />
+        <DreamAtmosphere />
         <SimpleGround />
         <EmptyState />
       </>
