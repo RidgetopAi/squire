@@ -245,6 +245,49 @@ export default function CalendarPage() {
   const [newEvent, setNewEvent] = useState({ title: '', description: '', startDate: '', startTime: '', endTime: '', allDay: false });
   const [creating, setCreating] = useState(false);
 
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const fetchEvents = async () => {
+      setLoading(true);
+      try {
+        let url: string;
+        if (viewMode === 'week') {
+          url = `${API_URL}/api/calendar/week?date=${currentDate.toISOString().split('T')[0]}`;
+        } else {
+          url = `${API_URL}/api/calendar/month?year=${currentDate.getFullYear()}&month=${currentDate.getMonth() + 1}`;
+        }
+
+        const res = await fetch(url, { signal: controller.signal });
+        const data = await res.json();
+
+        // Flatten the days object into an array of events
+        const allEvents: CalendarEvent[] = [];
+        if (data.days) {
+          Object.values(data.days as Record<string, CalendarEvent[]>).forEach((dayEvents) => {
+            allEvents.push(...dayEvents);
+          });
+        }
+
+        setEvents(allEvents);
+      } catch (err) {
+        // Ignore abort errors - they're expected when navigating quickly
+        if (err instanceof Error && err.name === 'AbortError') {
+          return;
+        }
+        console.error('Failed to fetch events:', err);
+        setEvents([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchEvents();
+
+    return () => controller.abort();
+  }, [viewMode, currentDate]);
+
+  // Keep fetchEvents for manual refresh (e.g., after creating event)
   const fetchEvents = useCallback(async () => {
     setLoading(true);
     try {
@@ -258,7 +301,6 @@ export default function CalendarPage() {
       const res = await fetch(url);
       const data = await res.json();
 
-      // Flatten the days object into an array of events
       const allEvents: CalendarEvent[] = [];
       if (data.days) {
         Object.values(data.days as Record<string, CalendarEvent[]>).forEach((dayEvents) => {
@@ -274,10 +316,6 @@ export default function CalendarPage() {
       setLoading(false);
     }
   }, [viewMode, currentDate]);
-
-  useEffect(() => {
-    fetchEvents();
-  }, [fetchEvents]);
 
   const navigatePrev = () => {
     const newDate = new Date(currentDate);
