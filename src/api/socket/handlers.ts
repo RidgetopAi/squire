@@ -363,7 +363,7 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
 
     // Step 4: Stream LLM response with tools
     const tools = hasTools() ? getToolDefinitions() : undefined;
-    console.log(`[Socket] Step 4: Starting Groq stream... (${tools?.length ?? 0} tools available)`);
+    console.log(`[Socket] Step 4: Starting ${config.llm.provider} stream... (${tools?.length ?? 0} tools available)`);
     const streamResult = await streamGroqResponse(socket, conversationId, messages, abortController.signal, tools);
     console.log(`[Socket] Stream complete: ${streamResult.content.length} chars`);
 
@@ -597,24 +597,36 @@ async function streamGroqResponse(
   signal: AbortSignal,
   tools?: ToolDefinition[]
 ): Promise<{ content: string; usage?: { promptTokens: number; completionTokens: number } }> {
-  const apiKey = config.llm.groqApiKey;
+  // Select API key and endpoint based on provider
+  const provider = config.llm.provider;
+  let apiKey: string;
+  let apiEndpoint: string;
+
+  if (provider === 'xai') {
+    apiKey = config.llm.xaiApiKey;
+    apiEndpoint = 'https://api.x.ai/v1/chat/completions';
+  } else {
+    // Default to Groq
+    apiKey = config.llm.groqApiKey;
+    apiEndpoint = 'https://api.groq.com/openai/v1/chat/completions';
+  }
 
   if (!apiKey) {
     socket.emit('chat:error', {
       conversationId,
-      error: 'LLM service not configured',
+      error: `LLM service not configured (${provider})`,
       code: 'LLM_NOT_CONFIGURED',
     });
     return { content: '' };
   }
 
   // Create a combined abort signal with timeout
-  const GROQ_TIMEOUT_MS = 30000; // 30 second timeout
+  const API_TIMEOUT_MS = 30000; // 30 second timeout
   const timeoutController = new AbortController();
   const timeoutId = setTimeout(() => {
-    console.log(`[Socket] Groq API timeout after ${GROQ_TIMEOUT_MS}ms`);
+    console.log(`[Socket] ${provider} API timeout after ${API_TIMEOUT_MS}ms`);
     timeoutController.abort();
-  }, GROQ_TIMEOUT_MS);
+  }, API_TIMEOUT_MS);
 
   // Abort if either the external signal or timeout fires
   signal.addEventListener('abort', () => timeoutController.abort());
@@ -635,7 +647,7 @@ async function streamGroqResponse(
   }
 
   try {
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    const response = await fetch(apiEndpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -647,7 +659,7 @@ async function streamGroqResponse(
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Groq API error: ${response.status} - ${errorText}`);
+      throw new Error(`${provider} API error: ${response.status} - ${errorText}`);
     }
 
     const reader = response.body?.getReader();
@@ -684,9 +696,9 @@ async function streamGroqResponse(
         buffer = lines.pop() || '';
 
         for (const line of lines) {
-          // Handle SSE error events from Groq
+          // Handle SSE error events
           if (line.startsWith('event: error')) {
-            console.log(`[Socket] Groq SSE error event received`);
+            console.log(`[Socket] ${provider} SSE error event received`);
             continue; // Next line will have the error data
           }
 
@@ -697,7 +709,7 @@ async function streamGroqResponse(
             try {
               const errorCheck = JSON.parse(data);
               if (errorCheck.error) {
-                console.log(`[Socket] Groq API error: ${errorCheck.error.message}`);
+                console.log(`[Socket] ${provider} API error: ${errorCheck.error.message}`);
                 // If tool calling failed, try to parse Llama's XML-style function call
                 if (errorCheck.error.code === 'tool_use_failed' && errorCheck.error.failed_generation) {
                   const parsed = parseLlamaFunctionCall(errorCheck.error.failed_generation);
