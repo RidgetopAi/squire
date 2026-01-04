@@ -189,7 +189,7 @@ export function ListDetailView({ listId, isOpen, onClose, onEdit }: ListDetailVi
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 100 }}
             transition={{ duration: 0.2 }}
-            className="fixed right-0 top-0 bottom-0 w-full max-w-xl z-50 glass border-l border-glass-border flex flex-col"
+            className="fixed right-0 top-0 bottom-0 w-full max-w-xl z-50 glass border-l border-glass-border flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
           >
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-glass-border">
