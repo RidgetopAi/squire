@@ -408,11 +408,46 @@ export async function getNotesByEntity(entityId: string): Promise<Note[]> {
  */
 export async function getPinnedNotes(): Promise<Note[]> {
   const result = await pool.query(
-    `SELECT * FROM notes 
+    `SELECT * FROM notes
      WHERE archived_at IS NULL AND is_pinned = TRUE
      ORDER BY updated_at DESC`
   );
   return result.rows as Note[];
+}
+
+/**
+ * Find a note by title (fuzzy match)
+ * First tries exact match (case-insensitive), then semantic search
+ */
+export async function findNoteByTitle(title: string): Promise<Note | null> {
+  // First try exact match on title
+  let result = await pool.query(
+    `SELECT * FROM notes WHERE archived_at IS NULL AND LOWER(title) = LOWER($1) LIMIT 1`,
+    [title]
+  );
+
+  if (result.rows.length > 0) {
+    return result.rows[0] as Note;
+  }
+
+  // Then try partial match on title
+  result = await pool.query(
+    `SELECT * FROM notes WHERE archived_at IS NULL AND LOWER(title) LIKE LOWER($1) LIMIT 1`,
+    [`%${title}%`]
+  );
+
+  if (result.rows.length > 0) {
+    return result.rows[0] as Note;
+  }
+
+  // Finally try semantic search
+  const matches = await searchNotes(title, { limit: 1 });
+  const match = matches[0];
+  if (match && match.similarity > 0.7) {
+    return match;
+  }
+
+  return null;
 }
 
 // =============================================================================

@@ -4,7 +4,7 @@
  * LLM tools for reading and searching user notes.
  */
 
-import { searchNotes, getPinnedNotes, listNotes, createNote, getNote, updateNote } from '../services/notes.js';
+import { searchNotes, getPinnedNotes, listNotes, createNote, getNote, updateNote, findNoteByTitle } from '../services/notes.js';
 import type { ToolHandler } from './types.js';
 
 // =============================================================================
@@ -249,7 +249,7 @@ async function handleCreateNote(args: CreateNoteArgs): Promise<string> {
 export const createNoteToolName = 'create_note';
 
 export const createNoteToolDescription =
-  'Create a new note for the user. Use this when the user explicitly asks to create, save, or write down a note. Include a title if the content has a clear subject.';
+  'Create a NEW note for the user. Use ONLY when creating a brand new note, NOT when adding to an existing note. If the user mentions adding to or updating an existing note by name (e.g., "add to my Ruby note"), use append_to_note instead.';
 
 export const createNoteToolParameters = {
   type: 'object',
@@ -286,16 +286,17 @@ export const createNoteToolHandler: ToolHandler<CreateNoteArgs> = handleCreateNo
 // =============================================================================
 
 interface AppendToNoteArgs {
-  note_id: string;
+  note_id?: string;
+  note_title?: string;
   content: string;
   separator?: string;
 }
 
 async function handleAppendToNote(args: AppendToNoteArgs): Promise<string> {
-  const { note_id, content, separator = '\n\n' } = args;
+  const { note_id, note_title, content, separator = '\n\n' } = args;
 
-  if (!note_id) {
-    return JSON.stringify({ error: 'note_id is required', note: null });
+  if (!note_id && !note_title) {
+    return JSON.stringify({ error: 'Either note_id or note_title is required', note: null });
   }
 
   if (!content || content.trim().length === 0) {
@@ -303,22 +304,34 @@ async function handleAppendToNote(args: AppendToNoteArgs): Promise<string> {
   }
 
   try {
-    // Get existing note
-    const existingNote = await getNote(note_id);
+    let existingNote;
+
+    if (note_id) {
+      // Direct ID lookup
+      existingNote = await getNote(note_id);
+    } else if (note_title) {
+      // Find by title (fuzzy match)
+      existingNote = await findNoteByTitle(note_title);
+    }
+
     if (!existingNote) {
-      return JSON.stringify({ error: `Note with ID "${note_id}" not found`, note: null });
+      const identifier = note_id ? `ID "${note_id}"` : `title "${note_title}"`;
+      return JSON.stringify({
+        error: `Note with ${identifier} not found. Use search_notes to find the note, or create_note to create a new one.`,
+        note: null,
+      });
     }
 
     // Append content
     const newContent = existingNote.content + separator + content.trim();
-    const updatedNote = await updateNote(note_id, { content: newContent });
+    const updatedNote = await updateNote(existingNote.id, { content: newContent });
 
     if (!updatedNote) {
       return JSON.stringify({ error: 'Failed to update note', note: null });
     }
 
     return JSON.stringify({
-      message: 'Content appended successfully',
+      message: `Content appended to "${updatedNote.title || 'Untitled'}" successfully`,
       note: {
         id: updatedNote.id,
         title: updatedNote.title,
@@ -336,14 +349,18 @@ async function handleAppendToNote(args: AppendToNoteArgs): Promise<string> {
 export const appendToNoteToolName = 'append_to_note';
 
 export const appendToNoteToolDescription =
-  'Append additional content to an existing note. Use this when the user wants to add more information to a note they already have. You must have the note_id from a previous search or list operation.';
+  'Append additional content to an existing note. Use this when the user wants to ADD to or UPDATE an existing note (e.g., "add this to my Ruby note", "update my project notes with..."). You can find the note by title (fuzzy match) or ID.';
 
 export const appendToNoteToolParameters = {
   type: 'object',
   properties: {
+    note_title: {
+      type: 'string',
+      description: 'The title of the note to append to (supports fuzzy matching). Use this when the user refers to a note by name.',
+    },
     note_id: {
       type: 'string',
-      description: 'The UUID of the note to append to (get this from search_notes or list_recent_notes)',
+      description: 'The UUID of the note (use if you already have it from a previous operation)',
     },
     content: {
       type: 'string',
@@ -354,7 +371,7 @@ export const appendToNoteToolParameters = {
       description: 'Separator between existing and new content (default: double newline)',
     },
   },
-  required: ['note_id', 'content'],
+  required: ['content'],
 };
 
 export const appendToNoteToolHandler: ToolHandler<AppendToNoteArgs> = handleAppendToNote;
