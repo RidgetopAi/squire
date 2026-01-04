@@ -1309,6 +1309,8 @@ export async function processMessageRealTime(message: string): Promise<{
   if (reminderKeywords.test(message)) {
     try {
       const reminderResult = await detectReminderRequest(message);
+      console.log(`[RealTimeExtraction] Reminder detection result:`, JSON.stringify(reminderResult, null, 2));
+
       if (reminderResult?.is_reminder && reminderResult.title) {
         let reminder = null;
 
@@ -1335,8 +1337,13 @@ export async function processMessageRealTime(message: string): Promise<{
             title: reminderResult.title,
             remind_at: reminder.scheduled_for.toISOString(),
           };
+          console.log(`[RealTimeExtraction] Reminder created successfully, returning early`);
           return result; // Return early - reminder takes precedence
+        } else {
+          console.log(`[RealTimeExtraction] WARNING: is_reminder=true but reminder is null. scheduled_at=${reminderResult.scheduled_at}, delay_minutes=${reminderResult.delay_minutes}`);
         }
+      } else {
+        console.log(`[RealTimeExtraction] Reminder detection returned is_reminder=${reminderResult?.is_reminder}, title=${reminderResult?.title}`);
       }
     } catch (error) {
       console.error('[RealTimeExtraction] Reminder detection error:', error);
@@ -1463,8 +1470,10 @@ export async function processMessageRealTime(message: string): Promise<{
 
   // Check for commitment (lower priority - check last)
   if (commitmentKeywords.test(message)) {
+    console.log(`[RealTimeExtraction] Commitment keywords matched - this means reminder early return did NOT happen`);
     try {
       const commitmentResult = await detectCommitment(message);
+      console.log(`[RealTimeExtraction] Commitment detection result:`, JSON.stringify(commitmentResult, null, 2));
       if (commitmentResult?.is_commitment && commitmentResult.title) {
         const commitment = await createCommitment({
           title: commitmentResult.title,
