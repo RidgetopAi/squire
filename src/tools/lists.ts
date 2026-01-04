@@ -270,10 +270,11 @@ interface CreateListArgs {
   category?: string;
   tags?: string[];
   is_pinned?: boolean;
+  items?: string[];
 }
 
 async function handleCreateList(args: CreateListArgs): Promise<string> {
-  const { name, description, list_type = 'checklist', category, tags, is_pinned } = args;
+  const { name, description, list_type = 'checklist', category, tags, is_pinned, items } = args;
 
   if (!name || name.trim().length === 0) {
     return JSON.stringify({ error: 'List name is required', list: null });
@@ -289,8 +290,19 @@ async function handleCreateList(args: CreateListArgs): Promise<string> {
       is_pinned,
     });
 
+    // Add initial items if provided
+    const addedItems: Array<{ id: string; content: string }> = [];
+    if (items && items.length > 0) {
+      for (const itemContent of items) {
+        if (itemContent && itemContent.trim()) {
+          const item = await addItem(list.id, { content: itemContent.trim() });
+          addedItems.push({ id: item.id, content: item.content });
+        }
+      }
+    }
+
     return JSON.stringify({
-      message: `List "${list.name}" created successfully`,
+      message: `List "${list.name}" created successfully${addedItems.length > 0 ? ` with ${addedItems.length} items` : ''}`,
       list: {
         id: list.id,
         name: list.name,
@@ -300,6 +312,7 @@ async function handleCreateList(args: CreateListArgs): Promise<string> {
         tags: list.tags,
         is_pinned: list.is_pinned,
         created_at: list.created_at,
+        items: addedItems,
       },
     });
   } catch (error) {
@@ -311,7 +324,7 @@ async function handleCreateList(args: CreateListArgs): Promise<string> {
 export const createListToolName = 'create_list';
 
 export const createListToolDescription =
-  'Create a new list for the user. Use this when the user wants to start a new list, checklist, or to-do list. Default type is "checklist" which allows items to be marked complete.';
+  'Create a new list for the user. Use this when the user wants to start a new list, checklist, or to-do list. You can include initial items when creating the list.';
 
 export const createListToolParameters = {
   type: 'object',
@@ -341,6 +354,11 @@ export const createListToolParameters = {
     is_pinned: {
       type: 'boolean',
       description: 'Whether to pin this list as important (default: false)',
+    },
+    items: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Optional initial items to add to the list when creating it',
     },
   },
   required: ['name'],
