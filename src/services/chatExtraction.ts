@@ -15,9 +15,10 @@ import { classifyMemoryCategories, linkMemoryToCategories, getSummary, updateSum
 import { createCommitment } from './commitments.js';
 import { createStandaloneReminder, createScheduledReminder } from './reminders.js';
 import { processMessagesForResolutions, type ResolutionCandidate } from './resolution.js';
-import { createNote } from './notes.js';
-import { createList, addItem, findListByName } from './lists.js';
-import { searchEntities } from './entities.js';
+// DISABLED: LLM tools handle notes/lists now (Decision: 99e91b23)
+// import { createNote } from './notes.js';
+// import { createList, addItem, findListByName } from './lists.js';
+// import { searchEntities } from './entities.js';  // DISABLED: Decision 99e91b23
 import { getUserIdentity, setInitialIdentity } from './identity.js';
 import { invalidateStoryCache } from './storyEngine.js';
 
@@ -551,101 +552,9 @@ interface ReminderDetection {
   scheduled_at: string | null;
 }
 
-// === NOTE DETECTION ===
-
-const NOTE_DETECTION_PROMPT = `Analyze this message to determine if the user wants to create a note.
-
-Look for patterns like:
-- "take a note about X"
-- "note: X" or "note that X"
-- "remember that X" (when X is something to record, not a reminder)
-- "add a note about X"
-- "jot down X"
-- "make a note: X"
-
-Return JSON with:
-- is_note: boolean - true if this is a note creation request
-- content: string | null - the actual note content
-- title: string | null - optional title if clearly stated
-- category: string | null - detected category (work, personal, health, project, etc.)
-- entity_name: string | null - if the note is about a specific person/project/entity, extract the name
-
-Examples:
-Input: "Take a note about Central Va Flooring - they want LVP in the kitchen"
-Output: {"is_note": true, "content": "They want LVP in the kitchen", "title": "Central Va Flooring", "category": "work", "entity_name": "Central Va Flooring"}
-
-Input: "Note: Dr. Smith recommended reducing caffeine"
-Output: {"is_note": true, "content": "Dr. Smith recommended reducing caffeine", "title": null, "category": "health", "entity_name": "Dr. Smith"}
-
-Input: "Add a note to the Johnson project - client prefers matte finish"
-Output: {"is_note": true, "content": "Client prefers matte finish", "title": null, "category": "project", "entity_name": "Johnson project"}
-
-Input: "Remind me to buy groceries"
-Output: {"is_note": false, "content": null, "title": null, "category": null, "entity_name": null}
-
-IMPORTANT: Return ONLY valid JSON object, no markdown, no explanation.`;
-
-interface NoteDetection {
-  is_note: boolean;
-  content: string | null;
-  title: string | null;
-  category: string | null;
-  entity_name: string | null;
-}
-
-// === LIST DETECTION ===
-
-const LIST_DETECTION_PROMPT = `Analyze this message to determine if the user wants to create or modify a list.
-
-Look for patterns like:
-- "start a list for X" or "create a list for X"
-- "add X to the Y list" or "add X to my Y list"
-- "put X on the Y list"
-- "create a checklist for X"
-- "make a to-do list for X"
-- "create a list with items: A, B, C"
-
-Return JSON with:
-- is_list_action: boolean - true if this is a list operation
-- action: "create" | "add_item" | null - the type of action
-- list_name: string | null - the name of the list (for create or add_item)
-- item_content: string | null - the item to add (for add_item, single item)
-- initial_items: string[] | null - items to add when creating a list (if user provides them)
-- list_type: "checklist" | "simple" | "ranked" | null - type if creating
-- entity_name: string | null - if the list is about a specific entity
-- description: string | null - optional description for the list
-
-Examples:
-Input: "Start a list for Squire bugs"
-Output: {"is_list_action": true, "action": "create", "list_name": "Squire bugs", "item_content": null, "initial_items": null, "list_type": "checklist", "entity_name": "Squire", "description": null}
-
-Input: "Add 'fix modal z-index' to the Squire bugs list"
-Output: {"is_list_action": true, "action": "add_item", "list_name": "Squire bugs", "item_content": "fix modal z-index", "initial_items": null, "list_type": null, "entity_name": null, "description": null}
-
-Input: "Create a grocery list with milk, eggs, and bread"
-Output: {"is_list_action": true, "action": "create", "list_name": "Grocery list", "item_content": null, "initial_items": ["milk", "eggs", "bread"], "list_type": "simple", "entity_name": null, "description": null}
-
-Input: "Make a checklist for the Atlanta trip: book hotel, pack bags, confirm flight"
-Output: {"is_list_action": true, "action": "create", "list_name": "Atlanta trip", "item_content": null, "initial_items": ["book hotel", "pack bags", "confirm flight"], "list_type": "checklist", "entity_name": null, "description": "Trip preparation checklist"}
-
-Input: "Put milk on my shopping list"
-Output: {"is_list_action": true, "action": "add_item", "list_name": "Shopping list", "item_content": "milk", "initial_items": null, "list_type": null, "entity_name": null, "description": null}
-
-Input: "What's on my to-do list?"
-Output: {"is_list_action": false, "action": null, "list_name": null, "item_content": null, "initial_items": null, "list_type": null, "entity_name": null, "description": null}
-
-IMPORTANT: Return ONLY valid JSON object, no markdown, no explanation.`;
-
-interface ListDetection {
-  is_list_action: boolean;
-  action: 'create' | 'add_item' | null;
-  list_name: string | null;
-  item_content: string | null;
-  initial_items: string[] | null;
-  list_type: 'checklist' | 'simple' | 'ranked' | null;
-  entity_name: string | null;
-  description: string | null;
-}
+// DISABLED: LLM tools handle notes/lists now (Decision: 99e91b23)
+// NOTE_DETECTION_PROMPT, NoteDetection, LIST_DETECTION_PROMPT, ListDetection
+// moved to bottom of file as commented reference
 
 /**
  * Safely parse JSON from LLM response, handling common issues
@@ -740,9 +649,8 @@ async function detectCommitment(memoryContent: string): Promise<CommitmentDetect
   }
 }
 
-/**
- * Detect if a message contains a note creation request
- */
+// DISABLED: LLM tools handle notes/lists now (Decision: 99e91b23)
+/*
 async function detectNoteIntent(message: string): Promise<NoteDetection | null> {
   const noteKeywords = /\b(note|jot|record|write down|remember that)\b/i;
   if (!noteKeywords.test(message)) {
@@ -773,9 +681,6 @@ async function detectNoteIntent(message: string): Promise<NoteDetection | null> 
   }
 }
 
-/**
- * Detect if a message contains a list creation or modification request
- */
 async function detectListIntent(message: string): Promise<ListDetection | null> {
   const listKeywords = /\b(list|checklist|to-?do|add .+ to|put .+ on)\b/i;
   if (!listKeywords.test(message)) {
@@ -806,10 +711,6 @@ async function detectListIntent(message: string): Promise<ListDetection | null> 
   }
 }
 
-/**
- * Resolve an entity name to an entity ID
- * Returns the best matching entity ID or null if not found
- */
 async function resolveEntityName(entityName: string): Promise<string | null> {
   if (!entityName) return null;
 
@@ -825,6 +726,7 @@ async function resolveEntityName(entityName: string): Promise<string | null> {
     return null;
   }
 }
+*/
 
 // === CORE FUNCTIONS ===
 
@@ -1304,8 +1206,8 @@ export async function processMessageRealTime(message: string): Promise<{
   // Quick keyword checks to avoid unnecessary LLM calls
   const commitmentKeywords = /\b(need to|have to|should|must|want to|going to|will|promise|commit|schedule|plan to|deadline|by|due|tomorrow|next week|today)\b/i;
   const reminderKeywords = /remind|ping|alert|don't forget|dont forget|set.+reminder/i;
-  const noteKeywords = /\b(note|jot|record|write down|remember that)\b/i;
-  const listKeywords = /\b(list|checklist|to-?do|add .+ to|put .+ on|start a list)\b/i;
+  // NOTE: noteKeywords and listKeywords removed - LLM tools handle notes/lists now
+  // Decision: 99e91b23-c5b9-4482-a01f-65be94e7f362
 
   // Check for reminder requests first (more specific pattern)
   if (reminderKeywords.test(message)) {
@@ -1352,6 +1254,11 @@ export async function processMessageRealTime(message: string): Promise<{
     }
   }
 
+  // DISABLED: Note and list extraction - LLM tools handle this now
+  // Decision: 99e91b23-c5b9-4482-a01f-65be94e7f362
+  // To re-enable: uncomment the blocks below and restore noteKeywords/listKeywords above
+
+  /*
   // Check for note creation
   if (noteKeywords.test(message)) {
     try {
@@ -1469,6 +1376,7 @@ export async function processMessageRealTime(message: string): Promise<{
       console.error('[RealTimeExtraction] List detection error:', error);
     }
   }
+  */
 
   // Check for commitment (lower priority - check last)
   if (commitmentKeywords.test(message)) {
