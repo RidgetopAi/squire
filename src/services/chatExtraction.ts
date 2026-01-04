@@ -494,19 +494,18 @@ DAY-OF-WEEK TO DATE MAPPING (CRITICAL - use these exact dates for scheduled_at):
 Return JSON with:
 - is_reminder: boolean - true if this is a reminder request
 - title: string | null - what to remind about (extracted from message)
-- delay_minutes: number | null - for RELATIVE times ("in 2 hours", "tomorrow")
-- scheduled_at: string | null - ISO 8601 date for EXPLICIT dates or day-of-week
+- delay_minutes: number | null - for RELATIVE times AND same-day times
+- scheduled_at: string | null - ONLY for future dates (not today)
 
-IMPORTANT: Use delay_minutes for relative times like "in 2 hours" or "tomorrow".
-Use scheduled_at for explicit dates ("on January 5, 2026") or day-of-week ("on Wednesday").
-Never use both - pick the one that matches the user's request.
+CRITICAL TIMEZONE RULE - The user is in Eastern Time (EST/EDT):
+- ALWAYS use delay_minutes for SAME-DAY reminders (e.g., "at 10:30", "at 2pm today")
+- ONLY use scheduled_at for FUTURE DATES (tomorrow or later)
+- Calculate delay_minutes from the current time shown above
 
-ISO 8601 DATE FORMAT (for scheduled_at):
-- Format: YYYY-MM-DDTHH:MM:SSZ
-- Month uses numbers 01-12 (NOT 0-11): January=01, February=02, ... December=12
-- Examples:
-  * January 5, 2026 at 9:00 AM → "2026-01-05T09:00:00Z"
-  * March 15, 2026 at 2:30 PM → "2026-03-15T14:30:00Z"
+For same-day times, calculate delay_minutes like this:
+- Current time is ${dt.formatted}
+- If user says "at 2:30 PM" and it's currently 10:20 AM, that's 4 hours 10 minutes = 250 minutes
+- If the requested time has already passed today, the reminder is invalid
 
 Time calculations for delay_minutes:
 - "in 2 hours" = 120 minutes
@@ -527,14 +526,17 @@ Output: {"is_reminder": true, "title": "Pick up groceries", "delay_minutes": ${m
 Input: "set a reminder for 30 minutes to take a break"
 Output: {"is_reminder": true, "title": "Take a break", "delay_minutes": 30, "scheduled_at": null}
 
-Input: "remind me on Wednesday at 2pm about the meeting"
-Output: {"is_reminder": true, "title": "Meeting", "delay_minutes": null, "scheduled_at": "${dt.weekdayDates.wednesday}T14:00:00Z"}
+Input: "set a reminder for 2:30 PM to call the office" (SAME-DAY - use delay_minutes!)
+Output: {"is_reminder": true, "title": "Call the office", "delay_minutes": 250, "scheduled_at": null}
 
-Input: "remind me on January 5, 2026 at 9am about the PAD-A-THON"
-Output: {"is_reminder": true, "title": "PAD-A-THON", "delay_minutes": null, "scheduled_at": "2026-01-05T09:00:00Z"}
+Input: "remind me at 10:30 to check the oven" (SAME-DAY - use delay_minutes!)
+Output: {"is_reminder": true, "title": "Check the oven", "delay_minutes": 10, "scheduled_at": null}
 
-Input: "set a reminder for March 15th at 2:30pm to call the doctor"
-Output: {"is_reminder": true, "title": "Call the doctor", "delay_minutes": null, "scheduled_at": "2026-03-15T14:30:00Z"}
+Input: "remind me on Wednesday at 2pm about the meeting" (FUTURE DATE - use scheduled_at)
+Output: {"is_reminder": true, "title": "Meeting", "delay_minutes": null, "scheduled_at": "${dt.weekdayDates.wednesday}T19:00:00Z"}
+
+Input: "remind me on January 15, 2026 at 9am about the appointment" (FUTURE DATE - use scheduled_at)
+Output: {"is_reminder": true, "title": "Appointment", "delay_minutes": null, "scheduled_at": "2026-01-15T14:00:00Z"}
 
 Input: "I need to remember my dentist appointment"
 Output: {"is_reminder": false, "title": null, "delay_minutes": null, "scheduled_at": null}
