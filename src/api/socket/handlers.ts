@@ -18,6 +18,7 @@ import {
   getToolDefinitions,
   hasTools,
   executeTools,
+  executeTool,
   type ToolCall,
   type ToolDefinition,
 } from '../../tools/index.js';
@@ -465,6 +466,127 @@ interface StreamingToolCall {
 }
 
 /**
+ * Parse Llama's XML-style function call format: <function=name{...}>...</function>
+ * Returns null if parsing fails
+ */
+function parseLlamaFunctionCall(failedGeneration: string): { name: string; arguments: string } | null {
+  try {
+    // Match pattern: <function=toolName{jsonArgs}>
+    // The failed_generation might be truncated, so we need to handle incomplete JSON
+    const match = failedGeneration.match(/<function=(\w+)(\{[\s\S]*)/);
+    if (!match) {
+      console.log(`[Socket] No function call pattern found in: ${failedGeneration.substring(0, 100)}`);
+      return null;
+    }
+
+    const toolName = match[1]!;
+    let argsString = match[2] ?? '{}';
+
+    // Remove trailing </function> or > if present
+    argsString = argsString.replace(/<\/function>.*$/, '').replace(/>\s*$/, '');
+
+    // Try to fix incomplete JSON by closing any open braces/brackets
+    let openBraces = 0;
+    let openBrackets = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (const char of argsString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (char === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (!inString) {
+        if (char === '{') openBraces++;
+        else if (char === '}') openBraces--;
+        else if (char === '[') openBrackets++;
+        else if (char === ']') openBrackets--;
+      }
+    }
+
+    // Close any unclosed structures
+    while (openBrackets > 0) {
+      argsString += ']';
+      openBrackets--;
+    }
+    while (openBraces > 0) {
+      argsString += '}';
+      openBraces--;
+    }
+
+    // Validate JSON
+    JSON.parse(argsString);
+
+    console.log(`[Socket] Parsed Llama function: ${toolName} with args: ${argsString.substring(0, 200)}...`);
+    return { name: toolName, arguments: argsString };
+  } catch (error) {
+    console.log(`[Socket] Failed to parse Llama function call: ${error}`);
+    return null;
+  }
+}
+
+/**
+ * Execute a parsed tool call and continue the conversation
+ */
+async function executeParsedToolAndContinue(
+  socket: TypedSocket,
+  conversationId: string,
+  messages: Array<{ role: string; content: string; tool_calls?: ToolCall[]; tool_call_id?: string }>,
+  parsed: { name: string; arguments: string },
+  signal: AbortSignal,
+  tools?: ToolDefinition[]
+): Promise<{ content: string; usage?: { promptTokens: number; completionTokens: number } }> {
+  // Create a synthetic tool call
+  const toolCallId = `call_${Date.now()}`;
+  const toolCall: ToolCall = {
+    id: toolCallId,
+    type: 'function',
+    function: {
+      name: parsed.name,
+      arguments: parsed.arguments,
+    },
+  };
+
+  // Execute the tool
+  console.log(`[Socket] Executing parsed tool: ${parsed.name}`);
+  const result = await executeTool(toolCall);
+  console.log(`[Socket] Tool result (${result.success ? 'success' : 'failed'}): ${result.result.substring(0, 200)}...`);
+
+  // Emit tool execution info to client
+  socket.emit('chat:chunk', {
+    conversationId,
+    chunk: '', // No visible chunk, tool executed silently
+    done: false,
+  });
+
+  // Add assistant message with tool call and tool result to messages
+  const updatedMessages = [
+    ...messages,
+    {
+      role: 'assistant',
+      content: '',
+      tool_calls: [toolCall],
+    },
+    {
+      role: 'tool',
+      content: result.result,
+      tool_call_id: toolCallId,
+    },
+  ];
+
+  // Continue conversation with tool result (without tools to get natural response)
+  return await streamGroqResponse(socket, conversationId, updatedMessages, signal, tools);
+}
+
+/**
  * Stream response from Groq API with tool calling support
  * Returns the full content and usage for persistence
  */
@@ -576,9 +698,22 @@ async function streamGroqResponse(
               const errorCheck = JSON.parse(data);
               if (errorCheck.error) {
                 console.log(`[Socket] Groq API error: ${errorCheck.error.message}`);
-                // If tool calling failed, retry without tools
-                if (errorCheck.error.code === 'tool_use_failed') {
-                  console.log(`[Socket] Tool use failed, retrying without tools...`);
+                // If tool calling failed, try to parse Llama's XML-style function call
+                if (errorCheck.error.code === 'tool_use_failed' && errorCheck.error.failed_generation) {
+                  const parsed = parseLlamaFunctionCall(errorCheck.error.failed_generation);
+                  if (parsed) {
+                    console.log(`[Socket] Parsed Llama XML function call: ${parsed.name}`);
+                    return await executeParsedToolAndContinue(
+                      socket,
+                      conversationId,
+                      messages,
+                      parsed,
+                      signal,
+                      tools
+                    );
+                  }
+                  // If parsing failed, retry without tools
+                  console.log(`[Socket] Tool use failed, could not parse, retrying without tools...`);
                   return await streamGroqResponse(socket, conversationId, messages, signal, undefined);
                 }
                 socket.emit('chat:error', {
