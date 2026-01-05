@@ -241,8 +241,6 @@ export default function CalendarPage() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Debug: log every render
-  console.log(`[Calendar RENDER] loading=${loading}, events=${events.length}, viewMode=${viewMode}, date=${currentDate.toISOString().split('T')[0]}`);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newEvent, setNewEvent] = useState({ title: '', description: '', startDate: '', startTime: '', endTime: '', allDay: false });
@@ -250,11 +248,8 @@ export default function CalendarPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    const effectId = Math.random().toString(36).slice(2, 8);
-    console.log(`[Calendar ${effectId}] Effect running - viewMode=${viewMode}, date=${currentDate.toISOString().split('T')[0]}`);
 
     const fetchEvents = async () => {
-      console.log(`[Calendar ${effectId}] Setting loading=true`);
       setLoading(true);
       try {
         let url: string;
@@ -264,7 +259,6 @@ export default function CalendarPage() {
           url = `${API_URL}/api/calendar/month?year=${currentDate.getFullYear()}&month=${currentDate.getMonth() + 1}`;
         }
 
-        console.log(`[Calendar ${effectId}] Fetching: ${url}`);
         const res = await fetch(url, { signal: controller.signal });
         const data = await res.json();
 
@@ -276,18 +270,15 @@ export default function CalendarPage() {
           });
         }
 
-        console.log(`[Calendar ${effectId}] Fetched ${allEvents.length} events, setting state`);
         setEvents(allEvents);
         setLoading(false);
-        console.log(`[Calendar ${effectId}] State set - events=${allEvents.length}, loading=false`);
       } catch (err) {
         // Ignore abort errors - they're expected when navigating quickly
-        // IMPORTANT: Don't change loading state on abort - let the next fetch handle it
+        // Don't change loading state on abort - let the next fetch handle it
         if (err instanceof Error && err.name === 'AbortError') {
-          console.log(`[Calendar ${effectId}] Aborted - not changing state`);
           return;
         }
-        console.error(`[Calendar ${effectId}] Failed to fetch events:`, err);
+        console.error('Failed to fetch calendar events:', err);
         setEvents([]);
         setLoading(false);
       }
@@ -295,10 +286,7 @@ export default function CalendarPage() {
 
     fetchEvents();
 
-    return () => {
-      console.log(`[Calendar ${effectId}] Cleanup - aborting`);
-      controller.abort();
-    };
+    return () => controller.abort();
   }, [viewMode, currentDate]);
 
   // Keep fetchEvents for manual refresh (e.g., after creating event)
@@ -413,29 +401,18 @@ export default function CalendarPage() {
   weekStart.setDate(weekStart.getDate() - weekStart.getDay());
   weekStart.setHours(0, 0, 0, 0);
 
-  // Debug: log week range
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekEnd.getDate() + 6);
-  console.log(`[Calendar] Week range: ${weekStart.toISOString().split('T')[0]} to ${weekEnd.toISOString().split('T')[0]}, total events in state: ${events.length}`);
-
   // Calculate month start for month view
   const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
   const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
   const firstDayOfWeek = monthStart.getDay();
 
   const getEventsForDay = (date: Date): CalendarEvent[] => {
-    const dayEvents = events.filter(e => isSameDay(new Date(e.start), date))
+    return events.filter(e => isSameDay(new Date(e.start), date))
       .sort((a, b) => {
         if (a.allDay && !b.allDay) return -1;
         if (!a.allDay && b.allDay) return 1;
         return new Date(a.start).getTime() - new Date(b.start).getTime();
       });
-    // Debug: log which events match each day
-    if (events.length > 0) {
-      console.log(`[Calendar] getEventsForDay(${date.toISOString().split('T')[0]}) → ${dayEvents.length} events`,
-        dayEvents.map(e => ({ title: e.title, start: e.start })));
-    }
-    return dayEvents;
   };
 
   const renderWeekView = () => {
