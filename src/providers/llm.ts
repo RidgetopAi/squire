@@ -160,6 +160,111 @@ class GroqLLMProvider implements LLMProvider {
   }
 }
 
+// === XAI PROVIDER ===
+
+/**
+ * xAI (Grok) LLM provider
+ * Uses xAI API with Grok models (OpenAI-compatible format)
+ */
+class XAILLMProvider implements LLMProvider {
+  private apiKey: string;
+  private model: string;
+  private baseUrl = 'https://api.x.ai/v1';
+
+  constructor() {
+    this.apiKey = config.llm.xaiApiKey ?? '';
+    this.model = config.llm.model;
+  }
+
+  async complete(
+    messages: LLMMessage[],
+    options: LLMCompletionOptions = {}
+  ): Promise<LLMCompletionResult> {
+    if (!this.apiKey) {
+      throw new Error('XAI_API_KEY not configured');
+    }
+
+    // Build request body
+    const requestBody: Record<string, unknown> = {
+      model: this.model,
+      messages,
+      max_tokens: options.maxTokens ?? config.llm.maxTokens,
+      temperature: options.temperature ?? config.llm.temperature,
+      stop: options.stopSequences,
+    };
+
+    // Add tools if provided
+    if (options.tools && options.tools.length > 0) {
+      requestBody.tools = options.tools;
+      requestBody.tool_choice = options.toolChoice ?? 'auto';
+    }
+
+    const response = await fetch(`${this.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`xAI API error: ${response.status} - ${error}`);
+    }
+
+    const data = (await response.json()) as {
+      choices: Array<{
+        message: {
+          content: string | null;
+          tool_calls?: ToolCall[];
+        };
+        finish_reason: string;
+      }>;
+      usage: {
+        prompt_tokens: number;
+        completion_tokens: number;
+        total_tokens: number;
+      };
+      model: string;
+    };
+
+    const choice = data.choices[0];
+    const finishReason = choice?.finish_reason === 'tool_calls' ? 'tool_calls' :
+                         choice?.finish_reason === 'length' ? 'length' : 'stop';
+
+    return {
+      content: choice?.message?.content ?? '',
+      usage: {
+        promptTokens: data.usage.prompt_tokens,
+        completionTokens: data.usage.completion_tokens,
+        totalTokens: data.usage.total_tokens,
+      },
+      model: data.model,
+      provider: 'xai',
+      toolCalls: choice?.message?.tool_calls,
+      finishReason,
+    };
+  }
+
+  async isAvailable(): Promise<boolean> {
+    if (!this.apiKey) {
+      return false;
+    }
+
+    try {
+      const response = await fetch(`${this.baseUrl}/models`, {
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
 // === OLLAMA PROVIDER ===
 
 /**
@@ -242,6 +347,9 @@ export function getLLMProvider(): LLMProvider {
     switch (config.llm.provider) {
       case 'groq':
         provider = new GroqLLMProvider();
+        break;
+      case 'xai':
+        provider = new XAILLMProvider();
         break;
       case 'ollama':
         provider = new OllamaLLMProvider();
