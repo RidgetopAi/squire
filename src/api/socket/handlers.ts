@@ -605,6 +605,9 @@ async function streamGroqResponse(
   if (provider === 'xai') {
     apiKey = config.llm.xaiApiKey;
     apiEndpoint = 'https://api.x.ai/v1/chat/completions';
+  } else if (provider === 'gemini') {
+    apiKey = config.llm.geminiApiKey;
+    apiEndpoint = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
   } else {
     // Default to Groq
     apiKey = config.llm.groqApiKey;
