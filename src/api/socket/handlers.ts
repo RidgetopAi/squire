@@ -13,7 +13,6 @@ import { getOrCreateConversation, addMessage } from '../../services/conversation
 import { consolidateAll } from '../../services/consolidation.js';
 import { processMessageRealTime } from '../../services/chatExtraction.js';
 import { getUserIdentity } from '../../services/identity.js';
-import { pool } from '../../db/pool.js';
 import {
   getToolDefinitions,
   hasTools,
@@ -38,54 +37,37 @@ type TypedIO = Server<ClientToServerEvents, ServerToClientEvents, object, Socket
 // Track active streaming requests for cancellation
 const activeStreams = new Map<string, AbortController>();
 
-// Auto-sleep configuration
-// Reduced from 1 hour to 15 minutes to ensure memories are extracted more promptly
-// This is critical for identity information and conversational context
-const AUTO_SLEEP_HOURS = 0.25; // Trigger consolidation after 15 minutes of inactivity
+// Debounced consolidation timer
+// Consolidation runs after 15 minutes of inactivity (no new messages)
+// This ensures memories are extracted and processed without blocking user interactions
+const CONSOLIDATION_DELAY_MS = 15 * 60 * 1000; // 15 minutes
+let consolidationTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
- * Check if auto-sleep should trigger based on last activity
- * Returns true if consolidation was triggered
+ * Schedule consolidation to run after inactivity period
+ * Resets the timer on each call (debounce pattern)
  */
-async function checkAndTriggerAutoSleep(): Promise<boolean> {
-  try {
-    // Get the most recent chat message timestamp
-    const result = await pool.query(`
-      SELECT MAX(created_at) as last_activity
-      FROM chat_messages
-    `);
+function scheduleConsolidation(): void {
+  // Clear existing timer if any
+  if (consolidationTimer) {
+    clearTimeout(consolidationTimer);
+  }
 
-    const lastActivity = result.rows[0]?.last_activity;
-
-    if (!lastActivity) {
-      // No previous messages - this is the first message, no need to consolidate
-      return false;
-    }
-
-    const hoursSinceLastActivity =
-      (Date.now() - new Date(lastActivity).getTime()) / (1000 * 60 * 60);
-
-    if (hoursSinceLastActivity >= AUTO_SLEEP_HOURS) {
-      console.log(
-        `[AutoSleep] ${hoursSinceLastActivity.toFixed(1)} hours since last activity - triggering consolidation`
-      );
-
-      // Run consolidation (includes chat extraction)
+  consolidationTimer = setTimeout(async () => {
+    console.log('[AutoSleep] 15 min inactivity - running background consolidation');
+    try {
       const result = await consolidateAll();
-
       console.log(
         `[AutoSleep] Consolidation complete: ${result.chatMemoriesCreated} memories extracted, ` +
-        `${result.memoriesProcessed} memories processed`
+        `${result.memoriesProcessed} memories processed, ${result.durationMs}ms`
       );
-
-      return true;
+    } catch (error) {
+      console.error('[AutoSleep] Consolidation error:', error);
     }
+    consolidationTimer = null;
+  }, CONSOLIDATION_DELAY_MS);
 
-    return false;
-  } catch (error) {
-    console.error('[AutoSleep] Error checking/triggering auto-sleep:', error);
-    return false;
-  }
+  console.log('[AutoSleep] Consolidation scheduled for 15 min from now');
 }
 
 // === FOLLOW-UP ACKNOWLEDGMENT TEMPLATES ===
@@ -209,9 +191,9 @@ async function handleChatMessage(
   // Track if we've emitted chat:done to avoid duplicates
   let chatDoneEmitted = false;
 
-  // Check for auto-sleep (consolidation after inactivity)
-  // This runs BEFORE processing the new message so extracted memories are available
-  await checkAndTriggerAutoSleep();
+  // Schedule consolidation for later (debounced - resets on each message)
+  // Consolidation will run 15 min after the last message
+  scheduleConsolidation();
 
   // Create abort controller for this stream
   const abortController = new AbortController();
