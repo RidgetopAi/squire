@@ -15,6 +15,7 @@ import { getNonEmptySummaries, type LivingSummary } from './summaries.js';
 import { searchNotes, getPinnedNotes } from './notes.js';
 import { searchLists } from './lists.js';
 import { searchForContext } from './documents/search.js';
+import { filterMemoriesOptimized } from './expressionFilter.js';
 
 // === TYPES ===
 
@@ -720,11 +721,23 @@ export async function generateContext(
     budgetCaps
   );
 
-  // Calculate total tokens
-  const totalTokens = budgetedMemories.reduce((sum, m) => sum + m.token_estimate, 0);
+  // Phase 5: Expression-Time Safety Filter
+  // Last line of defense - filter out memories that would feel unnatural to mention
+  const filterResult = await filterMemoriesOptimized(
+    budgetedMemories.map((m) => ({ id: m.id, content: m.content })),
+    query // Use query as conversation context hint
+  );
+
+  // Keep only memories that passed the filter
+  const filteredMemories = budgetedMemories.filter((m) =>
+    filterResult.passedIds.includes(m.id)
+  );
+
+  // Calculate total tokens (from filtered memories)
+  const totalTokens = filteredMemories.reduce((sum, m) => sum + m.token_estimate, 0);
 
   // Get entities mentioned in disclosed memories
-  const memoryIds = budgetedMemories.map((m) => m.id);
+  const memoryIds = filteredMemories.map((m) => m.id);
   const entities = await getEntitiesForMemories(memoryIds);
 
   // Get living summaries (non-empty ones)
@@ -822,7 +835,7 @@ export async function generateContext(
   );
 
   // Format output
-  let markdown = formatMarkdown(budgetedMemories, entities, summaries, profile, query);
+  let markdown = formatMarkdown(filteredMemories, entities, summaries, profile, query);
   if (notes.length > 0) {
     markdown += '\n' + formatNotesMarkdown(notes);
   }
@@ -832,13 +845,13 @@ export async function generateContext(
   if (documents.length > 0) {
     markdown += '\n' + formatDocumentsMarkdown(documents);
   }
-  const json = formatJson(budgetedMemories, entities, summaries, notes, lists, documents, profile, query);
+  const json = formatJson(filteredMemories, entities, summaries, notes, lists, documents, profile, query);
 
   return {
     generated_at: new Date().toISOString(),
     profile: profile.name,
     query,
-    memories: budgetedMemories,
+    memories: filteredMemories,
     entities,
     summaries,
     notes,
