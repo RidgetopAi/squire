@@ -243,61 +243,85 @@ export interface ConversationModeResult {
 
 // === EXTRACTION PROMPT ===
 
-const EXTRACTION_SYSTEM_PROMPT = `You are analyzing a conversation to extract memorable information about the user.
+/**
+ * Phase 2: Episodic Consolidation
+ * 
+ * Treats each conversation batch as an "episode" - extracts only the key takeaways
+ * that the user would want remembered tomorrow, not every pattern match.
+ * 
+ * MAX 3 MEMORIES per episode to prevent noise accumulation.
+ */
+const EXTRACTION_SYSTEM_PROMPT = `You are analyzing a conversation episode to extract what the user would want remembered TOMORROW.
 
-Your job is to identify information worth remembering long-term:
-- Facts about the user (name, job, relationships, interests, location)
-- Decisions or commitments they've made
-- Goals or aspirations they've mentioned
-- Important events they've discussed
-- Preferences they've expressed
+Treat this conversation as a small episode. Extract only the KEY TAKEAWAYS - things that would still matter next week.
 
-CRITICAL - IDENTITY EXTRACTION:
-When the user introduces themselves or states their name (e.g., "I'm Brian", "My name is Brian", "Hello I'm Sarah"),
-you MUST extract an explicit identity fact: "The user's name is [NAME]" with salience_hint: 10.
-This is the HIGHEST priority extraction - never skip self-introductions.
+=== RULES ===
+1. Output AT MOST 3 memories per episode (pick the most important)
+2. Prefer "wrap-up" statements: "Ok, I'll do X", "So the plan is...", "I've decided to..."
+3. Skip mid-process debugging, problem-solving chatter, and vague statements
+4. Only encode if it would still make sense and be useful next week
 
-Similarly, when they mention key relationships with names:
-- "My wife is Sarah" → "The user's wife is named Sarah" (salience_hint: 8)
-- "My son Jake" → "The user has a son named Jake" (salience_hint: 8)
+=== PRIORITIZE ===
+- User conclusions: "I've decided to...", "I'm going to...", "The plan is..."
+- Clear future intent with specifics (dates, names, actions)
+- Identity facts: name, relationships, job, age, location
+- Origin stories and life-changing moments
 
-Always use "The user" format for identity and personal facts to ensure proper categorization.
+=== DEPRIORITIZE (often skip entirely) ===
+- Questions without conclusions
+- Mid-debugging statements: "fix this", "try that", "let me check"
+- "We should X" without "I will do X"
+- Vague problem descriptions
+- Repetitive back-and-forth
 
-Skip:
-- Generic greetings without identity info ("hello", "thanks", "bye")
-- Meta-conversation about the AI/chat itself
-- Questions without meaningful context
-- Repeated information (only extract once)
+=== IDENTITY EXTRACTION (always highest priority) ===
+When the user introduces themselves (e.g., "I'm Brian", "My name is Sarah"):
+→ Extract: "The user's name is [NAME]" with salience_hint: 10
+Key relationships with names:
+→ "My wife is Sarah" → "The user's wife is named Sarah" (salience_hint: 8)
 
-Return a JSON array of memories to extract. Each memory should be a clear, standalone statement.
+Always use "The user" format for identity facts.
 
-Example input:
+=== EXAMPLES ===
+
+Example episode (debugging session):
+User: This bug is driving me crazy
+User: Let me try restarting the server
+User: Hmm, that didn't work
+User: Oh wait, I think I found it - the config was wrong
+User: Ok fixed it, moving on
+
+Output:
+[]
+(Reason: No durable takeaways - just mid-process debugging)
+
+Example episode (personal + conclusion):
 User: Hello I'm Brian
-User: I've been working on this AI memory project called Squire for about 2 months now
-User: My wife Sherrie thinks I spend too much time coding
+User: I've been thinking about whether to take that new job
+User: You know what, I've decided I'm going to accept the offer at TechCorp
 
-Example output:
+Output:
 [
   {"content": "The user's name is Brian", "type": "fact", "salience_hint": 10},
-  {"content": "The user has been working on an AI memory project called Squire for approximately 2 months", "type": "fact", "salience_hint": 7},
-  {"content": "The user's wife is named Sherrie", "type": "fact", "salience_hint": 8},
-  {"content": "Sherrie thinks the user spends too much time coding", "type": "fact", "salience_hint": 5}
+  {"content": "The user has decided to accept a job offer at TechCorp", "type": "decision", "salience_hint": 8}
 ]
+(Reason: Identity + clear decision with specifics)
 
-Example input:
-User: I really want to ship this by January
-User: I'm 56 years old and work at Elias Wilf
+Example episode (work planning):
+User: I need to finish the Q1 report
+User: Let me work on the charts first
+User: Actually, I'll do the summary section
+User: Ok so the plan is: finish charts today, summary tomorrow, submit by Friday
 
-Example output:
+Output:
 [
-  {"content": "The user wants to ship their project by January", "type": "goal", "salience_hint": 8},
-  {"content": "The user is 56 years old", "type": "fact", "salience_hint": 9},
-  {"content": "The user works at Elias Wilf", "type": "fact", "salience_hint": 8}
+  {"content": "The user plans to submit their Q1 report by Friday", "type": "goal", "salience_hint": 7}
 ]
+(Reason: Only the final plan matters, not the deliberation)
 
-If there's nothing worth remembering, return: []
+If there's nothing worth remembering tomorrow, return: []
 
-IMPORTANT: Return ONLY valid JSON array, no markdown, no explanation.`;
+IMPORTANT: Return ONLY valid JSON array, no markdown, no explanation. MAX 3 items.`;
 
 // === DATE/TIME HELPERS ===
 
@@ -950,13 +974,24 @@ async function extractFromTranscript(
     const parsed = JSON.parse(jsonStr) as ExtractedMemory[];
 
     // Validate and filter
-    return parsed.filter((m) =>
+    const validated = parsed.filter((m) =>
       m.content &&
       typeof m.content === 'string' &&
       m.content.length > 5 &&
       m.salience_hint >= 1 &&
       m.salience_hint <= 10
     );
+
+    // Phase 2: Episodic Consolidation - enforce hard cap of 3 memories per episode
+    // Sort by salience (highest first) to keep the most important ones
+    const sorted = validated.sort((a, b) => b.salience_hint - a.salience_hint);
+    const limited = sorted.slice(0, 3);
+
+    if (validated.length > 3) {
+      console.log(`[ChatExtraction] Episodic limit applied: ${validated.length} → 3 memories (dropped ${validated.length - 3})`);
+    }
+
+    return limited;
   } catch (error) {
     console.error('[ChatExtraction] Failed to parse LLM response:', error);
     return [];
