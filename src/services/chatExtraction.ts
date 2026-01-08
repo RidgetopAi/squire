@@ -21,6 +21,7 @@ import { processMessagesForResolutions, type ResolutionCandidate } from './resol
 // import { searchEntities } from './entities.js';  // DISABLED: Decision 99e91b23
 import { getUserIdentity, setInitialIdentity } from './identity.js';
 import { invalidateStoryCache } from './storyEngine.js';
+import { checkReinforcement } from './reinforcement.js';
 
 // === TYPES ===
 
@@ -28,6 +29,7 @@ export interface ExtractedMemory {
   content: string;
   type: 'fact' | 'decision' | 'goal' | 'event' | 'preference';
   salience_hint: number;
+  confidence?: number; // 0.0-1.0, added in Phase 3 for tiering
 }
 
 // === SALIENCE CALIBRATION ===
@@ -244,12 +246,13 @@ export interface ConversationModeResult {
 // === EXTRACTION PROMPT ===
 
 /**
- * Phase 2: Episodic Consolidation
+ * Phase 2: Episodic Consolidation + Phase 3: Confidence Scoring
  * 
  * Treats each conversation batch as an "episode" - extracts only the key takeaways
  * that the user would want remembered tomorrow, not every pattern match.
  * 
  * MAX 3 MEMORIES per episode to prevent noise accumulation.
+ * Each memory includes a confidence score for tiering (hypothesis vs solid).
  */
 const EXTRACTION_SYSTEM_PROMPT = `You are analyzing a conversation episode to extract what the user would want remembered TOMORROW.
 
@@ -260,6 +263,21 @@ Treat this conversation as a small episode. Extract only the KEY TAKEAWAYS - thi
 2. Prefer "wrap-up" statements: "Ok, I'll do X", "So the plan is...", "I've decided to..."
 3. Skip mid-process debugging, problem-solving chatter, and vague statements
 4. Only encode if it would still make sense and be useful next week
+
+=== CONFIDENCE SCORING (0.0 to 1.0) ===
+For each memory, add a "confidence" field indicating how certain/stable the information is:
+
+- 0.9-1.0: DEFINITELY TRUE - explicitly stated, stable facts, core identity
+  Examples: "My name is Brian", "I'm 56 years old", "I work at TechCorp"
+  
+- 0.7-0.9: LIKELY TRUE - clearly implied, strong decisions, clear intent
+  Examples: "I've decided to take the job", "We're moving to Austin next month"
+  
+- 0.5-0.7: POSSIBLY TRUE - might change, conditional, exploratory
+  Examples: "I'm thinking about switching careers", "Maybe I'll try yoga"
+  
+- 0.3-0.5: UNCERTAIN - contextual, ephemeral, could easily change
+  Examples: "I'm stressed about the deadline", "I might go to the gym later"
 
 === PRIORITIZE ===
 - User conclusions: "I've decided to...", "I'm going to...", "The plan is..."
@@ -276,9 +294,9 @@ Treat this conversation as a small episode. Extract only the KEY TAKEAWAYS - thi
 
 === IDENTITY EXTRACTION (always highest priority) ===
 When the user introduces themselves (e.g., "I'm Brian", "My name is Sarah"):
-→ Extract: "The user's name is [NAME]" with salience_hint: 10
+→ Extract: "The user's name is [NAME]" with salience_hint: 10, confidence: 0.95
 Key relationships with names:
-→ "My wife is Sarah" → "The user's wife is named Sarah" (salience_hint: 8)
+→ "My wife is Sarah" → salience_hint: 8, confidence: 0.9
 
 Always use "The user" format for identity facts.
 
@@ -302,26 +320,25 @@ User: You know what, I've decided I'm going to accept the offer at TechCorp
 
 Output:
 [
-  {"content": "The user's name is Brian", "type": "fact", "salience_hint": 10},
-  {"content": "The user has decided to accept a job offer at TechCorp", "type": "decision", "salience_hint": 8}
+  {"content": "The user's name is Brian", "type": "fact", "salience_hint": 10, "confidence": 0.95},
+  {"content": "The user has decided to accept a job offer at TechCorp", "type": "decision", "salience_hint": 8, "confidence": 0.85}
 ]
-(Reason: Identity + clear decision with specifics)
+(Reason: Identity is near-certain; decision is strong but could theoretically change)
 
-Example episode (work planning):
-User: I need to finish the Q1 report
-User: Let me work on the charts first
-User: Actually, I'll do the summary section
-User: Ok so the plan is: finish charts today, summary tomorrow, submit by Friday
+Example episode (exploratory):
+User: I'm thinking about learning Spanish
+User: Maybe I'll sign up for a class next month
+User: Or maybe I'll just use an app
 
 Output:
 [
-  {"content": "The user plans to submit their Q1 report by Friday", "type": "goal", "salience_hint": 7}
+  {"content": "The user is considering learning Spanish", "type": "goal", "salience_hint": 5, "confidence": 0.5}
 ]
-(Reason: Only the final plan matters, not the deliberation)
+(Reason: Exploratory thought, not a firm decision - low confidence)
 
 If there's nothing worth remembering tomorrow, return: []
 
-IMPORTANT: Return ONLY valid JSON array, no markdown, no explanation. MAX 3 items.`;
+IMPORTANT: Return ONLY valid JSON array, no markdown, no explanation. MAX 3 items. Include confidence for each.`;
 
 // === DATE/TIME HELPERS ===
 
@@ -1174,6 +1191,34 @@ async function extractFromConversation(
           `UPDATE memories SET conversation_mode = $1 WHERE id = $2`,
           [conversationMode, memory.id]
         );
+
+        // Phase 3: Set tier and confidence
+        // High confidence (≥0.75) → solid tier immediately
+        // Lower confidence → hypothesis tier (needs reinforcement to promote)
+        const confidence = mem.confidence ?? 0.5;
+        const tier = confidence >= 0.75 ? 'solid' : 'hypothesis';
+        await pool.query(
+          `UPDATE memories SET tier = $1, confidence = $2 WHERE id = $3`,
+          [tier, confidence, memory.id]
+        );
+        if (tier === 'solid') {
+          console.log(`[ChatExtraction] Memory created as SOLID (confidence: ${confidence.toFixed(2)}): "${mem.content.substring(0, 50)}..."`);
+        }
+
+        // Phase 3: Check for reinforcement from similar existing memories
+        // If similar memories exist, boost confidence and potentially promote to solid
+        if (tier === 'hypothesis') {
+          try {
+            const reinforcement = await checkReinforcement(memory.id, mem.content, confidence);
+            if (reinforcement.wasPromoted) {
+              console.log(`[ChatExtraction] Memory promoted via reinforcement: hypothesis → solid`);
+            } else if (reinforcement.reinforcedBy.length > 0) {
+              console.log(`[ChatExtraction] Memory reinforced by ${reinforcement.reinforcedBy.length} similar memories (confidence: ${confidence.toFixed(2)} → ${reinforcement.newConfidence.toFixed(2)})`);
+            }
+          } catch (reinforceError) {
+            console.error('[ChatExtraction] Reinforcement check failed:', reinforceError);
+          }
+        }
 
         memoriesCreated++;
 

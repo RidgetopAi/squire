@@ -635,6 +635,7 @@ export async function generateContext(
           OR 1 - (embedding <=> $1::vector) >= $5
         )
         AND (conversation_mode IS NULL OR conversation_mode != 'meta_ai')
+        AND (tier IS NULL OR tier = 'solid')
       ORDER BY similarity DESC, salience_score DESC
       LIMIT 100
     `;
@@ -649,6 +650,7 @@ export async function generateContext(
         AND current_strength >= $2
         AND created_at >= $3
         AND (conversation_mode IS NULL OR conversation_mode != 'meta_ai')
+        AND (tier IS NULL OR tier = 'solid')
       ORDER BY salience_score DESC, created_at DESC
       LIMIT 100
     `;
