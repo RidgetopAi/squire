@@ -614,6 +614,9 @@ export async function generateContext(
     // use a much lower similarity threshold (0.15) to avoid filtering out
     // biographical content that may use different vocabulary than the query.
     // High-salience memories (>= 6.0) bypass the similarity filter entirely.
+    //
+    // Phase 1 Enhancement: Exclude meta_ai conversations from context injection.
+    // Dev chatter like "fix the bug" should not appear in personal context.
     const isStoryMode = profile.name === 'personal-story';
     const similarityThreshold = isStoryMode ? 0.15 : 0.25;
     
@@ -631,6 +634,7 @@ export async function generateContext(
           salience_score >= 6.0
           OR 1 - (embedding <=> $1::vector) >= $5
         )
+        AND (conversation_mode IS NULL OR conversation_mode != 'meta_ai')
       ORDER BY similarity DESC, salience_score DESC
       LIMIT 100
     `;
@@ -644,6 +648,7 @@ export async function generateContext(
       WHERE salience_score >= $1
         AND current_strength >= $2
         AND created_at >= $3
+        AND (conversation_mode IS NULL OR conversation_mode != 'meta_ai')
       ORDER BY salience_score DESC, created_at DESC
       LIMIT 100
     `;

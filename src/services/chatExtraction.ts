@@ -223,6 +223,24 @@ export interface ExtractionResult {
   errors: string[];
 }
 
+// === CONVERSATION MODE (Phase 1) ===
+
+/**
+ * Conversation modes for routing extraction and context injection
+ * 
+ * - personal: Personal life, relationships, health, emotions, family
+ * - work: Professional tasks, projects, career, job-related
+ * - meta_ai: Conversations about Squire/AI development, debugging, coding WITH the AI
+ * - other: General conversation not fitting above categories
+ */
+export type ConversationMode = 'personal' | 'work' | 'meta_ai' | 'other';
+
+export interface ConversationModeResult {
+  mode: ConversationMode;
+  confidence: number;
+  reasoning: string;
+}
+
 // === EXTRACTION PROMPT ===
 
 const EXTRACTION_SYSTEM_PROMPT = `You are analyzing a conversation to extract memorable information about the user.
@@ -381,6 +399,125 @@ function getDateTimeContext(): {
     tomorrowIso: formatDateInTimezone(tomorrow, timezone),
     weekdayDates,
   };
+}
+
+// === CONVERSATION MODE CLASSIFIER (Phase 1) ===
+
+const CONVERSATION_MODE_PROMPT = `Classify this conversation transcript into exactly ONE mode.
+
+MODES:
+- "personal": About the user's personal life, family, relationships, health, emotions, hobbies, daily life
+- "work": About professional tasks, career, job projects, business, workplace topics  
+- "meta_ai": Conversations about AI development, debugging code, building/fixing Squire, coding WITH the AI assistant
+- "other": General topics that don't fit the above categories
+
+CRITICAL DISTINCTION:
+- If the user is DEBUGGING or DEVELOPING an AI/software project WITH the AI assistant → meta_ai
+- If the user is DISCUSSING their work life, job, or career with the AI → work
+- "Fix the bug", "help me debug this", "run the tests", "implement this feature" → meta_ai
+- "I have a meeting tomorrow", "need to finish the report", "my boss wants..." → work
+
+Return JSON:
+{
+  "mode": "personal" | "work" | "meta_ai" | "other",
+  "confidence": 0.0-1.0,
+  "reasoning": "brief explanation"
+}
+
+Examples:
+
+Transcript: "User: My wife Sherrie and I are going to dinner tonight"
+Output: {"mode": "personal", "confidence": 0.95, "reasoning": "Discussing personal life - spouse and evening plans"}
+
+Transcript: "User: I need to ship this feature by Friday. User: Can you help fix the TypeScript error?"
+Output: {"mode": "meta_ai", "confidence": 0.9, "reasoning": "User is debugging/developing code with the AI"}
+
+Transcript: "User: I have a presentation at work tomorrow"
+Output: {"mode": "work", "confidence": 0.9, "reasoning": "Discussing professional work activity"}
+
+Transcript: "User: What's the weather like today?"
+Output: {"mode": "other", "confidence": 0.85, "reasoning": "General question not fitting other categories"}
+
+IMPORTANT: Return ONLY valid JSON, no markdown.`;
+
+/**
+ * Classify the conversation mode from a transcript
+ * 
+ * Phase 1 of memory extraction false-positive reduction.
+ * Routes extraction differently based on conversation context.
+ */
+export async function classifyConversationMode(
+  transcript: string
+): Promise<ConversationModeResult> {
+  const defaultResult: ConversationModeResult = {
+    mode: 'other',
+    confidence: 0.5,
+    reasoning: 'Default classification',
+  };
+
+  if (!transcript || transcript.trim().length < 10) {
+    return defaultResult;
+  }
+
+  // Quick heuristic checks for obvious meta_ai conversations
+  const lowerTranscript = transcript.toLowerCase();
+  const metaAiPatterns = [
+    /\b(fix|debug|implement|refactor|test|build|compile|deploy)\b.*\b(bug|error|issue|code|function|component|service)\b/i,
+    /\b(typescript|javascript|react|node|sql|api|endpoint|schema|migration)\b/i,
+    /\b(npm|yarn|git|commit|push|pull|branch|merge)\b/i,
+    /\bsquire\b.*\b(app|project|feature|memory|extraction)\b/i,
+    /\b(look at|read|check|update|modify)\b.*\.(ts|js|tsx|jsx|sql|json)\b/i,
+  ];
+
+  const isLikelyMetaAi = metaAiPatterns.some((p) => p.test(lowerTranscript));
+  
+  // If obviously meta_ai, skip LLM call
+  if (isLikelyMetaAi) {
+    return {
+      mode: 'meta_ai',
+      confidence: 0.85,
+      reasoning: 'Heuristic: contains development/coding terminology',
+    };
+  }
+
+  try {
+    const messages: LLMMessage[] = [
+      { role: 'system', content: CONVERSATION_MODE_PROMPT },
+      { role: 'user', content: `Classify this transcript:\n\n${transcript.slice(0, 2000)}` },
+    ];
+
+    const response = await complete(messages, {
+      temperature: 0.1,
+      maxTokens: 150,
+    });
+
+    const content = response.content?.trim();
+    if (!content) return defaultResult;
+
+    // Parse JSON response
+    let jsonStr = content;
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      jsonStr = jsonMatch[0];
+    }
+
+    const parsed = JSON.parse(jsonStr) as ConversationModeResult;
+
+    // Validate mode
+    const validModes: ConversationMode[] = ['personal', 'work', 'meta_ai', 'other'];
+    if (!validModes.includes(parsed.mode)) {
+      return defaultResult;
+    }
+
+    return {
+      mode: parsed.mode,
+      confidence: Math.min(1, Math.max(0, parsed.confidence ?? 0.5)),
+      reasoning: parsed.reasoning ?? 'LLM classification',
+    };
+  } catch (error) {
+    console.error('[ChatExtraction] Mode classification failed:', error);
+    return defaultResult;
+  }
 }
 
 // === COMMITMENT DETECTION PROMPT ===
@@ -899,6 +1036,11 @@ async function extractFromConversation(
   const transcript = buildTranscript(messages);
 
   try {
+    // Phase 1: Classify conversation mode before extraction
+    const modeResult = await classifyConversationMode(transcript);
+    const conversationMode = modeResult.mode;
+    console.log(`[ChatExtraction] Conversation mode: ${conversationMode} (${(modeResult.confidence * 100).toFixed(0)}% - ${modeResult.reasoning})`);
+
     // Extract memories via LLM
     const extracted = await extractFromTranscript(transcript);
 
@@ -980,7 +1122,7 @@ async function extractFromConversation(
     // Create memories from extracted content
     for (const mem of extracted) {
       try {
-        // Create the memory
+        // Create the memory with conversation mode
         const { memory } = await createMemory({
           content: mem.content,
           source: 'chat',
@@ -988,8 +1130,15 @@ async function extractFromConversation(
             conversation_id: conversation.id,
             extraction_type: mem.type,
             salience_hint: mem.salience_hint,
+            conversation_mode: conversationMode,
           },
         });
+
+        // Update conversation_mode column (Phase 1)
+        await pool.query(
+          `UPDATE memories SET conversation_mode = $1 WHERE id = $2`,
+          [conversationMode, memory.id]
+        );
 
         memoriesCreated++;
 
@@ -1059,7 +1208,9 @@ async function extractFromConversation(
         }
 
         // Detect and create commitments from goals and decisions
-        if (mem.type === 'goal' || mem.type === 'decision') {
+        // Phase 1: Skip commitment creation for meta_ai mode (dev chatter)
+        // "Fix the bug" in meta_ai mode should NOT become a tracked commitment
+        if ((mem.type === 'goal' || mem.type === 'decision') && conversationMode !== 'meta_ai') {
           try {
             const commitmentInfo = await detectCommitment(mem.content);
             if (commitmentInfo?.is_commitment && commitmentInfo.title) {
@@ -1071,6 +1222,11 @@ async function extractFromConversation(
                 due_at: commitmentInfo.due_at ? new Date(commitmentInfo.due_at) : undefined,
                 all_day: commitmentInfo.all_day,
               });
+              // Update commitment conversation_mode
+              await pool.query(
+                `UPDATE commitments SET conversation_mode = $1 WHERE memory_id = $2`,
+                [conversationMode, memory.id]
+              );
               commitmentsCreated++;
               console.log(`[ChatExtraction] Created commitment: ${commitmentInfo.title}`);
             }
@@ -1078,6 +1234,8 @@ async function extractFromConversation(
             // Log but don't fail - commitment creation is secondary
             console.error('[ChatExtraction] Commitment creation failed:', commitmentError);
           }
+        } else if ((mem.type === 'goal' || mem.type === 'decision') && conversationMode === 'meta_ai') {
+          console.log(`[ChatExtraction] Skipping commitment for meta_ai mode: ${mem.content.slice(0, 50)}...`);
         }
       } catch (memError) {
         console.error('[ChatExtraction] Failed to create memory:', memError);
