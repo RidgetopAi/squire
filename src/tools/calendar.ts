@@ -4,6 +4,10 @@
  * LLM tools for reading and creating user calendar events in Google Calendar.
  * Queries the google_events table (synced from Google) for actual calendar events.
  * Can create new events directly in Google Calendar.
+ *
+ * IMPORTANT: All responses include pre-computed date labels and local times
+ * so the LLM doesn't need to do timezone math. The LLM should use the
+ * `date_label` and `time_local` fields directly when presenting events.
  */
 
 import { getAllEvents, pushEventToGoogle, type GoogleEvent } from '../services/google/events.js';
@@ -12,8 +16,109 @@ import { listSyncEnabledAccounts } from '../services/google/auth.js';
 import { config } from '../config/index.js';
 import type { ToolHandler } from './types.js';
 
+// =============================================================================
+// DATE/TIME FORMATTING HELPERS
+// =============================================================================
+
 /**
- * Format event time for LLM consumption.
+ * Get today's date string (YYYY-MM-DD) in the configured timezone
+ */
+function getTodayDateString(): string {
+  const now = new Date();
+  return now.toLocaleDateString('en-CA', { timeZone: config.timezone }); // en-CA gives YYYY-MM-DD
+}
+
+/**
+ * Get tomorrow's date string (YYYY-MM-DD) in the configured timezone
+ */
+function getTomorrowDateString(): string {
+  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  return tomorrow.toLocaleDateString('en-CA', { timeZone: config.timezone });
+}
+
+/**
+ * Get the date string (YYYY-MM-DD) for an event in the configured timezone
+ */
+function getEventDateString(eventTime: Date, allDay: boolean): string {
+  if (allDay) {
+    // All-day events are stored as midnight UTC on the date
+    // Use UTC date to avoid timezone shift issues
+    return eventTime.toISOString().substring(0, 10);
+  }
+  // For timed events, convert to user's timezone
+  return eventTime.toLocaleDateString('en-CA', { timeZone: config.timezone });
+}
+
+/**
+ * Compute a human-friendly date label for an event
+ * Returns "Today", "Tomorrow", or "Wednesday, January 9"
+ */
+function getDateLabel(eventTime: Date | null, allDay: boolean): string {
+  if (!eventTime) return 'Unknown date';
+
+  const eventDateStr = getEventDateString(eventTime, allDay);
+  const todayStr = getTodayDateString();
+  const tomorrowStr = getTomorrowDateString();
+
+  if (eventDateStr === todayStr) {
+    return 'Today';
+  } else if (eventDateStr === tomorrowStr) {
+    return 'Tomorrow';
+  } else {
+    // Return "Wednesday, January 9"
+    if (allDay) {
+      // Parse the UTC date string to avoid timezone issues
+      const [year, month, day] = eventDateStr.split('-').map(Number);
+      const date = new Date(year!, month! - 1, day!);
+      return date.toLocaleDateString('en-US', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+      });
+    }
+    return eventTime.toLocaleDateString('en-US', {
+      timeZone: config.timezone,
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+    });
+  }
+}
+
+/**
+ * Format time in the user's local timezone
+ * Returns "10:00 AM EST" or null for all-day events
+ */
+function getLocalTime(eventTime: Date | null, allDay: boolean): string | null {
+  if (!eventTime || allDay) return null;
+  return eventTime.toLocaleTimeString('en-US', {
+    timeZone: config.timezone,
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  });
+}
+
+/**
+ * Get the day of week for an event in the user's timezone
+ */
+function getDayOfWeek(eventTime: Date | null, allDay: boolean): string | null {
+  if (!eventTime) return null;
+  if (allDay) {
+    // Parse the UTC date string to avoid timezone issues
+    const dateStr = eventTime.toISOString().substring(0, 10);
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const date = new Date(year!, month! - 1, day!);
+    return date.toLocaleDateString('en-US', { weekday: 'long' });
+  }
+  return eventTime.toLocaleDateString('en-US', {
+    timeZone: config.timezone,
+    weekday: 'long',
+  });
+}
+
+/**
+ * Format event time for LLM consumption (raw ISO timestamp).
  * All-day events return just the date (YYYY-MM-DD) to avoid timezone confusion.
  * Timed events return the full ISO timestamp.
  */
@@ -26,6 +131,27 @@ function formatEventTime(time: Date | null, allDay: boolean): string | null {
     return iso.substring(0, 10); // YYYY-MM-DD
   }
   return time.toISOString();
+}
+
+/**
+ * Get current date/time context for LLM
+ */
+function getCurrentContext() {
+  const now = new Date();
+  return {
+    current_time: now.toLocaleString('en-US', {
+      timeZone: config.timezone,
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short',
+    }),
+    timezone: config.timezone,
+    today_date: getTodayDateString(),
+  };
 }
 
 // =============================================================================
@@ -55,9 +181,12 @@ async function handleGetUpcomingEvents(args: GetUpcomingEventsArgs | null): Prom
     // Apply limit
     const limitedEvents = events.slice(0, limit);
 
+    const context = getCurrentContext();
+
     if (limitedEvents.length === 0) {
       return JSON.stringify({
         message: `No calendar events in the next ${days} day(s)`,
+        ...context,
         date_range: {
           from: now.toISOString(),
           to: endDate.toISOString(),
@@ -66,13 +195,18 @@ async function handleGetUpcomingEvents(args: GetUpcomingEventsArgs | null): Prom
       });
     }
 
-    // Format for LLM consumption
+    // Format for LLM consumption with pre-computed date labels
     const formatEvent = (e: GoogleEvent & { calendar_name?: string }) => ({
       id: e.id,
       title: e.summary,
       description: e.description,
+      // Raw timestamps (for reference)
       start_time: formatEventTime(e.start_time, e.all_day),
       end_time: formatEventTime(e.end_time, e.all_day),
+      // PRE-COMPUTED LABELS - LLM should use these directly
+      date_label: getDateLabel(e.start_time, e.all_day),
+      time_local: getLocalTime(e.start_time, e.all_day),
+      day_of_week: getDayOfWeek(e.start_time, e.all_day),
       all_day: e.all_day,
       location: e.location,
       status: e.status,
@@ -81,11 +215,14 @@ async function handleGetUpcomingEvents(args: GetUpcomingEventsArgs | null): Prom
     });
 
     return JSON.stringify({
+      ...context,
       date_range: {
         from: now.toISOString(),
         to: endDate.toISOString(),
       },
       count: limitedEvents.length,
+      // Instructions for LLM
+      usage_note: 'Use date_label and time_local fields when presenting events. These are pre-computed for the user\'s timezone.',
       events: limitedEvents.map(formatEvent),
     });
   } catch (error) {
@@ -97,7 +234,7 @@ async function handleGetUpcomingEvents(args: GetUpcomingEventsArgs | null): Prom
 export const getUpcomingEventsToolName = 'get_upcoming_events';
 
 export const getUpcomingEventsToolDescription =
-  'Get the user\'s upcoming scheduled items (commitments, tasks with due dates, and calendar events if synced). Use when user asks "what\'s coming up?", "what do I have planned?", or "what\'s on my schedule?" Returns scheduled items for the next N days.';
+  'Get the user\'s upcoming scheduled items (commitments, tasks with due dates, and calendar events if synced). Use when user asks "what\'s coming up?", "what do I have planned?", or "what\'s on my schedule?" Returns scheduled items for the next N days. IMPORTANT: Use the date_label and time_local fields directly when presenting events - these are pre-computed for the user\'s timezone.';
 
 export const getUpcomingEventsToolParameters = {
   type: 'object',
@@ -133,12 +270,17 @@ async function handleGetTodaysEvents(args: GetTodaysEventsArgs | null): Promise<
   void args;
 
   try {
-    // Today's range
+    // Calculate today's range in the configured timezone
     const now = new Date();
-    const startOfDay = new Date(now);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(now);
-    endOfDay.setHours(23, 59, 59, 999);
+    const todayStr = getTodayDateString();
+
+    // Parse today's date to get start/end of day in local timezone
+    const [year, month, day] = todayStr.split('-').map(Number);
+
+    // Create start/end of day - these will be in server's local time
+    // which should match config.timezone if server is configured correctly
+    const startOfDay = new Date(year!, month! - 1, day!, 0, 0, 0, 0);
+    const endOfDay = new Date(year!, month! - 1, day!, 23, 59, 59, 999);
 
     // Get today's Google Calendar events
     const events = await getAllEvents({
@@ -146,15 +288,17 @@ async function handleGetTodaysEvents(args: GetTodaysEventsArgs | null): Promise<
       timeMax: endOfDay,
     });
 
+    const context = getCurrentContext();
+
     if (events.length === 0) {
       return JSON.stringify({
         message: 'No calendar events for today',
-        today: now.toISOString().split('T')[0],
+        ...context,
         events: [],
       });
     }
 
-    // Format for LLM consumption
+    // Format for LLM consumption with pre-computed labels
     const formatEvent = (e: GoogleEvent & { calendar_name?: string }) => {
       const startTime = e.start_time ? new Date(e.start_time) : null;
       const isPast = startTime && !e.all_day && startTime < now;
@@ -163,8 +307,13 @@ async function handleGetTodaysEvents(args: GetTodaysEventsArgs | null): Promise<
         id: e.id,
         title: e.summary,
         description: e.description,
+        // Raw timestamps
         start_time: formatEventTime(e.start_time, e.all_day),
         end_time: formatEventTime(e.end_time, e.all_day),
+        // PRE-COMPUTED LABELS
+        date_label: 'Today',
+        time_local: getLocalTime(e.start_time, e.all_day),
+        day_of_week: getDayOfWeek(e.start_time, e.all_day),
         all_day: e.all_day,
         location: e.location,
         status: e.status,
@@ -177,9 +326,10 @@ async function handleGetTodaysEvents(args: GetTodaysEventsArgs | null): Promise<
     const upcomingCount = formattedEvents.filter((e) => !e.is_past).length;
 
     return JSON.stringify({
-      today: now.toISOString().split('T')[0],
+      ...context,
       count: formattedEvents.length,
       upcoming_count: upcomingCount,
+      usage_note: 'All events are for today. Use time_local field when presenting times.',
       events: formattedEvents,
     });
   } catch (error) {
@@ -191,7 +341,7 @@ async function handleGetTodaysEvents(args: GetTodaysEventsArgs | null): Promise<
 export const getTodaysEventsToolName = 'get_todays_events';
 
 export const getTodaysEventsToolDescription =
-  'Get the user\'s scheduled items for TODAY plus any overdue items. Use when user asks "what do I have today?", "what\'s on my schedule today?", or "anything due today?"';
+  'Get the user\'s scheduled items for TODAY plus any overdue items. Use when user asks "what do I have today?", "what\'s on my schedule today?", or "anything due today?" IMPORTANT: Use the time_local field when presenting event times.';
 
 export const getTodaysEventsToolParameters = {
   type: 'object',
@@ -227,15 +377,18 @@ async function handleGetEventsDueSoon(args: GetEventsDueSoonArgs | null): Promis
       timeMax: endTime,
     });
 
+    const context = getCurrentContext();
+
     if (events.length === 0) {
       return JSON.stringify({
         message: `No calendar events within the next ${within_hours} hour(s)`,
+        ...context,
         within_hours,
         events: [],
       });
     }
 
-    // Format for LLM consumption
+    // Format for LLM consumption with pre-computed labels
     const formattedEvents = events.map((e: GoogleEvent & { calendar_name?: string }) => {
       const startTime = e.start_time ? new Date(e.start_time) : null;
       // For all-day events, don't calculate minutes (not meaningful)
@@ -247,8 +400,13 @@ async function handleGetEventsDueSoon(args: GetEventsDueSoonArgs | null): Promis
         id: e.id,
         title: e.summary,
         description: e.description,
+        // Raw timestamps
         start_time: formatEventTime(e.start_time, e.all_day),
         end_time: formatEventTime(e.end_time, e.all_day),
+        // PRE-COMPUTED LABELS
+        date_label: getDateLabel(e.start_time, e.all_day),
+        time_local: getLocalTime(e.start_time, e.all_day),
+        day_of_week: getDayOfWeek(e.start_time, e.all_day),
         all_day: e.all_day,
         location: e.location,
         minutes_until_start: minutesUntilStart,
@@ -258,8 +416,10 @@ async function handleGetEventsDueSoon(args: GetEventsDueSoonArgs | null): Promis
     });
 
     return JSON.stringify({
+      ...context,
       count: formattedEvents.length,
       within_hours,
+      usage_note: 'Use date_label and time_local fields when presenting events.',
       events: formattedEvents,
     });
   } catch (error) {
@@ -271,7 +431,7 @@ async function handleGetEventsDueSoon(args: GetEventsDueSoonArgs | null): Promis
 export const getEventsDueSoonToolName = 'get_events_due_soon';
 
 export const getEventsDueSoonToolDescription =
-  'Get events that are due soon (within a specified number of hours). Use this when the user asks "what\'s coming up soon?", "do I have anything urgent?", or needs to know about imminent deadlines.';
+  'Get events that are due soon (within a specified number of hours). Use this when the user asks "what\'s coming up soon?", "do I have anything urgent?", or needs to know about imminent deadlines. IMPORTANT: Use date_label and time_local fields when presenting events.';
 
 export const getEventsDueSoonToolParameters = {
   type: 'object',
@@ -403,6 +563,9 @@ async function handleCreateCalendarEvent(args: CreateCalendarEventArgs): Promise
         location: location || null,
         start_time: all_day ? startDate.toISOString().split('T')[0] : startDate.toISOString(),
         end_time: all_day ? endDate.toISOString().split('T')[0] : endDate.toISOString(),
+        // Include pre-computed labels for confirmation
+        date_label: getDateLabel(startDate, all_day),
+        time_local: getLocalTime(startDate, all_day),
         all_day,
         calendar: calendar.summary,
       },

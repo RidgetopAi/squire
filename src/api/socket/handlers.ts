@@ -240,15 +240,33 @@ Good: "Nice work on Wilf-Command - those upgrades sound significant. You're all 
 
 Below are impressions from your conversations. Hold them lightly - use them to be helpful, not to assert what's true about this person.`;
 
-// Tool calling instructions - prevents inline function syntax
+// Tool calling instructions - tells model HOW and WHEN to use tools
 const TOOL_CALLING_INSTRUCTIONS = `
 
-CRITICAL TOOL USAGE RULES:
-- You have access to tools that you can call through the API.
-- NEVER write function calls or tool invocations in your text response.
-- Wrong: "<function=tool_name{...}>" or "Let me call <function=...>"
-- Right: Simply use the tool through the API - the user will see the result.
-- If you want to use a tool, use the proper tool calling mechanism, not text.`;
+## Tool Usage
+
+You have access to tools. Use them correctly:
+
+### HOW to call tools
+- Call tools through the API mechanism, not in your text
+- NEVER write "<function=..." or "Let me call..." in your response
+- When you call a tool, the result appears automatically
+
+### WHEN to call tools (MANDATORY)
+
+**Calendar/Schedule queries - ALWAYS use calendar tools:**
+- "what's on my schedule" → get_todays_events or get_upcoming_events
+- "what do I have today" → get_todays_events
+- "what time is my appointment" → get_todays_events
+- "what's coming up" → get_upcoming_events
+- Any question about appointments, meetings, events, or times → USE THE TOOL
+- NEVER answer schedule questions from memory or context - always fetch current data
+
+**Notes queries** → use search_notes, get_pinned_notes, or list_recent_notes
+**Lists queries** → use search_lists, get_list_items, or list_all_lists
+
+### Critical rule
+If the user asks about their schedule, calendar, or appointments, you MUST call the calendar tool FIRST before responding. Do not say "let me check" - just call the tool.`;
 
 /**
  * Build the complete system prompt with user identity
