@@ -164,39 +164,4 @@ export function NoteCard({
   );
 }
 
-function NoteCardCompact({
-  note,
-  onClick,
-}: {
-  note: Note;
-  onClick?: () => void;
-}) {
-  return (
-    <motion.button
-      className={`
-        w-full text-left p-3 rounded-lg
-        glass hover:border-primary/50
-        transition-all duration-200
-        ${note.is_pinned ? 'border-accent-gold/30' : ''}
-      `}
-      whileHover={{ scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
-      onClick={onClick}
-    >
-      <div className="flex items-start gap-2">
-        {note.is_pinned && <span className="text-accent-gold text-sm">📌</span>}
-        <div className="flex-1 min-w-0">
-          {note.title && (
-            <p className="text-sm font-medium text-foreground truncate">{note.title}</p>
-          )}
-          <p className="text-sm text-foreground-muted line-clamp-2">{note.content}</p>
-          <span className="text-xs text-foreground-muted mt-1">
-            {formatRelativeTime(note.created_at)}
-          </span>
-        </div>
-      </div>
-    </motion.button>
-  );
-}
-
 export default NoteCard;

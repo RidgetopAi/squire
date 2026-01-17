@@ -4,7 +4,7 @@ export type {
   UseSpeechRecognitionReturn,
 } from './useSpeechRecognition';
 
-export { useSummaries, useSummaryStats } from './useSummaries';
+export { useSummaries } from './useSummaries';
 export {
   useMemories,
   useRecentHighSalienceMemories,
@@ -33,7 +33,6 @@ export {
 export {
   useGraphStats,
   useEntitySubgraph,
-  useMemorySubgraph,
   useEntityNeighbors,
   useGraphVisualization,
 } from './useGraphData';

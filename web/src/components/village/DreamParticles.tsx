@@ -202,25 +202,4 @@ export function DreamParticles({
   );
 }
 
-// ============================================
-// FIREFLIES (LARGER, SLOWER, FEWER)
-// ============================================
-
-function Fireflies({
-  count = 30,
-  bounds = { minX: -30, maxX: 30, minZ: -30, maxZ: 30 },
-}: {
-  count?: number;
-  bounds?: { minX: number; maxX: number; minZ: number; maxZ: number };
-}) {
-  return (
-    <DreamParticles
-      count={count}
-      bounds={bounds}
-      color1="#ffdd44"
-      color2="#ff9944"
-    />
-  );
-}
-
 export default DreamParticles;

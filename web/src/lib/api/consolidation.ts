@@ -95,17 +95,3 @@ export async function triggerConsolidation(): Promise<ConsolidationResult> {
   return response.result;
 }
 
-/**
- * Get consolidation statistics
- */
-export async function getConsolidationStats(): Promise<ConsolidationStats> {
-  const response = await apiGet<ApiSuccessResponse<never> & ConsolidationStats>(
-    '/api/consolidation/stats'
-  );
-
-  return {
-    stats: response.stats!,
-    sessions: response.sessions!,
-    config: response.config!,
-  };
-}

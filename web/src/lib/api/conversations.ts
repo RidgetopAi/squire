@@ -2,7 +2,7 @@
 // SQUIRE WEB - CONVERSATIONS API
 // ============================================
 
-import { apiGet, apiPost, apiPatch } from './client';
+import { apiGet, apiPost } from './client';
 
 // === API Response Types ===
 
@@ -73,24 +73,3 @@ export async function createConversation(input: {
   return response.data;
 }
 
-/**
- * Update a conversation (title or archive)
- */
-export async function updateConversation(
-  id: string,
-  updates: { title?: string; status?: 'archived' }
-): Promise<ConversationResponse> {
-  const response = await apiPatch<ApiResponse<ConversationResponse>>(
-    `/api/chat/conversations/${id}`,
-    updates
-  );
-
-  return response.data;
-}
-
-/**
- * Archive a conversation
- */
-export async function archiveConversation(id: string): Promise<ConversationResponse> {
-  return updateConversation(id, { status: 'archived' });
-}

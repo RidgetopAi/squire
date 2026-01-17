@@ -132,16 +132,6 @@ export function updateBeamTime(material: THREE.ShaderMaterial, time: number): vo
   }
 }
 
-/**
- * Update beam color
- */
-function updateBeamColor(material: THREE.ShaderMaterial, color: THREE.Color | string): void {
-  if (material.uniforms.uColor) {
-    const c = color instanceof THREE.Color ? color : new THREE.Color(color);
-    material.uniforms.uColor.value = c;
-  }
-}
-
 // ============================================
 // OUTER GLOW MATERIAL (OPTIONAL ENHANCEMENT)
 // ============================================

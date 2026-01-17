@@ -137,41 +137,12 @@ export async function unsubscribe(endpoint: string): Promise<boolean> {
 }
 
 /**
- * Unsubscribe by ID
- */
-export async function unsubscribeById(id: string): Promise<boolean> {
-  const result = await pool.query(
-    'DELETE FROM push_subscriptions WHERE id = $1',
-    [id]
-  );
-  return (result.rowCount ?? 0) > 0;
-}
-
-/**
  * Deactivate a subscription (soft delete)
  */
 export async function deactivateSubscription(id: string): Promise<PushSubscription | null> {
   const result = await pool.query(
     `UPDATE push_subscriptions
      SET active = false, updated_at = NOW()
-     WHERE id = $1
-     RETURNING *`,
-    [id]
-  );
-  return (result.rows[0] as PushSubscription) ?? null;
-}
-
-/**
- * Reactivate a subscription
- */
-export async function reactivateSubscription(id: string): Promise<PushSubscription | null> {
-  const result = await pool.query(
-    `UPDATE push_subscriptions
-     SET active = true,
-         failure_count = 0,
-         last_failure_at = NULL,
-         last_failure_reason = NULL,
-         updated_at = NOW()
      WHERE id = $1
      RETURNING *`,
     [id]
@@ -341,31 +312,6 @@ export async function sendToAll(payload: PushPayload): Promise<SendResult[]> {
   return results;
 }
 
-/**
- * Send push notification by subscription ID
- */
-export async function sendById(id: string, payload: PushPayload): Promise<SendResult> {
-  const subscription = await getSubscription(id);
-
-  if (!subscription) {
-    return {
-      subscription_id: id,
-      success: false,
-      error: 'Subscription not found',
-    };
-  }
-
-  if (!subscription.active) {
-    return {
-      subscription_id: id,
-      success: false,
-      error: 'Subscription is inactive',
-    };
-  }
-
-  return sendToSubscription(subscription, payload);
-}
-
 // ========================================
 // Convenience methods for common notifications
 // ========================================
@@ -405,55 +351,6 @@ export async function sendReminderNotification(
 }
 
 /**
- * Send a simple notification
- */
-export async function sendSimpleNotification(
-  title: string,
-  body?: string,
-  options: {
-    tag?: string;
-    url?: string;
-    data?: Record<string, unknown>;
-  } = {}
-): Promise<SendResult[]> {
-  const payload: PushPayload = {
-    title,
-    body,
-    icon: '/icon-192.png',
-    badge: '/badge-72.png',
-    tag: options.tag,
-    data: {
-      url: options.url || '/app',
-      ...options.data,
-    },
-  };
-
-  return sendToAll(payload);
-}
-
-// ========================================
-// Maintenance
-// ========================================
-
-/**
- * Clean up stale subscriptions (inactive with high failure count)
- */
-export async function cleanupStaleSubscriptions(
-  options: { older_than_days?: number } = {}
-): Promise<number> {
-  const { older_than_days = 30 } = options;
-
-  const result = await pool.query(
-    `DELETE FROM push_subscriptions
-     WHERE active = false
-       AND updated_at < NOW() - INTERVAL '1 day' * $1`,
-    [older_than_days]
-  );
-
-  return result.rowCount ?? 0;
-}
-
-/**
  * Get subscription statistics
  */
 export async function getSubscriptionStats(): Promise<{
@@ -478,18 +375,4 @@ export async function getSubscriptionStats(): Promise<{
     inactive: parseInt(row.inactive, 10),
     recent_failures: parseInt(row.recent_failures, 10),
   };
-}
-
-/**
- * Update device name for a subscription
- */
-export async function updateDeviceName(id: string, deviceName: string): Promise<PushSubscription | null> {
-  const result = await pool.query(
-    `UPDATE push_subscriptions
-     SET device_name = $1, updated_at = NOW()
-     WHERE id = $2
-     RETURNING *`,
-    [deviceName, id]
-  );
-  return (result.rows[0] as PushSubscription) ?? null;
 }

@@ -8,7 +8,6 @@ import { useQuery } from '@tanstack/react-query';
 import {
   fetchGraphStats,
   fetchEntitySubgraph,
-  fetchMemorySubgraph,
   fetchEntityNeighbors,
   fetchGraphVisualization,
   toForceGraphData,
@@ -60,37 +59,6 @@ export function useEntitySubgraph(
     },
     enabled: enabled && !!entityId,
     staleTime: 30 * 1000, // 30 seconds
-  });
-}
-
-// ============================================
-// MEMORY SUBGRAPH HOOK
-// ============================================
-
-export interface UseMemorySubgraphOptions {
-  maxHops?: number;
-  includeEntities?: boolean;
-  enabled?: boolean;
-}
-
-export function useMemorySubgraph(
-  memoryId: string | null,
-  options: UseMemorySubgraphOptions = {}
-) {
-  const { maxHops, includeEntities, enabled = true } = options;
-
-  return useQuery<ForceGraphData>({
-    queryKey: ['graph', 'memory-subgraph', memoryId, { maxHops, includeEntities }],
-    queryFn: async () => {
-      if (!memoryId) throw new Error('Memory ID required');
-      const response = await fetchMemorySubgraph(memoryId, {
-        maxHops,
-        includeEntities,
-      });
-      return toForceGraphData(response);
-    },
-    enabled: enabled && !!memoryId,
-    staleTime: 30 * 1000,
   });
 }
 

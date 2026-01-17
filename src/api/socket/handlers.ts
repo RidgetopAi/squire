@@ -1155,38 +1155,3 @@ export function registerSocketHandlers(io: TypedIO): void {
   });
 }
 
-/**
- * Broadcast memory creation to all clients
- */
-export function broadcastMemoryCreated(
-  io: TypedIO,
-  memory: { id: string; content: string; salience_score: number; source: string; created_at: string }
-): void {
-  io.emit('memory:created', {
-    memory: {
-      id: memory.id,
-      content: memory.content,
-      salience: memory.salience_score,
-      source: memory.source,
-      created_at: memory.created_at,
-    },
-  });
-}
-
-/**
- * Broadcast insight creation to all clients
- */
-export function broadcastInsightCreated(
-  io: TypedIO,
-  insight: { id: string; content: string; insight_type: string; priority: string; created_at: string }
-): void {
-  io.emit('insight:created', {
-    insight: {
-      id: insight.id,
-      content: insight.content,
-      type: insight.insight_type,
-      priority: insight.priority,
-      created_at: insight.created_at,
-    },
-  });
-}

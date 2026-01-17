@@ -2872,9 +2872,9 @@
       "model": "grok-4-1-fast-reasoning"
     },
     "file:src/services/expressionFilter.ts:fn:shouldBlockWithoutFilter:288": {
-      "contentHash": "8eb9e77cd42ded64",
+      "contentHash": "a8afe0f5c6e7fe91",
       "result": {
-        "summary": "Checks if content matches debugging/coding patterns and returns true to block.",
+        "summary": "Checks if content matches Meta-AI debugging patterns to block without LLM filter.",
         "flags": {
           "databaseRead": false,
           "databaseWrite": false,
@@ -2885,15 +2885,15 @@
           "modifiesGlobalState": false,
           "hasSideEffects": false
         },
-        "rawResponse": "{\"summary\":\"Checks if content matches debugging/coding patterns and returns true to block.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+        "rawResponse": "{\"summary\":\"Checks if content matches Meta-AI debugging patterns to block without LLM filter.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
       },
-      "analyzedAt": "2026-01-16T02:50:31.065Z",
+      "analyzedAt": "2026-01-17T03:22:08.316Z",
       "model": "grok-4-1-fast-reasoning"
     },
     "file:src/services/expressionFilter.ts:fn:shouldSkipFilter:264": {
-      "contentHash": "9c59f67ff0c4bddc",
+      "contentHash": "be932d8f741f94df",
       "result": {
-        "summary": "Checks if content matches biographical patterns to decide skipping filter.",
+        "summary": "Checks if content matches biographical patterns to skip filtering.",
         "flags": {
           "databaseRead": false,
           "databaseWrite": false,
@@ -2904,9 +2904,9 @@
           "modifiesGlobalState": false,
           "hasSideEffects": false
         },
-        "rawResponse": "{\"summary\":\"Checks if content matches biographical patterns to decide skipping filter.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+        "rawResponse": "{\"summary\":\"Checks if content matches biographical patterns to skip filtering.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
       },
-      "analyzedAt": "2026-01-16T02:50:31.120Z",
+      "analyzedAt": "2026-01-17T03:22:08.141Z",
       "model": "grok-4-1-fast-reasoning"
     },
     "file:src/services/entities.ts:fn:getMemoryEntities:1155": {
@@ -3043,9 +3043,9 @@
       "model": "grok-4-1-fast-reasoning"
     },
     "file:src/services/expressionFilter.ts:fn:filterMemoriesForExpression:95": {
-      "contentHash": "8183bcd5edeba63f",
+      "contentHash": "4ae8ccd05a51aee5",
       "result": {
-        "summary": "Filters memories in batches via filterBatch, accumulates passed/blocked stats, logs results",
+        "summary": "Filters memories in batches via filterBatch, aggregates passed/blocked results, logs stats",
         "flags": {
           "databaseRead": false,
           "databaseWrite": false,
@@ -3056,9 +3056,9 @@
           "modifiesGlobalState": false,
           "hasSideEffects": true
         },
-        "rawResponse": "{\"summary\":\"Filters memories in batches via filterBatch, accumulates passed/blocked stats, logs results\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+        "rawResponse": "{\"summary\":\"Filters memories in batches via filterBatch, aggregates passed/blocked results, logs stats\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
       },
-      "analyzedAt": "2026-01-16T02:50:33.227Z",
+      "analyzedAt": "2026-01-17T03:22:13.341Z",
       "model": "grok-4-1-fast-reasoning"
     },
     "file:src/services/graph.ts:fn:traverseMemories:284": {
@@ -9199,9 +9199,9 @@
       "model": "grok-4-1-fast-reasoning"
     },
     "file:src/services/summaries.ts:fn:getUnincorporatedMemories:331": {
-      "contentHash": "26784fcbabefc5d1",
+      "contentHash": "86e027cfd83f384e",
       "result": {
-        "summary": "Retrieves unincorporated memories for a category, ordered by relevance DESC, limited to N",
+        "summary": "Retrieves unincorporated memories for a category, ordered by relevance, up to limit.",
         "flags": {
           "databaseRead": true,
           "databaseWrite": false,
@@ -9212,9 +9212,9 @@
           "modifiesGlobalState": false,
           "hasSideEffects": true
         },
-        "rawResponse": "{\"summary\":\"Retrieves unincorporated memories for a category, ordered by relevance DESC, limited to N\",\"flags\":{\"databaseRead\":true,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+        "rawResponse": "{\"summary\":\"Retrieves unincorporated memories for a category, ordered by relevance, up to limit.\",\"flags\":{\"databaseRead\":true,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
       },
-      "analyzedAt": "2026-01-16T02:51:37.493Z",
+      "analyzedAt": "2026-01-17T03:22:12.839Z",
       "model": "grok-4-1-fast-reasoning"
     },
     "file:src/services/summaries.ts:fn:getNonEmptySummaries:249": {
@@ -9541,11 +9541,11 @@
       "model": "grok-4-1-fast-reasoning"
     },
     "file:src/services/summaries.ts:fn:markMemoriesIncorporated:356": {
-      "contentHash": "b394e4b7e275a866",
+      "contentHash": "907d69e4dafda3b1",
       "result": {
-        "summary": "Marks memories as incorporated in DB links and updates summary's memory count/last time",
+        "summary": "Marks memories as incorporated in links and updates summary's memory count and last memory time",
         "flags": {
-          "databaseRead": true,
+          "databaseRead": false,
           "databaseWrite": true,
           "httpCall": false,
           "fileRead": false,
@@ -9554,9 +9554,9 @@
           "modifiesGlobalState": false,
           "hasSideEffects": true
         },
-        "rawResponse": "{\n  \"summary\": \"Marks memories as incorporated in DB links and updates summary's memory count/last time\",\n  \"flags\": {\n    \"databaseRead\": true,\n    \"databaseWrite\": true,\n    \"httpCall\": false,\n    \"fileRead\": false,\n    \"fileWrite\": false,\n    \"sendsNotification\": false,\n    \"modifiesGlobalState\": false,\n    \"hasSideEffects\": true\n  }\n}"
+        "rawResponse": "{\n  \"summary\": \"Marks memories as incorporated in links and updates summary's memory count and last memory time\",\n  \"flags\": {\n    \"databaseRead\": false,\n    \"databaseWrite\": true,\n    \"httpCall\": false,\n    \"fileRead\": false,\n    \"fileWrite\": false,\n    \"sendsNotification\": false,\n    \"modifiesGlobalState\": false,\n    \"hasSideEffects\": true\n  }\n}"
       },
-      "analyzedAt": "2026-01-16T02:51:40.203Z",
+      "analyzedAt": "2026-01-17T03:22:15.737Z",
       "model": "grok-4-1-fast-reasoning"
     },
     "file:src/tools/calendar.ts:fn:getDayOfWeek:105": {
@@ -11859,9 +11859,9 @@
       "model": "grok-4-1-fast-reasoning"
     },
     "file:src/services/google/sync.ts:fn:pushPendingCommitments:231": {
-      "contentHash": "aaa416c342bfb92f",
+      "contentHash": "856938ce0f479252",
       "result": {
-        "summary": "Pushes pending commitments to Google Calendar via create/update events and updates DB status",
+        "summary": "Pushes pending commitments to Google Calendar and updates DB sync status",
         "flags": {
           "databaseRead": true,
           "databaseWrite": true,
@@ -11872,9 +11872,9 @@
           "modifiesGlobalState": false,
           "hasSideEffects": true
         },
-        "rawResponse": "{\"summary\":\"Pushes pending commitments to Google Calendar via create/update events and updates DB status\",\"flags\":{\"databaseRead\":true,\"databaseWrite\":true,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+        "rawResponse": "{\"summary\":\"Pushes pending commitments to Google Calendar and updates DB sync status\",\"flags\":{\"databaseRead\":true,\"databaseWrite\":true,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
       },
-      "analyzedAt": "2026-01-16T02:52:05.701Z",
+      "analyzedAt": "2026-01-17T03:22:16.960Z",
       "model": "grok-4-1-fast-reasoning"
     },
     "file:src/services/google/sync.ts:fn:markCommitmentForSync:378": {
@@ -15032,9 +15032,9 @@
       "model": "grok-4-1-fast-reasoning"
     },
     "file:web/src/components/notes/NoteCard.tsx:fn:NoteCardCompact:167": {
-      "contentHash": "b07e6a9b2fbef567",
+      "contentHash": "fe343a0b165681cd",
       "result": {
-        "summary": "Renders a compact clickable note card with title, content, pin status, and timestamp.",
+        "summary": "Renders compact UI card for a note with pin, title, content preview, and timestamp.",
         "flags": {
           "databaseRead": false,
           "databaseWrite": false,
@@ -15045,9 +15045,9 @@
           "modifiesGlobalState": false,
           "hasSideEffects": false
         },
-        "rawResponse": "{\"summary\":\"Renders a compact clickable note card with title, content, pin status, and timestamp.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+        "rawResponse": "{\"summary\":\"Renders compact UI card for a note with pin, title, content preview, and timestamp.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
       },
-      "analyzedAt": "2026-01-16T02:52:41.206Z",
+      "analyzedAt": "2026-01-17T03:22:16.372Z",
       "model": "grok-4-1-fast-reasoning"
     },
     "file:web/src/components/layout/HeaderBar.tsx:fn:HeaderBar:10": {
@@ -15640,9 +15640,9 @@
       "model": "grok-4-1-fast-reasoning"
     },
     "file:web/src/components/village/DistrictGround.tsx:fn:DistrictGround:81": {
-      "contentHash": "467ef399a25f2a2e",
+      "contentHash": "45b81786cdf3ea92",
       "result": {
-        "summary": "Renders hexagonal tiles layer for a district using its bounds and category.",
+        "summary": "Renders hex tiles layer for a district using its bounds and category.",
         "flags": {
           "databaseRead": false,
           "databaseWrite": false,
@@ -15653,9 +15653,9 @@
           "modifiesGlobalState": false,
           "hasSideEffects": false
         },
-        "rawResponse": "{\"summary\":\"Renders hexagonal tiles layer for a district using its bounds and category.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+        "rawResponse": "{\"summary\":\"Renders hex tiles layer for a district using its bounds and category.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
       },
-      "analyzedAt": "2026-01-16T02:52:47.768Z",
+      "analyzedAt": "2026-01-17T03:22:18.472Z",
       "model": "grok-4-1-fast-reasoning"
     },
     "file:web/src/components/village/AuroraSky.tsx:fn:AuroraSky:99": {
@@ -15773,9 +15773,9 @@
       "model": "grok-4-1-fast-reasoning"
     },
     "file:web/src/components/village/DreamLighting.tsx:fn:PulsingPointLight:75": {
-      "contentHash": "c160b713dfa9ea4d",
+      "contentHash": "32e3f380da1c203f",
       "result": {
-        "summary": "Renders a Three.js point light with pulsing intensity animation via useFrame.",
+        "summary": "Renders a pulsing point light in Three.js with animated intensity via useFrame.",
         "flags": {
           "databaseRead": false,
           "databaseWrite": false,
@@ -15786,9 +15786,9 @@
           "modifiesGlobalState": false,
           "hasSideEffects": true
         },
-        "rawResponse": "{\"summary\":\"Renders a Three.js point light with pulsing intensity animation via useFrame.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+        "rawResponse": "{\"summary\":\"Renders a pulsing point light in Three.js with animated intensity via useFrame.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
       },
-      "analyzedAt": "2026-01-16T02:52:49.500Z",
+      "analyzedAt": "2026-01-17T03:22:19.235Z",
       "model": "grok-4-1-fast-reasoning"
     },
     "file:web/src/components/village/DreamEffects.tsx:fn:DreamEffectsSoft:181": {
@@ -15830,9 +15830,9 @@
       "model": "grok-4-1-fast-reasoning"
     },
     "file:web/src/components/village/DreamLighting.tsx:fn:AnimatedHemisphereLight:28": {
-      "contentHash": "dde3588e410fd869",
+      "contentHash": "ef60a051f823002d",
       "result": {
-        "summary": "Animated Three.js hemisphere light with slow color lerp animation.",
+        "summary": "Renders an animated Three.js HemisphereLight shifting sky color slowly.",
         "flags": {
           "databaseRead": false,
           "databaseWrite": false,
@@ -15843,15 +15843,15 @@
           "modifiesGlobalState": false,
           "hasSideEffects": true
         },
-        "rawResponse": "{\"summary\":\"Animated Three.js hemisphere light with slow color lerp animation.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+        "rawResponse": "{\"summary\":\"Renders an animated Three.js HemisphereLight shifting sky color slowly.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
       },
-      "analyzedAt": "2026-01-16T02:52:49.952Z",
+      "analyzedAt": "2026-01-17T03:22:20.359Z",
       "model": "grok-4-1-fast-reasoning"
     },
     "file:web/src/components/village/DreamParticles.tsx:fn:Fireflies:209": {
-      "contentHash": "68b9e1c309e57132",
+      "contentHash": "a7ad4885ad9416b9",
       "result": {
-        "summary": "Renders DreamParticles with firefly colors and customizable count/bounds.",
+        "summary": "Renders DreamParticles with firefly colors, given count and bounds.",
         "flags": {
           "databaseRead": false,
           "databaseWrite": false,
@@ -15862,9 +15862,9 @@
           "modifiesGlobalState": false,
           "hasSideEffects": false
         },
-        "rawResponse": "{\"summary\": \"Renders DreamParticles with firefly colors and customizable count/bounds.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+        "rawResponse": "{\"summary\":\"Renders DreamParticles with firefly colors, given count and bounds.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
       },
-      "analyzedAt": "2026-01-16T02:52:50.127Z",
+      "analyzedAt": "2026-01-17T03:22:17.986Z",
       "model": "grok-4-1-fast-reasoning"
     },
     "file:web/src/components/village/DreamLighting.tsx:fn:DreamAtmosphere:236": {
@@ -15963,9 +15963,9 @@
       "model": "grok-4-1-fast-reasoning"
     },
     "file:web/src/components/village/HexTile.tsx:fn:HexTile:94": {
-      "contentHash": "42720530526beaff",
+      "contentHash": "c954c0fb52e32537",
       "result": {
-        "summary": "Renders a hexagonal tile with optional edge using Three.js in React.",
+        "summary": "Renders a Three.js hexagonal tile mesh with optional edge based on hex coord and category.",
         "flags": {
           "databaseRead": false,
           "databaseWrite": false,
@@ -15976,9 +15976,9 @@
           "modifiesGlobalState": false,
           "hasSideEffects": false
         },
-        "rawResponse": "{\"summary\":\"Renders a hexagonal tile with optional edge using Three.js in React.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+        "rawResponse": "{\"summary\":\"Renders a Three.js hexagonal tile mesh with optional edge based on hex coord and category.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
       },
-      "analyzedAt": "2026-01-16T02:52:51.771Z",
+      "analyzedAt": "2026-01-17T03:22:19.819Z",
       "model": "grok-4-1-fast-reasoning"
     },
     "file:web/src/components/village/FirstPersonControls.tsx:fn:FirstPersonControls:247": {
@@ -16153,9 +16153,9 @@
       "model": "grok-4-1-fast-reasoning"
     },
     "file:web/src/components/village/LightBeamRoad.tsx:fn:LightBeamRoad:92": {
-      "contentHash": "415417bb84ea43e2",
+      "contentHash": "f65b1db5e3ca9f30",
       "result": {
-        "summary": "Renders animated 3D light beam road with optional glow using Three.js",
+        "summary": "Renders animated 3D light beam road with optional glow using Three.js.",
         "flags": {
           "databaseRead": false,
           "databaseWrite": false,
@@ -16166,9 +16166,9 @@
           "modifiesGlobalState": false,
           "hasSideEffects": true
         },
-        "rawResponse": "{\n  \"summary\": \"Renders animated 3D light beam road with optional glow using Three.js\",\n  \"flags\": {\n    \"databaseRead\": false,\n    \"databaseWrite\": false,\n    \"httpCall\": false,\n    \"fileRead\": false,\n    \"fileWrite\": false,\n    \"sendsNotification\": false,\n    \"modifiesGlobalState\": false,\n    \"hasSideEffects\": true\n  }\n}"
+        "rawResponse": "{\n  \"summary\": \"Renders animated 3D light beam road with optional glow using Three.js.\",\n  \"flags\": {\n    \"databaseRead\": false,\n    \"databaseWrite\": false,\n    \"httpCall\": false,\n    \"fileRead\": false,\n    \"fileWrite\": false,\n    \"sendsNotification\": false,\n    \"modifiesGlobalState\": false,\n    \"hasSideEffects\": true\n  }\n}"
       },
-      "analyzedAt": "2026-01-16T02:52:53.653Z",
+      "analyzedAt": "2026-01-17T03:22:20.156Z",
       "model": "grok-4-1-fast-reasoning"
     },
     "file:web/src/components/village/MistPuffs.tsx:fn:MistPuffs:96": {
@@ -16305,9 +16305,9 @@
       "model": "grok-4-1-fast-reasoning"
     },
     "file:web/src/components/village/Road.tsx:fn:Road:41": {
-      "contentHash": "603d706b6a9a4558",
+      "contentHash": "c0527d0764ce4968",
       "result": {
-        "summary": "Renders 3D road mesh in Three.js between positions, with width/color based on props and highlighting.",
+        "summary": "Renders a 3D road mesh between positions using Three.js, with dynamic width, color, and highlighting.",
         "flags": {
           "databaseRead": false,
           "databaseWrite": false,
@@ -16318,9 +16318,9 @@
           "modifiesGlobalState": false,
           "hasSideEffects": true
         },
-        "rawResponse": "{\"summary\":\"Renders 3D road mesh in Three.js between positions, with width/color based on props and highlighting.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+        "rawResponse": "{\"summary\":\"Renders a 3D road mesh between positions using Three.js, with dynamic width, color, and highlighting.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
       },
-      "analyzedAt": "2026-01-16T02:52:54.801Z",
+      "analyzedAt": "2026-01-17T03:22:22.755Z",
       "model": "grok-4-1-fast-reasoning"
     },
     "file:web/src/components/village/GroundMist.tsx:fn:GroundMist:165": {
@@ -21150,9 +21150,9 @@
       "model": "grok-4-1-fast-reasoning"
     },
     "file:web/src/lib/utils/export.ts:fn:memoryToText:60": {
-      "contentHash": "ed7c4b005348b589",
+      "contentHash": "c9bf40f13f455d1f",
       "result": {
-        "summary": "Formats a ScoredMemory object into a human-readable text string.",
+        "summary": "Formats a ScoredMemory object into a human-readable text string for export.",
         "flags": {
           "databaseRead": false,
           "databaseWrite": false,
@@ -21163,9 +21163,9 @@
           "modifiesGlobalState": false,
           "hasSideEffects": false
         },
-        "rawResponse": "{\"summary\":\"Formats a ScoredMemory object into a human-readable text string.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+        "rawResponse": "{\"summary\":\"Formats a ScoredMemory object into a human-readable text string for export.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
       },
-      "analyzedAt": "2026-01-16T02:53:50.539Z",
+      "analyzedAt": "2026-01-17T03:22:29.317Z",
       "model": "grok-4-1-fast-reasoning"
     },
     "file:web/src/lib/utils/colors.ts:fn:getEntityIcon:126": {
@@ -21207,7 +21207,7 @@
       "model": "grok-4-1-fast-reasoning"
     },
     "file:web/src/lib/utils/export.ts:fn:memoryToMarkdown:14": {
-      "contentHash": "80b50a01c3fdb04a",
+      "contentHash": "4689db3afb127a99",
       "result": {
         "summary": "Converts ScoredMemory and optional entities to formatted Markdown string",
         "flags": {
@@ -21222,7 +21222,7 @@
         },
         "rawResponse": "{\"summary\":\"Converts ScoredMemory and optional entities to formatted Markdown string\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
       },
-      "analyzedAt": "2026-01-16T02:53:50.808Z",
+      "analyzedAt": "2026-01-17T03:22:28.258Z",
       "model": "grok-4-1-fast-reasoning"
     },
     "file:web/src/lib/utils/formatting.ts:fn:formatRelativeTime:6": {
@@ -21701,9 +21701,9 @@
       "model": "grok-4-1-fast-reasoning"
     },
     "file:web/src/lib/village/beamShader.ts:fn:updateBeamColor:138": {
-      "contentHash": "3812d1c4a7d71b3a",
+      "contentHash": "e6c3da0421fc5d15",
       "result": {
-        "summary": "Updates uColor uniform of ShaderMaterial with given color if uniform exists.",
+        "summary": "Updates uColor uniform of ShaderMaterial with given color.",
         "flags": {
           "databaseRead": false,
           "databaseWrite": false,
@@ -21714,9 +21714,9 @@
           "modifiesGlobalState": false,
           "hasSideEffects": true
         },
-        "rawResponse": "{\"summary\":\"Updates uColor uniform of ShaderMaterial with given color if uniform exists.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+        "rawResponse": "{\"summary\":\"Updates uColor uniform of ShaderMaterial with given color.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
       },
-      "analyzedAt": "2026-01-16T02:53:54.924Z",
+      "analyzedAt": "2026-01-17T03:22:30.695Z",
       "model": "grok-4-1-fast-reasoning"
     },
     "file:web/src/lib/village/hexGrid.ts:fn:hexToWorld:29": {
@@ -22290,9 +22290,9 @@
       "model": "grok-4-1-fast-reasoning"
     },
     "file:web/src/lib/village/models.ts:fn:getModelPath:122": {
-      "contentHash": "e244cdd492010dcc",
+      "contentHash": "3a1d275310ac560f",
       "result": {
-        "summary": "Retrieves the model path for a given building type from BUILDING_MODEL_CONFIGS.",
+        "summary": "Retrieves model path for a building type from BUILDING_MODEL_CONFIGS.",
         "flags": {
           "databaseRead": false,
           "databaseWrite": false,
@@ -22303,9 +22303,9 @@
           "modifiesGlobalState": false,
           "hasSideEffects": false
         },
-        "rawResponse": "{\"summary\":\"Retrieves the model path for a given building type from BUILDING_MODEL_CONFIGS.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+        "rawResponse": "{\"summary\":\"Retrieves model path for a building type from BUILDING_MODEL_CONFIGS.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
       },
-      "analyzedAt": "2026-01-16T02:53:59.518Z",
+      "analyzedAt": "2026-01-17T03:22:31.495Z",
       "model": "grok-4-1-fast-reasoning"
     },
     "file:web/src/lib/village/layout.ts:fn:placeBuildingsInDistricts:209": {
@@ -25007,9 +25007,9 @@
       "model": "grok-4-1-fast-reasoning"
     },
     "file:web/src/lib/utils/export.ts:fn:downloadAsFile:83": {
-      "contentHash": "4e816414fee8e1a4",
+      "contentHash": "5da80764a4146e77",
       "result": {
-        "summary": "Triggers browser download of string content as a file with given filename and MIME type.",
+        "summary": "Triggers browser download of content as a file with given filename and MIME type",
         "flags": {
           "databaseRead": false,
           "databaseWrite": false,
@@ -25020,9 +25020,9 @@
           "modifiesGlobalState": true,
           "hasSideEffects": true
         },
-        "rawResponse": "{\"summary\":\"Triggers browser download of string content as a file with given filename and MIME type.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":true,\"hasSideEffects\":true}}"
+        "rawResponse": "{\"summary\":\"Triggers browser download of content as a file with given filename and MIME type\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":true,\"hasSideEffects\":true}}"
       },
-      "analyzedAt": "2026-01-17T02:28:02.190Z",
+      "analyzedAt": "2026-01-17T03:22:29.579Z",
       "model": "grok-4-1-fast-reasoning"
     },
     "file:web/src/lib/utils/messageBackup.ts:fn:clearPendingMessage:34": {
@@ -25195,7 +25195,2040 @@
       },
       "analyzedAt": "2026-01-17T02:28:14.808Z",
       "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/lists.ts:fn:getCompletionStats:665": {
+      "contentHash": "89dd335624890291",
+      "result": {
+        "summary": "Fetches completion stats (completed, total, percentage) for a list from database",
+        "flags": {
+          "databaseRead": true,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Fetches completion stats (completed, total, percentage) for a list from database\",\"flags\":{\"databaseRead\":true,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:08.402Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/lists.ts:fn:deleteItem:601": {
+      "contentHash": "efad299302bda287",
+      "result": {
+        "summary": "Deletes a list item by ID and updates parent list's updated_at timestamp",
+        "flags": {
+          "databaseRead": true,
+          "databaseWrite": true,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\n  \"summary\": \"Deletes a list item by ID and updates parent list's updated_at timestamp\",\n  \"flags\": {\n    \"databaseRead\": true,\n    \"databaseWrite\": true,\n    \"httpCall\": false,\n    \"fileRead\": false,\n    \"fileWrite\": false,\n    \"sendsNotification\": false,\n    \"modifiesGlobalState\": false,\n    \"hasSideEffects\": true\n  }\n}"
+      },
+      "analyzedAt": "2026-01-17T03:22:08.792Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/lists.ts:fn:removeItem:587": {
+      "contentHash": "b025fc476804b2df",
+      "result": {
+        "summary": "Archives list item by ID via DB update and updates parent list timestamp",
+        "flags": {
+          "databaseRead": true,
+          "databaseWrite": true,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\n  \"summary\": \"Archives list item by ID via DB update and updates parent list timestamp\",\n  \"flags\": {\n    \"databaseRead\": true,\n    \"databaseWrite\": true,\n    \"httpCall\": false,\n    \"fileRead\": false,\n    \"fileWrite\": false,\n    \"sendsNotification\": false,\n    \"modifiesGlobalState\": false,\n    \"hasSideEffects\": true\n  }\n}"
+      },
+      "analyzedAt": "2026-01-17T03:22:08.813Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/lists.ts:fn:completeAllItems:685": {
+      "contentHash": "5dc8a486ce3bf253",
+      "result": {
+        "summary": "Marks all incomplete non-archived list items as completed and updates list timestamp",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": true,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Marks all incomplete non-archived list items as completed and updates list timestamp\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":true,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:08.870Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/lists.ts:fn:reorderItems:612": {
+      "contentHash": "13e047514aa801de",
+      "result": {
+        "summary": "Reorders list items by updating sort_order in database transaction.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": true,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Reorders list items by updating sort_order in database transaction.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":true,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:09.000Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/lists.ts:fn:getItem:503": {
+      "contentHash": "5d13e8f3afc7d78b",
+      "result": {
+        "summary": "Retrieves a list item from the database by ID",
+        "flags": {
+          "databaseRead": true,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Retrieves a list item from the database by ID\",\"flags\":{\"databaseRead\":true,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:09.086Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/lists.ts:fn:listLists:303": {
+      "contentHash": "06b953dbee25d130",
+      "result": {
+        "summary": "Queries database for lists with item/completed counts, filtered by options",
+        "flags": {
+          "databaseRead": true,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Queries database for lists with item/completed counts, filtered by options\",\"flags\":{\"databaseRead\":true,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:09.099Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/lists.ts:fn:toggleItem:641": {
+      "contentHash": "d072829ce6ebd165",
+      "result": {
+        "summary": "Toggles completion status of a list item by reading and updating it in DB",
+        "flags": {
+          "databaseRead": true,
+          "databaseWrite": true,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Toggles completion status of a list item by reading and updating it in DB\",\"flags\":{\"databaseRead\":true,\"databaseWrite\":true,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:09.254Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/lists.ts:fn:deleteList:292": {
+      "contentHash": "0eeceea6668e2c71",
+      "result": {
+        "summary": "Deletes a list from the database by its ID.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": true,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Deletes a list from the database by its ID.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":true,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:09.304Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/lists.ts:fn:getListsByEntity:400": {
+      "contentHash": "1eccc590c279b026",
+      "result": {
+        "summary": "Retrieves non-archived lists by entity ID from database, ordered by updated_at DESC",
+        "flags": {
+          "databaseRead": true,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Retrieves non-archived lists by entity ID from database, ordered by updated_at DESC\",\"flags\":{\"databaseRead\":true,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:09.557Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/lists.ts:fn:addItem:474": {
+      "contentHash": "597ca24a5a3b1f48",
+      "result": {
+        "summary": "Adds item to list with auto sort_order if needed, updates list timestamp",
+        "flags": {
+          "databaseRead": true,
+          "databaseWrite": true,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Adds item to list with auto sort_order if needed, updates list timestamp\",\"flags\":{\"databaseRead\":true,\"databaseWrite\":true,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:09.685Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/lists.ts:fn:completeItem:651": {
+      "contentHash": "96c431a437144d63",
+      "result": {
+        "summary": "Updates a list item to mark it as completed by setting is_completed to true",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": true,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Updates a list item to mark it as completed by setting is_completed to true\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":true,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:10.375Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/lists.ts:fn:clearCompletedItems:698": {
+      "contentHash": "78249030585fc93f",
+      "result": {
+        "summary": "Archives completed non-archived items in a list and updates list timestamp",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": true,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Archives completed non-archived items in a list and updates list timestamp\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":true,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:10.719Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/lists.ts:fn:exportListAsCsv:802": {
+      "contentHash": "d79f07759110012f",
+      "result": {
+        "summary": "Generates CSV string from list name and item data with escaped fields.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": false
+        },
+        "rawResponse": "{\"summary\":\"Generates CSV string from list name and item data with escaped fields.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:12.322Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/lists.ts:fn:exportListAsTxt:818": {
+      "contentHash": "03956b46437a672f",
+      "result": {
+        "summary": "Formats a list and its items into a plain text string for export.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": false
+        },
+        "rawResponse": "{\"summary\":\"Formats a list and its items into a plain text string for export.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:12.595Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/lists.ts:fn:escapeCsvField:831": {
+      "contentHash": "fc2487148c1a905a",
+      "result": {
+        "summary": "Escapes CSV field by quoting if it contains ',' '\"' or '\\n', doubling internal quotes.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": false
+        },
+        "rawResponse": "{\"summary\":\"Escapes CSV field by quoting if it contains ',' '\\\"' or '\\\\n', doubling internal quotes.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:12.726Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/lists.ts:fn:exportListAsMarkdown:764": {
+      "contentHash": "62f1d214dc483f02",
+      "result": {
+        "summary": "Generates Markdown string from list, items, and optional metadata.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": false
+        },
+        "rawResponse": "{\"summary\":\"Generates Markdown string from list, items, and optional metadata.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:12.893Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/lists.ts:fn:updateItem:511": {
+      "contentHash": "6cbd6fba72963d7b",
+      "result": {
+        "summary": "Updates list item fields in DB via SQL, sets timestamps, updates parent list if changed",
+        "flags": {
+          "databaseRead": true,
+          "databaseWrite": true,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\n  \"summary\": \"Updates list item fields in DB via SQL, sets timestamps, updates parent list if changed\",\n  \"flags\": {\n    \"databaseRead\": true,\n    \"databaseWrite\": true,\n    \"httpCall\": false,\n    \"fileRead\": false,\n    \"fileWrite\": false,\n    \"sendsNotification\": false,\n    \"modifiesGlobalState\": false,\n    \"hasSideEffects\": true\n  }\n}"
+      },
+      "analyzedAt": "2026-01-17T03:22:12.921Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/storyCache.ts:fn:cleanupExpired:247": {
+      "contentHash": "d0593a30452c49f3",
+      "result": {
+        "summary": "Removes expired entries from story cache, updates stats, logs cleanup",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": true,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Removes expired entries from story cache, updates stats, logs cleanup\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":true,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:13.572Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/storyCache.ts:fn:startCleanupInterval:269": {
+      "contentHash": "cb199b0bb6104313",
+      "result": {
+        "summary": "Starts periodic cleanup interval with setInterval if not already running, logs message",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": true,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Starts periodic cleanup interval with setInterval if not already running, logs message\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":true,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:13.580Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/documents/types.ts:fn:isExtractableMimeType:210": {
+      "contentHash": "554d95c22c3b56a6",
+      "result": {
+        "summary": "Checks if MIME type is extractable by case-insensitive inclusion in predefined list.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": false
+        },
+        "rawResponse": "{\"summary\":\"Checks if MIME type is extractable by case-insensitive inclusion in predefined list.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:13.592Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/documents/types.ts:fn:countWords:217": {
+      "contentHash": "87bd2f64c1b14bda",
+      "result": {
+        "summary": "Counts non-empty words in a string after trimming and splitting on whitespace.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": false
+        },
+        "rawResponse": "{\"summary\":\"Counts non-empty words in a string after trimming and splitting on whitespace.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:13.878Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/lists.ts:fn:findListByName:413": {
+      "contentHash": "03f33a192d0a9019",
+      "result": {
+        "summary": "Finds list by exact case-insensitive name match or semantic search with similarity >0.7",
+        "flags": {
+          "databaseRead": true,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\n  \"summary\": \"Finds list by exact case-insensitive name match or semantic search with similarity >0.7\",\n  \"flags\": {\n    \"databaseRead\": true,\n    \"databaseWrite\": false,\n    \"httpCall\": false,\n    \"fileRead\": false,\n    \"fileWrite\": false,\n    \"sendsNotification\": false,\n    \"modifiesGlobalState\": false,\n    \"hasSideEffects\": true\n  }\n}"
+      },
+      "analyzedAt": "2026-01-17T03:22:15.118Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/documents/chunker/chunkStorage.ts:fn:updateChunkEmbeddings:110": {
+      "contentHash": "207e9d5362aa02ed",
+      "result": {
+        "summary": "Updates embeddings for multiple document chunks in database via transaction.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": true,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Updates embeddings for multiple document chunks in database via transaction.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":true,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:15.243Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/documents/chunker/chunkStorage.ts:fn:deleteChunksByObjectId:142": {
+      "contentHash": "e0eea1edcc597f56",
+      "result": {
+        "summary": "Deletes document chunks from DB by objectId and returns row count deleted",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": true,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Deletes document chunks from DB by objectId and returns row count deleted\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":true,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:15.305Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/documents/chunker/chunkStorage.ts:fn:getChunkStats:231": {
+      "contentHash": "524ee8d5c2bf67d7",
+      "result": {
+        "summary": "Retrieves chunk statistics (count, tokens, avg, embeddings, strategy) for an object ID from DB",
+        "flags": {
+          "databaseRead": true,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Retrieves chunk statistics (count, tokens, avg, embeddings, strategy) for an object ID from DB\",\"flags\":{\"databaseRead\":true,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:15.926Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/storyCache.ts:fn:smartInvalidate:212": {
+      "contentHash": "71fd44bd06d817b2",
+      "result": {
+        "summary": "Invalidates story caches based on regex matches for self, relationships, and dates in text.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": true,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Invalidates story caches based on regex matches for self, relationships, and dates in text.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":true,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:15.955Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/lists.ts:fn:getListItems:441": {
+      "contentHash": "164ff0e45a8bfb4f",
+      "result": {
+        "summary": "Fetches non-archived list items for a list ID, ordered by list's default sort.",
+        "flags": {
+          "databaseRead": true,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Fetches non-archived list items for a list ID, ordered by list's default sort.\",\"flags\":{\"databaseRead\":true,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:16.232Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/documents/chunker/chunkStorage.ts:fn:getChunksByObjectId:80": {
+      "contentHash": "042cf2a502318a27",
+      "result": {
+        "summary": "Retrieves document chunks from DB by object ID, ordered by chunk index",
+        "flags": {
+          "databaseRead": true,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Retrieves document chunks from DB by object ID, ordered by chunk index\",\"flags\":{\"databaseRead\":true,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:16.395Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/documents/chunker/chunkStorage.ts:fn:searchChunksByText:198": {
+      "contentHash": "cdaa50ac4a188d58",
+      "result": {
+        "summary": "Searches document chunks by text using SQL ILIKE with optional objectId filter and limit",
+        "flags": {
+          "databaseRead": true,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Searches document chunks by text using SQL ILIKE with optional objectId filter and limit\",\"flags\":{\"databaseRead\":true,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:16.483Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/documents/chunker/chunkStorage.ts:fn:getChunkById:94": {
+      "contentHash": "bb4cf74be985aae5",
+      "result": {
+        "summary": "Retrieves a document chunk by ID from the database or returns null if not found.",
+        "flags": {
+          "databaseRead": true,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Retrieves a document chunk by ID from the database or returns null if not found.\",\"flags\":{\"databaseRead\":true,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:16.984Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/lists.ts:fn:uncompleteItem:658": {
+      "contentHash": "ed5b0784323e004e",
+      "result": {
+        "summary": "Unmarks a list item as completed by updating is_completed to false via updateItem",
+        "flags": {
+          "databaseRead": true,
+          "databaseWrite": true,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\n  \"summary\": \"Unmarks a list item as completed by updating is_completed to false via updateItem\",\n  \"flags\": {\n    \"databaseRead\": true,\n    \"databaseWrite\": true,\n    \"httpCall\": false,\n    \"fileRead\": false,\n    \"fileWrite\": false,\n    \"sendsNotification\": false,\n    \"modifiesGlobalState\": false,\n    \"hasSideEffects\": true\n  }\n}"
+      },
+      "analyzedAt": "2026-01-17T03:22:17.102Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/documents/chunker/chunkEmbedding.ts:fn:embedAndStoreChunks:55": {
+      "contentHash": "6e6340de455a43a0",
+      "result": {
+        "summary": "Generates embeddings for document chunks lacking them in batches and stores in DB",
+        "flags": {
+          "databaseRead": true,
+          "databaseWrite": true,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\n  \"summary\": \"Generates embeddings for document chunks lacking them in batches and stores in DB\",\n  \"flags\": {\n    \"databaseRead\": true,\n    \"databaseWrite\": true,\n    \"httpCall\": true,\n    \"fileRead\": false,\n    \"fileWrite\": false,\n    \"sendsNotification\": false,\n    \"modifiesGlobalState\": false,\n    \"hasSideEffects\": true\n  }\n}"
+      },
+      "analyzedAt": "2026-01-17T03:22:17.689Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/lists.ts:fn:exportList:717": {
+      "contentHash": "fe010a2fd85d144c",
+      "result": {
+        "summary": "Fetches list by ID, optionally filters items, exports as markdown/CSV/TXT/JSON string.",
+        "flags": {
+          "databaseRead": true,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Fetches list by ID, optionally filters items, exports as markdown/CSV/TXT/JSON string.\",\"flags\":{\"databaseRead\":true,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:18.026Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/lists.ts:fn:exportAllLists:748": {
+      "contentHash": "798e204df09a132a",
+      "result": {
+        "summary": "Fetches all lists and exports each via exportList, joins results as JSON array or separated string",
+        "flags": {
+          "databaseRead": true,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Fetches all lists and exports each via exportList, joins results as JSON array or separated string\",\"flags\":{\"databaseRead\":true,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:18.091Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/documents/chunker/chunkStorage.ts:fn:searchChunksBySimilarity:156": {
+      "contentHash": "fdc88a7206470828",
+      "result": {
+        "summary": "Searches document chunks by cosine similarity to query embedding using pgvector in PostgreSQL",
+        "flags": {
+          "databaseRead": true,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\n  \"summary\": \"Searches document chunks by cosine similarity to query embedding using pgvector in PostgreSQL\",\n  \"flags\": {\n    \"databaseRead\": true,\n    \"databaseWrite\": false,\n    \"httpCall\": false,\n    \"fileRead\": false,\n    \"fileWrite\": false,\n    \"sendsNotification\": false,\n    \"modifiesGlobalState\": false,\n    \"hasSideEffects\": true\n  }\n}"
+      },
+      "analyzedAt": "2026-01-17T03:22:18.244Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/lists.ts:fn:searchLists:377": {
+      "contentHash": "cf975c2e864f6846",
+      "result": {
+        "summary": "Generates query embedding and searches DB for similar non-archived lists with similarity >0.3, returns top matches.",
+        "flags": {
+          "databaseRead": true,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Generates query embedding and searches DB for similar non-archived lists with similarity >0.3, returns top matches.\",\"flags\":{\"databaseRead\":true,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:18.336Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/conversations.ts:fn:createConversation:64": {
+      "contentHash": "ea6a6d625afa08c3",
+      "result": {
+        "summary": "Creates a conversation via API POST to '/api/chat/conversations' with optional clientId and title",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Creates a conversation via API POST to '/api/chat/conversations' with optional clientId and title\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:18.639Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/documents.ts:fn:extractDocument:18": {
+      "contentHash": "ffc961362647022f",
+      "result": {
+        "summary": "Uploads file to API endpoint for document extraction via POST request",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Uploads file to API endpoint for document extraction via POST request\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:18.996Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/documents.ts:fn:getDocumentChunks:74": {
+      "contentHash": "b0c00f48ca3f057c",
+      "result": {
+        "summary": "Fetches document chunks from API endpoint using objectId",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Fetches document chunks from API endpoint using objectId\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:19.074Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/conversations.ts:fn:updateConversation:79": {
+      "contentHash": "39e25d8ea96d2820",
+      "result": {
+        "summary": "Updates conversation title or status via API PATCH request",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Updates conversation title or status via API PATCH request\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:19.454Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/documents.ts:fn:chunkDocument:53": {
+      "contentHash": "fbea028698988ef9",
+      "result": {
+        "summary": "Chunks a document via API POST request and returns chunks with total tokens",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Chunks a document via API POST request and returns chunks with total tokens\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:19.481Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/documents.ts:fn:generateChunkEmbeddings:84": {
+      "contentHash": "8b240ddc33bddc41",
+      "result": {
+        "summary": "POST request to generate embeddings for document chunks via API",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"POST request to generate embeddings for document chunks via API\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:19.537Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:src/services/documents/chunker/chunkEmbedding.ts:fn:generateQueryEmbedding:109": {
+      "contentHash": "289e977704028278",
+      "result": {
+        "summary": "Generates embedding vector for query by delegating to generateEmbedding.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": false
+        },
+        "rawResponse": "{\"summary\":\"Generates embedding vector for query by delegating to generateEmbedding.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:19.560Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/documents.ts:fn:formatFileSize:155": {
+      "contentHash": "14d60c3f150ab4af",
+      "result": {
+        "summary": "Formats file size in bytes to human-readable string (e.g., '1.23 MB').",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": false
+        },
+        "rawResponse": "{\"summary\":\"Formats file size in bytes to human-readable string (e.g., '1.23 MB').\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:20.038Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/documents.ts:fn:getFileTypeLabel:151": {
+      "contentHash": "cbd530ba91a1cbfb",
+      "result": {
+        "summary": "Returns a human-readable label for a given MIME type from a predefined map or 'Unknown'.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": false
+        },
+        "rawResponse": "{\"summary\":\"Returns a human-readable label for a given MIME type from a predefined map or 'Unknown'.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:20.397Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/documents.ts:fn:listDocuments:202": {
+      "contentHash": "55634e03e4be7ded",
+      "result": {
+        "summary": "Fetches list of documents from API with optional filters, search, and pagination",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Fetches list of documents from API with optional filters, search, and pagination\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:20.439Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/documents.ts:fn:searchDocuments:95": {
+      "contentHash": "05bbf909a1e471b3",
+      "result": {
+        "summary": "Searches documents via HTTP API using query and optional parameters.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Searches documents via HTTP API using query and optional parameters.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:20.447Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/documents.ts:fn:getDocumentFacts:287": {
+      "contentHash": "089cfec8b298474f",
+      "result": {
+        "summary": "Fetches document facts from API endpoint with optional filters (status, type, confidence, limit, offset)",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Fetches document facts from API endpoint with optional filters (status, type, confidence, limit, offset)\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:20.714Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/documents.ts:fn:deleteDocument:236": {
+      "contentHash": "70a745ec166f81a4",
+      "result": {
+        "summary": "Deletes a document by ID via API DELETE request.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Deletes a document by ID via API DELETE request.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:20.739Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/documents.ts:fn:getDocumentFactStats:321": {
+      "contentHash": "f40fcd1806333b4d",
+      "result": {
+        "summary": "Fetches document fact extraction stats via API for given object ID",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Fetches document fact extraction stats via API for given object ID\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:20.877Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/documents.ts:fn:extractDocumentFacts:257": {
+      "contentHash": "d3ee71b6a72ce340",
+      "result": {
+        "summary": "Makes POST request to API to extract facts from document and returns result",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Makes POST request to API to extract facts from document and returns result\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:20.929Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/documents.ts:fn:getDocument:227": {
+      "contentHash": "a7b8b35de5c79d31",
+      "result": {
+        "summary": "Fetches a document by ID from the /api/objects endpoint.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Fetches a document by ID from the /api/objects endpoint.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:20.978Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/documents.ts:fn:updateFactContent:371": {
+      "contentHash": "6d5c177871548771",
+      "result": {
+        "summary": "Updates fact content via API PATCH request and returns the updated fact",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Updates fact content via API PATCH request and returns the updated fact\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:21.701Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/documents.ts:fn:bulkUpdateFactStatus:353": {
+      "contentHash": "9bfe6aed74ab8cac",
+      "result": {
+        "summary": "Bulk updates fact statuses via POST API call and returns updated count",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Bulk updates fact statuses via POST API call and returns updated count\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:21.875Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/lists.ts:fn:fetchListWithItems:46": {
+      "contentHash": "2301469cd6b98688",
+      "result": {
+        "summary": "Fetches a list with items by ID via API GET request",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Fetches a list with items by ID via API GET request\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:21.925Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/lists.ts:fn:fetchLists:30": {
+      "contentHash": "87d3d649c6f48f76",
+      "result": {
+        "summary": "Fetches lists from API with optional params for filtering and pagination",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Fetches lists from API with optional params for filtering and pagination\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:22.278Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/lists.ts:fn:createList:53": {
+      "contentHash": "8cb03f631ba43b81",
+      "result": {
+        "summary": "Creates a list by POSTing CreateListInput to /api/lists endpoint",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Creates a list by POSTing CreateListInput to /api/lists endpoint\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:22.569Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/documents.ts:fn:updateFactStatus:334": {
+      "contentHash": "12c57144b7b81733",
+      "result": {
+        "summary": "Updates fact status via PATCH API request and returns the updated fact",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Updates fact status via PATCH API request and returns the updated fact\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:22.648Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/lists.ts:fn:exportAllLists:170": {
+      "contentHash": "dadb666b6dd1970f",
+      "result": {
+        "summary": "Exports all lists in specified format via API, returns Blob.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Exports all lists in specified format via API, returns Blob.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:22.886Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/lists.ts:fn:updateItem:125": {
+      "contentHash": "4675b284ad929b0e",
+      "result": {
+        "summary": "Updates a list item via PATCH API request.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Updates a list item via PATCH API request.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:23.177Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/lists.ts:fn:updateList:60": {
+      "contentHash": "ee493532dce3d3e1",
+      "result": {
+        "summary": "Updates a list via PATCH API call using ID and partial input.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Updates a list via PATCH API call using ID and partial input.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:23.205Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/lists.ts:fn:archiveList:70": {
+      "contentHash": "e04653cdda17a615",
+      "result": {
+        "summary": "Archives a list by ID via API POST request",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Archives a list by ID via API POST request\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:23.234Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/lists.ts:fn:exportList:156": {
+      "contentHash": "0009b607bdd84f74",
+      "result": {
+        "summary": "Fetches and returns a Blob of the list export in specified format.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Fetches and returns a Blob of the list export in specified format.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:23.321Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/lists.ts:fn:reorderItems:98": {
+      "contentHash": "ebe1cd37d253d5b2",
+      "result": {
+        "summary": "Sends POST request to reorder items in a list by item IDs",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Sends POST request to reorder items in a list by item IDs\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:23.552Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/lists.ts:fn:addItem:112": {
+      "contentHash": "d08e42f103d0086b",
+      "result": {
+        "summary": "Posts a new list item to the API endpoint `/api/lists/${listId}/items`.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Posts a new list item to the API endpoint `/api/lists/${listId}/items`.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:23.612Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/lists.ts:fn:completeAllItems:84": {
+      "contentHash": "3953343f6ae13620",
+      "result": {
+        "summary": "Posts to API to complete all items in a list by ID",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Posts to API to complete all items in a list by ID\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:24.016Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/notes.ts:fn:fetchPinnedNotes:35": {
+      "contentHash": "4e3ff4086e656722",
+      "result": {
+        "summary": "Fetches pinned notes from the API endpoint '/api/notes/pinned'.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Fetches pinned notes from the API endpoint '/api/notes/pinned'.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:24.097Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/lists.ts:fn:toggleItem:146": {
+      "contentHash": "bfdfef6868aa7a2f",
+      "result": {
+        "summary": "Toggles a list item by making a POST request to the API endpoint.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Toggles a list item by making a POST request to the API endpoint.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:24.207Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/notes.ts:fn:createNote:43": {
+      "contentHash": "cc3feacb0c3c7c3d",
+      "result": {
+        "summary": "Posts a new note to /api/notes endpoint and returns the created Note",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Posts a new note to /api/notes endpoint and returns the created Note\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:24.556Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/lists.ts:fn:clearCompletedItems:91": {
+      "contentHash": "a3318bc93e968f25",
+      "result": {
+        "summary": "Clears completed items from a list via API POST request.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Clears completed items from a list via API POST request.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:24.743Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/lists.ts:fn:deleteList:77": {
+      "contentHash": "b609af68b39c23bc",
+      "result": {
+        "summary": "Deletes a list by ID via API DELETE request",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Deletes a list by ID via API DELETE request\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:25.015Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/lists.ts:fn:deleteItem:139": {
+      "contentHash": "4aef0bb2a455f1e8",
+      "result": {
+        "summary": "Deletes a specific item from a list via API DELETE request",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Deletes a specific item from a list via API DELETE request\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:25.039Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/notes.ts:fn:updateNote:50": {
+      "contentHash": "344b7d520e2dab83",
+      "result": {
+        "summary": "Updates a note by making a PATCH API request.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Updates a note by making a PATCH API request.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:25.311Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/notes.ts:fn:archiveNote:57": {
+      "contentHash": "3c6937dc487ec41b",
+      "result": {
+        "summary": "Archives a note via POST to /api/notes/{id}/archive",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Archives a note via POST to /api/notes/{id}/archive\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:25.320Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/notes.ts:fn:exportNotes:85": {
+      "contentHash": "2c9f8e32861782c4",
+      "result": {
+        "summary": "Exports notes via API in specified format (json/markdown/csv) and returns Blob",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Exports notes via API in specified format (json/markdown/csv) and returns Blob\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:25.436Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/notes.ts:fn:deleteNote:64": {
+      "contentHash": "2e771c0e4d53c5ca",
+      "result": {
+        "summary": "Deletes a note by ID via API DELETE request",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Deletes a note by ID via API DELETE request\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:26.278Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/notes.ts:fn:pinNote:71": {
+      "contentHash": "10a2aae6e977febf",
+      "result": {
+        "summary": "Pins a note by ID via API POST to /api/notes/{id}/pin, returns Note",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Pins a note by ID via API POST to /api/notes/{id}/pin, returns Note\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:26.367Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/notes.ts:fn:unpinNote:78": {
+      "contentHash": "c1b004a82ba69c9f",
+      "result": {
+        "summary": "Unpins a note by ID via API POST request",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Unpins a note by ID via API POST request\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:26.597Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/api/conversations.ts:fn:archiveConversation:94": {
+      "contentHash": "c2ea75f2bb291675",
+      "result": {
+        "summary": "Archives a conversation by updating its status to 'archived'.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": true,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\": \"Archives a conversation by updating its status to 'archived'.\", \"flags\": {\"databaseRead\": false, \"databaseWrite\": true, \"httpCall\": false, \"fileRead\": false, \"fileWrite\": false, \"sendsNotification\": false, \"modifiesGlobalState\": false, \"hasSideEffects\": true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:27.027Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/utils/colors.ts:fn:getEntityTextClass:22": {
+      "contentHash": "1239cd57787c06b0",
+      "result": {
+        "summary": "Returns a CSS text class string based on the given entity type.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": false
+        },
+        "rawResponse": "{\"summary\":\"Returns a CSS text class string based on the given entity type.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:27.562Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/utils/colors.ts:fn:getEntityIcon:18": {
+      "contentHash": "f9ff1f8e4f8be7df",
+      "result": {
+        "summary": "Returns an icon string for a given EntityType, defaulting to '📌'.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": false
+        },
+        "rawResponse": "{\"summary\": \"Returns an icon string for a given EntityType, defaulting to '📌'.\", \"flags\": {\"databaseRead\": false, \"databaseWrite\": false, \"httpCall\": false, \"fileRead\": false, \"fileWrite\": false, \"sendsNotification\": false, \"modifiesGlobalState\": false, \"hasSideEffects\": false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:28.112Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/stores/cameraStore.ts:fn:useToggleCameraMode:52": {
+      "contentHash": "e4160cdbdca212a1",
+      "result": {
+        "summary": "Returns the toggleMode function from the camera store via Zustand hook.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": false
+        },
+        "rawResponse": "{\"summary\":\"Returns the toggleMode function from the camera store via Zustand hook.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:28.337Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/stores/chatStore.ts:fn:useIsLoadingContext:631": {
+      "contentHash": "cc778bd0b4a33db3",
+      "result": {
+        "summary": "Selector hook returning isLoadingContext from chat store state.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": false
+        },
+        "rawResponse": "{\"summary\":\"Selector hook returning isLoadingContext from chat store state.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:28.829Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/stores/chatStore.ts:fn:useIsLoading:630": {
+      "contentHash": "a8070e3c1ef3a931",
+      "result": {
+        "summary": "Returns the isLoading state from the chat store.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": false
+        },
+        "rawResponse": "{\"summary\":\"Returns the isLoading state from the chat store.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:29.070Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/stores/cameraStore.ts:fn:useIsPointerLocked:49": {
+      "contentHash": "32fe42e46b872d70",
+      "result": {
+        "summary": "Returns the isPointerLocked state from the camera store using a selector hook.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": false
+        },
+        "rawResponse": "{\"summary\":\"Returns the isPointerLocked state from the camera store using a selector hook.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:29.126Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/utils/formatting.ts:fn:formatSalience:71": {
+      "contentHash": "dca4d78b5ccaafde",
+      "result": {
+        "summary": "Formats salience score to 'X/10' string or '—' if null/undefined/NaN.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": false
+        },
+        "rawResponse": "{\"summary\": \"Formats salience score to 'X/10' string or '—' if null/undefined/NaN.\", \"flags\": {\"databaseRead\": false, \"databaseWrite\": false, \"httpCall\": false, \"fileRead\": false, \"fileWrite\": false, \"sendsNotification\": false, \"modifiesGlobalState\": false, \"hasSideEffects\": false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:29.495Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/stores/chatStore.ts:fn:useIsChatBusy:634": {
+      "contentHash": "33f56d4fba919a82",
+      "result": {
+        "summary": "Hook returning true if chat store is loading, streaming, or has pending user message.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": false
+        },
+        "rawResponse": "{\"summary\":\"Hook returning true if chat store is loading, streaming, or has pending user message.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:29.632Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/utils/formatting.ts:fn:capitalize:87": {
+      "contentHash": "6f937ba677b9bc01",
+      "result": {
+        "summary": "Capitalizes the first letter of a string.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": false
+        },
+        "rawResponse": "{\"summary\":\"Capitalizes the first letter of a string.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:29.687Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/utils/formatting.ts:fn:formatConfidence:78": {
+      "contentHash": "44c615f565de66af",
+      "result": {
+        "summary": "Converts confidence score (0-1) to string label: 'Very High' to 'Very Low'.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": false
+        },
+        "rawResponse": "{\"summary\": \"Converts confidence score (0-1) to string label: 'Very High' to 'Very Low'.\", \"flags\": {\"databaseRead\": false, \"databaseWrite\": false, \"httpCall\": false, \"fileRead\": false, \"fileWrite\": false, \"sendsNotification\": false, \"modifiesGlobalState\": false, \"hasSideEffects\": false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:29.811Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/hooks/useEntities.ts:fn:useEntity:30": {
+      "contentHash": "66edf9af21732364",
+      "result": {
+        "summary": "React Query hook to fetch and cache entity by ID.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": true,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"React Query hook to fetch and cache entity by ID.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":true,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:30.380Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/village/hexGrid.ts:fn:calculateBounds:161": {
+      "contentHash": "2f5d51ba003c3223",
+      "result": {
+        "summary": "Calculates min/max X and Z bounds for an array of village positions.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": false
+        },
+        "rawResponse": "{\"summary\":\"Calculates min/max X and Z bounds for an array of village positions.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:30.533Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/village/hexGrid.ts:fn:hexAdd:193": {
+      "contentHash": "5acf948fce3542a3",
+      "result": {
+        "summary": "Adds two hexagonal coordinates (q,r) component-wise, warns on invalid input.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Adds two hexagonal coordinates (q,r) component-wise, warns on invalid input.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:31.385Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/village/models.ts:fn:getPropPath:272": {
+      "contentHash": "2fe6cfdf3968025a",
+      "result": {
+        "summary": "Retrieves the path for a given PropType from PROP_MODEL_CONFIGS.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": false
+        },
+        "rawResponse": "{\"summary\":\"Retrieves the path for a given PropType from PROP_MODEL_CONFIGS.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:31.733Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/village/layout.ts:fn:generateVillagers:600": {
+      "contentHash": "a4f266e09a64e2ff",
+      "result": {
+        "summary": "Generates VillageVillager[] from graph entity nodes and their memory-linked buildings in layout",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": false
+        },
+        "rawResponse": "{\"summary\":\"Generates VillageVillager[] from graph entity nodes and their memory-linked buildings in layout\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:32.026Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/village/layout.ts:fn:generateProps:470": {
+      "contentHash": "89c9f84dcccf95d4",
+      "result": {
+        "summary": "Generates village props around buildings on valid hex tiles, avoiding overlaps.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": false
+        },
+        "rawResponse": "{\"summary\":\"Generates village props around buildings on valid hex tiles, avoiding overlaps.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:32.172Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/village/models.ts:fn:getPropConfig:265": {
+      "contentHash": "3204afc746860bb0",
+      "result": {
+        "summary": "Retrieves PropModelConfig for a given PropType from PROP_MODEL_CONFIGS.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": false
+        },
+        "rawResponse": "{\"summary\":\"Retrieves PropModelConfig for a given PropType from PROP_MODEL_CONFIGS.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:32.316Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/hooks/useEntities.ts:fn:useEntities:16": {
+      "contentHash": "2abbe6e56b8de71c",
+      "result": {
+        "summary": "React hook using useQuery to fetch entities by type, limit, offset, search",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": true,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\n  \"summary\": \"React hook using useQuery to fetch entities by type, limit, offset, search\",\n  \"flags\": {\n    \"databaseRead\": false,\n    \"databaseWrite\": false,\n    \"httpCall\": true,\n    \"fileRead\": false,\n    \"fileWrite\": false,\n    \"sendsNotification\": false,\n    \"modifiesGlobalState\": true,\n    \"hasSideEffects\": true\n  }\n}"
+      },
+      "analyzedAt": "2026-01-17T03:22:32.628Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/hooks/useEntities.ts:fn:useEntityDetails:56": {
+      "contentHash": "2e949362e395d2a3",
+      "result": {
+        "summary": "React Query hook fetching entity details by ID with caching.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": true,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"React Query hook fetching entity details by ID with caching.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":true,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:32.722Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/hooks/useBeliefs.ts:fn:useBeliefs:14": {
+      "contentHash": "69d42bd94f1eb066",
+      "result": {
+        "summary": "React Query hook fetching beliefs with filters: type, status, minConfidence, limit.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": true,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\n  \"summary\": \"React Query hook fetching beliefs with filters: type, status, minConfidence, limit.\",\n  \"flags\": {\n    \"databaseRead\": false,\n    \"databaseWrite\": false,\n    \"httpCall\": true,\n    \"fileRead\": false,\n    \"fileWrite\": false,\n    \"sendsNotification\": false,\n    \"modifiesGlobalState\": true,\n    \"hasSideEffects\": true\n  }\n}"
+      },
+      "analyzedAt": "2026-01-17T03:22:32.774Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/village/layout.ts:fn:generateValidHexTiles:431": {
+      "contentHash": "d09d648b603dbc27",
+      "result": {
+        "summary": "Generates set of valid hex tile strings from village layout districts and center area.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": false
+        },
+        "rawResponse": "{\"summary\":\"Generates set of valid hex tile strings from village layout districts and center area.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:32.797Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/hooks/useEntities.ts:fn:useTopEntities:44": {
+      "contentHash": "b553f2a3e2b810b4",
+      "result": {
+        "summary": "React Query hook fetching top entities with given limit (default 12).",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\n  \"summary\": \"React Query hook fetching top entities with given limit (default 12).\",\n  \"flags\": {\n    \"databaseRead\": false,\n    \"databaseWrite\": false,\n    \"httpCall\": true,\n    \"fileRead\": false,\n    \"fileWrite\": false,\n    \"sendsNotification\": false,\n    \"modifiesGlobalState\": false,\n    \"hasSideEffects\": true\n  }\n}"
+      },
+      "analyzedAt": "2026-01-17T03:22:33.346Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/stores/cameraStore.ts:fn:useSetPointerLocked:53": {
+      "contentHash": "f80e13662819cc08",
+      "result": {
+        "summary": "Custom hook returning camera store's setPointerLocked function",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": false,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": false
+        },
+        "rawResponse": "{\"summary\":\"Custom hook returning camera store's setPointerLocked function\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":false,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":false,\"hasSideEffects\":false}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:33.624Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/hooks/useInsights.ts:fn:useInsights:14": {
+      "contentHash": "521ce1cfc84dfb7b",
+      "result": {
+        "summary": "React Query hook to fetch filtered insights data with caching.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": true,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"React Query hook to fetch filtered insights data with caching.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":true,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:33.998Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/hooks/useBeliefs.ts:fn:useBeliefStats:28": {
+      "contentHash": "0bb08eedfcec7a50",
+      "result": {
+        "summary": "Custom hook using useQuery to fetch and cache belief stats for 5 minutes",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": false,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\n  \"summary\": \"Custom hook using useQuery to fetch and cache belief stats for 5 minutes\",\n  \"flags\": {\n    \"databaseRead\": false,\n    \"databaseWrite\": false,\n    \"httpCall\": true,\n    \"fileRead\": false,\n    \"fileWrite\": false,\n    \"sendsNotification\": false,\n    \"modifiesGlobalState\": false,\n    \"hasSideEffects\": true\n  }\n}"
+      },
+      "analyzedAt": "2026-01-17T03:22:34.177Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/hooks/useInsights.ts:fn:useNewInsights:28": {
+      "contentHash": "4f9ec2d87ee3482b",
+      "result": {
+        "summary": "React Query hook fetching newest insights with configurable limit.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": true,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\n  \"summary\": \"React Query hook fetching newest insights with configurable limit.\",\n  \"flags\": {\n    \"databaseRead\": false,\n    \"databaseWrite\": false,\n    \"httpCall\": true,\n    \"fileRead\": false,\n    \"fileWrite\": false,\n    \"sendsNotification\": false,\n    \"modifiesGlobalState\": true,\n    \"hasSideEffects\": true\n  }\n}"
+      },
+      "analyzedAt": "2026-01-17T03:22:34.290Z",
+      "model": "grok-4-1-fast-reasoning"
+    },
+    "file:web/src/lib/village/models.ts:fn:preloadAllPropModels:279": {
+      "contentHash": "822a6fdc5d3b9f20",
+      "result": {
+        "summary": "Preloads all GLTF models for property types using useGLTF.preload.",
+        "flags": {
+          "databaseRead": false,
+          "databaseWrite": false,
+          "httpCall": true,
+          "fileRead": false,
+          "fileWrite": false,
+          "sendsNotification": false,
+          "modifiesGlobalState": true,
+          "hasSideEffects": true
+        },
+        "rawResponse": "{\"summary\":\"Preloads all GLTF models for property types using useGLTF.preload.\",\"flags\":{\"databaseRead\":false,\"databaseWrite\":false,\"httpCall\":true,\"fileRead\":false,\"fileWrite\":false,\"sendsNotification\":false,\"modifiesGlobalState\":true,\"hasSideEffects\":true}}"
+      },
+      "analyzedAt": "2026-01-17T03:22:34.425Z",
+      "model": "grok-4-1-fast-reasoning"
     }
   },
-  "updatedAt": "2026-01-17T02:28:14.808Z"
+  "updatedAt": "2026-01-17T03:22:34.425Z"
 }

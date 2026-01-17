@@ -30,15 +30,6 @@ export function formatRelativeTime(date: string | Date | null | undefined): stri
   return `${diffYears}y ago`;
 }
 
-// Full date formatting
-export function formatDate(date: string | Date): string {
-  return new Date(date).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-}
-
 // Date with time
 export function formatDateTime(date: string | Date | null | undefined): string {
   if (!date) return '—';
@@ -51,20 +42,6 @@ export function formatDateTime(date: string | Date | null | undefined): string {
     hour: '2-digit',
     minute: '2-digit',
   });
-}
-
-// Time only
-export function formatTime(date: string | Date): string {
-  return new Date(date).toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-// Truncate text with ellipsis
-export function truncate(text: string, maxLength: number): string {
-  if (text.length <= maxLength) return text;
-  return text.slice(0, maxLength - 3) + '...';
 }
 
 // Format salience as display string

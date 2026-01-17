@@ -23,23 +23,17 @@ export { extractFactsFromDocument, getExtractionProgress } from './batch.js';
 // Storage operations
 export {
   // Create
-  storeFact,
   storeFacts,
   // Read
   getFact,
   getFactsByDocument,
-  getFactsByChunk,
   getPendingFacts,
   // Update
   updateFactStatus,
   bulkUpdateFactStatus,
-  linkFactToMemory,
-  mergeFacts,
   updateFactContent,
   // Delete
   deleteFact,
-  deleteFactsByDocument,
-  deleteFactsByChunk,
   // Batch tracking
   createBatch,
   updateBatchProgress,

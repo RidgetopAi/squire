@@ -66,22 +66,6 @@ interface InsightsListResponse {
   count: number;
 }
 
-interface InsightResponse {
-  insight: BackendInsight;
-}
-
-interface InsightStatsResponse {
-  stats: {
-    total: number;
-    byType: Record<InsightType, number>;
-    byPriority: Record<InsightPriority, number>;
-    byStatus: Record<InsightStatus, number>;
-  };
-  types: InsightType[];
-  priorities: InsightPriority[];
-  statuses: InsightStatus[];
-}
-
 export interface FetchInsightsOptions {
   type?: InsightType;
   status?: InsightStatus;
@@ -106,30 +90,6 @@ export async function fetchInsights(options: FetchInsightsOptions = {}): Promise
       limit,
     },
   });
-  return response.insights.map(transformInsight);
-}
-
-/**
- * Fetch a single insight by ID
- */
-export async function fetchInsight(id: string): Promise<Insight> {
-  const response = await apiGet<InsightResponse>(`/api/insights/${id}`);
-  return transformInsight(response.insight);
-}
-
-/**
- * Fetch insight statistics
- */
-export async function fetchInsightStats(): Promise<InsightStatsResponse['stats']> {
-  const response = await apiGet<InsightStatsResponse>('/api/insights/stats');
-  return response.stats;
-}
-
-/**
- * Fetch insights by type
- */
-export async function fetchInsightsByType(type: InsightType): Promise<Insight[]> {
-  const response = await apiGet<InsightsListResponse>(`/api/insights/type/${type}`);
   return response.insights.map(transformInsight);
 }
 

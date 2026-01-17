@@ -49,10 +49,6 @@ interface BeliefsListResponse {
   count: number;
 }
 
-interface BeliefResponse {
-  belief: BackendBelief;
-}
-
 interface BeliefStatsResponse {
   stats: {
     total: number;
@@ -61,21 +57,6 @@ interface BeliefStatsResponse {
     avgConfidence: number;
   };
   types: BeliefCategory[];
-}
-
-interface BeliefConflictsResponse {
-  conflicts: BeliefConflict[];
-  count: number;
-}
-
-export interface BeliefConflict {
-  id: string;
-  belief_a_id: string;
-  belief_b_id: string;
-  conflict_type: string;
-  detected_at: string;
-  status: 'unresolved' | 'resolved';
-  resolution?: string;
 }
 
 export interface FetchBeliefsOptions {
@@ -102,33 +83,9 @@ export async function fetchBeliefs(options: FetchBeliefsOptions = {}): Promise<B
 }
 
 /**
- * Fetch a single belief by ID
- */
-export async function fetchBelief(id: string): Promise<Belief> {
-  const response = await apiGet<BeliefResponse>(`/api/beliefs/${id}`);
-  return transformBelief(response.belief);
-}
-
-/**
  * Fetch belief statistics
  */
 export async function fetchBeliefStats(): Promise<BeliefStatsResponse['stats']> {
   const response = await apiGet<BeliefStatsResponse>('/api/beliefs/stats');
   return response.stats;
-}
-
-/**
- * Fetch beliefs by category/type
- */
-export async function fetchBeliefsByCategory(category: BeliefCategory): Promise<Belief[]> {
-  const response = await apiGet<BeliefsListResponse>(`/api/beliefs/type/${category}`);
-  return response.beliefs.map(transformBelief);
-}
-
-/**
- * Fetch unresolved belief conflicts
- */
-export async function fetchBeliefConflicts(): Promise<BeliefConflict[]> {
-  const response = await apiGet<BeliefConflictsResponse>('/api/beliefs/conflicts');
-  return response.conflicts;
 }

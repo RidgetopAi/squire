@@ -6,9 +6,9 @@
 // Renders hex tile ground for village districts
 
 import { useMemo } from 'react';
-import type { VillageLayout, VillageDistrict, MemoryCategory, HexCoord } from '@/lib/types/village';
+import type { VillageLayout, MemoryCategory, HexCoord } from '@/lib/types/village';
 import { worldToHex, hexToWorld, DEFAULT_HEX_SIZE } from '@/lib/village/hexGrid';
-import { HexTilesLayer, DISTRICT_GROUND_COLORS } from './HexTile';
+import { HexTilesLayer } from './HexTile';
 
 // ============================================
 // HEX GRID GENERATION
@@ -60,45 +60,6 @@ function generateHexGridForBounds(
   }
 
   return hexCoords;
-}
-
-// ============================================
-// SINGLE DISTRICT GROUND
-// ============================================
-
-export interface DistrictGroundProps {
-  /** District data */
-  district: VillageDistrict;
-  /** Hex tile size */
-  hexSize?: number;
-  /** Padding tiles around district */
-  padding?: number;
-}
-
-/**
- * Render hex tile ground for a single district
- */
-function DistrictGround({
-  district,
-  hexSize = DEFAULT_HEX_SIZE,
-  padding = 1,
-}: DistrictGroundProps) {
-  // Generate hex tiles for this district
-  const tiles = useMemo(() => {
-    const hexCoords = generateHexGridForBounds(district.bounds, hexSize, padding);
-    return hexCoords.map(coord => ({
-      coord,
-      category: district.category,
-    }));
-  }, [district.bounds, district.category, hexSize, padding]);
-
-  return (
-    <HexTilesLayer
-      tiles={tiles}
-      hexSize={hexSize}
-      yOffset={-0.01} // Slightly below y=0
-    />
-  );
 }
 
 // ============================================

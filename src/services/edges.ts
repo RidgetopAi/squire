@@ -120,32 +120,6 @@ export async function getRelatedMemories(
 }
 
 /**
- * Get all edges for a memory (outgoing and incoming)
- */
-export async function getEdgesForMemory(
-  memoryId: string,
-  options: { edgeType?: EdgeType } = {}
-): Promise<MemoryEdge[]> {
-  const { edgeType } = options;
-
-  let query = `
-    SELECT * FROM memory_edges
-    WHERE source_memory_id = $1 OR target_memory_id = $1
-  `;
-  const params: (string | EdgeType)[] = [memoryId];
-
-  if (edgeType) {
-    query += ` AND edge_type = $2`;
-    params.push(edgeType);
-  }
-
-  query += ` ORDER BY weight DESC`;
-
-  const result = await pool.query(query, params);
-  return result.rows as MemoryEdge[];
-}
-
-/**
  * Get edge statistics
  */
 export async function getEdgeStats(): Promise<{
@@ -187,56 +161,4 @@ export async function getEdgeStats(): Promise<{
     averageWeight: parseFloat(stats.avg_weight ?? '1.0'),
     averageSimilarity: parseFloat(stats.avg_similarity ?? '0.0'),
   };
-}
-
-/**
- * Count edges for a specific memory
- */
-export async function countEdgesForMemory(memoryId: string): Promise<number> {
-  const result = await pool.query(
-    `SELECT COUNT(*) as count FROM memory_edges
-     WHERE source_memory_id = $1 OR target_memory_id = $1`,
-    [memoryId]
-  );
-  return parseInt(result.rows[0]?.count ?? '0', 10);
-}
-
-/**
- * Find strongly connected memory clusters
- * Returns memories that share multiple high-weight edges
- */
-export async function findConnectedCluster(
-  memoryId: string,
-  depth: number = 2
-): Promise<Memory[]> {
-  // BFS traversal to find connected memories up to specified depth
-  const result = await pool.query(
-    `WITH RECURSIVE connected AS (
-       -- Start with the seed memory
-       SELECT $1::uuid as memory_id, 0 as depth
-
-       UNION ALL
-
-       -- Find connected memories
-       SELECT
-         CASE
-           WHEN e.source_memory_id = c.memory_id THEN e.target_memory_id
-           ELSE e.source_memory_id
-         END as memory_id,
-         c.depth + 1 as depth
-       FROM connected c
-       JOIN memory_edges e ON (e.source_memory_id = c.memory_id OR e.target_memory_id = c.memory_id)
-       WHERE c.depth < $2
-         AND e.weight >= 0.5
-     )
-     SELECT DISTINCT m.*
-     FROM connected c
-     JOIN memories m ON m.id = c.memory_id
-     WHERE c.memory_id != $1
-     ORDER BY m.salience_score DESC
-     LIMIT 20`,
-    [memoryId, depth]
-  );
-
-  return result.rows as Memory[];
 }

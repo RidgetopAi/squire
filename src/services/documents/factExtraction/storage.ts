@@ -18,44 +18,6 @@ import {
 // === CREATE ===
 
 /**
- * Store a single extracted fact
- */
-export async function storeFact(
-  fact: Omit<ExtractedFact, 'id' | 'createdAt' | 'updatedAt'>
-): Promise<ExtractedFact> {
-  const result = await pool.query<ExtractedFactRow>(
-    `INSERT INTO extracted_facts (
-      chunk_id, object_id, fact_type, content, raw_text,
-      confidence, status, entities, dates, relationships,
-      source_page, source_section, position_start, position_end,
-      extraction_model, extraction_prompt_version, metadata
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-    RETURNING *`,
-    [
-      fact.chunkId,
-      fact.objectId,
-      fact.factType,
-      fact.content,
-      fact.rawText,
-      fact.confidence,
-      fact.status,
-      JSON.stringify(fact.entities),
-      JSON.stringify(fact.dates),
-      JSON.stringify(fact.relationships),
-      fact.sourcePage ?? null,
-      fact.sourceSection ?? null,
-      fact.positionStart ?? null,
-      fact.positionEnd ?? null,
-      fact.extractionModel ?? null,
-      fact.extractionPromptVersion ?? null,
-      JSON.stringify(fact.metadata),
-    ]
-  );
-
-  return rowToFact(result.rows[0]!);
-}
-
-/**
  * Store multiple extracted facts in a batch
  */
 export async function storeFacts(
@@ -177,18 +139,6 @@ export async function getFactsByDocument(
 }
 
 /**
- * Get facts for a chunk
- */
-export async function getFactsByChunk(chunkId: string): Promise<ExtractedFact[]> {
-  const result = await pool.query<ExtractedFactRow>(
-    `SELECT * FROM extracted_facts WHERE chunk_id = $1 ORDER BY created_at`,
-    [chunkId]
-  );
-
-  return result.rows.map(rowToFact);
-}
-
-/**
  * Get pending facts for review
  */
 export async function getPendingFacts(
@@ -271,45 +221,6 @@ export async function bulkUpdateFactStatus(
 }
 
 /**
- * Link a fact to a created memory
- */
-export async function linkFactToMemory(
-  factId: string,
-  memoryId: string
-): Promise<ExtractedFact | null> {
-  const result = await pool.query<ExtractedFactRow>(
-    `UPDATE extracted_facts
-     SET memory_id = $2
-     WHERE id = $1
-     RETURNING *`,
-    [factId, memoryId]
-  );
-
-  return result.rows[0] ? rowToFact(result.rows[0]) : null;
-}
-
-/**
- * Merge facts (mark as merged into another)
- */
-export async function mergeFacts(
-  sourceFactIds: string[],
-  targetFactId: string
-): Promise<number> {
-  if (sourceFactIds.length === 0) return 0;
-
-  const result = await pool.query(
-    `UPDATE extracted_facts
-     SET status = 'merged',
-         merged_into_id = $2,
-         reviewed_at = NOW()
-     WHERE id = ANY($1) AND id != $2`,
-    [sourceFactIds, targetFactId]
-  );
-
-  return result.rowCount ?? 0;
-}
-
-/**
  * Update fact content (for manual editing during review)
  */
 export async function updateFactContent(
@@ -342,30 +253,6 @@ export async function deleteFact(factId: string): Promise<boolean> {
   );
 
   return (result.rowCount ?? 0) > 0;
-}
-
-/**
- * Delete all facts for a document
- */
-export async function deleteFactsByDocument(objectId: string): Promise<number> {
-  const result = await pool.query(
-    `DELETE FROM extracted_facts WHERE object_id = $1`,
-    [objectId]
-  );
-
-  return result.rowCount ?? 0;
-}
-
-/**
- * Delete all facts for a chunk
- */
-export async function deleteFactsByChunk(chunkId: string): Promise<number> {
-  const result = await pool.query(
-    `DELETE FROM extracted_facts WHERE chunk_id = $1`,
-    [chunkId]
-  );
-
-  return result.rowCount ?? 0;
 }
 
 // === BATCH TRACKING ===

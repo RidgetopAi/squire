@@ -144,20 +144,6 @@ export async function archiveConversation(id: string): Promise<boolean> {
 }
 
 /**
- * Delete a conversation (soft delete)
- */
-export async function deleteConversation(id: string): Promise<boolean> {
-  const result = await pool.query(
-    `UPDATE conversations
-     SET status = 'deleted', updated_at = NOW()
-     WHERE id = $1
-     RETURNING id`,
-    [id]
-  );
-  return (result.rowCount ?? 0) > 0;
-}
-
-/**
  * Update conversation title
  */
 export async function updateConversationTitle(
@@ -305,69 +291,3 @@ export async function getRecentConversationWithMessages(): Promise<{
   return { conversation, messages };
 }
 
-// =============================================
-// MEMORY LINKAGE QUERIES
-// =============================================
-
-/**
- * Get all messages that used a specific memory in their context
- */
-export async function getMessagesUsingMemory(
-  memoryId: string
-): Promise<ChatMessageDB[]> {
-  const result = await pool.query(
-    `SELECT cm.* FROM chat_messages cm
-     JOIN chat_message_memories cmm ON cmm.message_id = cm.id
-     WHERE cmm.memory_id = $1
-     ORDER BY cm.created_at DESC`,
-    [memoryId]
-  );
-
-  return result.rows as ChatMessageDB[];
-}
-
-/**
- * Get all memory IDs used in a conversation
- */
-export async function getMemoriesUsedInConversation(
-  conversationId: string
-): Promise<string[]> {
-  const result = await pool.query(
-    `SELECT DISTINCT cmm.memory_id FROM chat_message_memories cmm
-     JOIN chat_messages cm ON cm.id = cmm.message_id
-     WHERE cm.conversation_id = $1`,
-    [conversationId]
-  );
-
-  return result.rows.map((r) => r.memory_id);
-}
-
-/**
- * Get conversation statistics
- */
-export async function getConversationStats(): Promise<{
-  total: number;
-  active: number;
-  archived: number;
-  totalMessages: number;
-  totalTokens: number;
-}> {
-  const result = await pool.query(`
-    SELECT
-      COUNT(*) FILTER (WHERE status != 'deleted') as total,
-      COUNT(*) FILTER (WHERE status = 'active') as active,
-      COUNT(*) FILTER (WHERE status = 'archived') as archived,
-      COALESCE(SUM(message_count) FILTER (WHERE status != 'deleted'), 0) as total_messages,
-      COALESCE(SUM(total_tokens) FILTER (WHERE status != 'deleted'), 0) as total_tokens
-    FROM conversations
-  `);
-
-  const row = result.rows[0];
-  return {
-    total: parseInt(row.total ?? '0', 10),
-    active: parseInt(row.active ?? '0', 10),
-    archived: parseInt(row.archived ?? '0', 10),
-    totalMessages: parseInt(row.total_messages ?? '0', 10),
-    totalTokens: parseInt(row.total_tokens ?? '0', 10),
-  };
-}
