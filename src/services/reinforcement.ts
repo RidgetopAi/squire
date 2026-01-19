@@ -30,7 +30,7 @@ interface SimilarMemory {
   confidence: number;
 }
 
-const SIMILARITY_THRESHOLD = 0.85; // Minimum similarity to count as reinforcement
+const SIMILARITY_THRESHOLD = 0.80; // Minimum similarity to count as reinforcement (lowered to catch paraphrased mentions)
 const CONFIDENCE_BOOST = 0.15; // How much to boost confidence per reinforcement
 const PROMOTION_THRESHOLD = 0.75; // Confidence needed to promote to solid
 
