@@ -20,6 +20,7 @@ import { docxExtractor } from './docxExtractor.js';
 import { textExtractor } from './textExtractor.js';
 import { csvExtractor } from './csvExtractor.js';
 import { ocrExtractor } from './ocrExtractor.js';
+import { getObjectById, getObjectData } from '../objects.js';
 
 /**
  * Registry of all available extractors
@@ -134,12 +135,37 @@ export async function extractDocument(
       }
 
       case 'objectId': {
-        // TODO: Integrate with objects service to fetch file data
-        return {
-          success: false,
-          error: 'Object ID extraction not yet implemented',
-          errorCode: 'UNSUPPORTED_FORMAT',
-        };
+        // Fetch object metadata from objects service
+        const obj = await getObjectById(input.objectId);
+        if (!obj) {
+          return {
+            success: false,
+            error: `Object not found: ${input.objectId}`,
+            errorCode: 'CORRUPTED_FILE',
+          };
+        }
+
+        if (obj.status === 'deleted') {
+          return {
+            success: false,
+            error: `Object has been deleted: ${input.objectId}`,
+            errorCode: 'CORRUPTED_FILE',
+          };
+        }
+
+        // Fetch file data
+        const objectData = await getObjectData(input.objectId);
+        if (!objectData) {
+          return {
+            success: false,
+            error: `Could not read object data: ${input.objectId}`,
+            errorCode: 'CORRUPTED_FILE',
+          };
+        }
+
+        buffer = objectData;
+        mimeType = obj.mime_type;
+        break;
       }
 
       default: {
