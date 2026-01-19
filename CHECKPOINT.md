@@ -63,12 +63,13 @@ Commit: 996d7e5
   - **Review Instance**: 3
   - **Completed by**: Instance 6 | Commit: d489d03
 
-- [ ] **TASK-M4**: Fix schema comment mismatch on embedding dimension
+- [x] **TASK-M4**: Fix schema comment mismatch on embedding dimension
   - **File**: `schema/018_commitments.sql:91`
   - **Issue**: Comment says "384-dim vector" but column is vector(768)
   - **Fix**: Update comment to "768-dim" to match actual definition
   - **Impact**: Documentation inconsistency
   - **Review Instance**: 7
+  - **Completed by**: Instance 7 | Commit: 2a9aa4d
 
 - [ ] **TASK-M5**: Implement Object ID extraction in document extractor
   - **File**: `src/services/documents/extractor.ts:136-142`
@@ -190,6 +191,7 @@ When ALL tasks checked AND ALL validation passes:
 | 4 | TASK-M1: Add entity_name to create_note | Complete | Added entity_name param with searchEntities resolution, deployed to VPS |
 | 5 | TASK-M2: Add embedding similarity to findSimilarBelief | Complete | Added schema migration 033, embedding generation in createBelief, similarity search in findSimilarBelief |
 | 6 | TASK-M3: Wire entity name resolution to Beliefs | Complete | Added resolveEntityName helper, import searchEntities, wire entity resolution for about_person/about_project beliefs |
+| 7 | TASK-M4: Fix schema comment mismatch | Complete | Fixed 384-dim → 768-dim in commitments.embedding COMMENT statement |
 
 ---
 
