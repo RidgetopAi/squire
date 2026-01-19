@@ -113,12 +113,13 @@ Commit: 996d7e5
   - **Review Instance**: 6
   - **Completed by**: Instance 9 | Commit: a30f293
 
-- [ ] **TASK-L4**: Fix commitment tool duplicate items issue
-  - **File**: `src/tools/commitments.ts:163-165`
+- [x] **TASK-L4**: Fix commitment tool duplicate items issue
+  - **File**: `src/tools/commitments.ts:103-108`
   - **Issue**: allItems combines commitments and reminders, may show duplicates
   - **Fix**: Filter out commitment-linked reminders from combined list
   - **Impact**: Minor UX issue - same task might appear twice
   - **Review Instance**: 7
+  - **Completed by**: Instance 10 | Commit: 0e336e2
 
 - [ ] **TASK-L5**: Consider raising document search threshold
   - **Files**: `src/services/documents/search.ts:89` and `src/services/context.ts:808`
@@ -202,6 +203,7 @@ When ALL tasks checked AND ALL validation passes:
 | 9 | TASK-L1: Lower reinforcement similarity threshold | Complete | Changed SIMILARITY_THRESHOLD from 0.85 to 0.80 for paraphrased mentions, deployed to VPS |
 | 9 | TASK-L2: Make provider endpoint URLs configurable | Complete | Added GROQ_URL, XAI_URL, GEMINI_URL env vars to config, updated all LLM providers, deployed to VPS |
 | 9 | TASK-L3: Make streaming timeout configurable | Complete | Added LLM_API_TIMEOUT_MS env var to config, updated handlers.ts, deployed to VPS |
+| 10 | TASK-L4: Fix commitment duplicate items | Complete | Already done by previous instance (commit 0e336e2), updated checkpoint |
 
 ---
 

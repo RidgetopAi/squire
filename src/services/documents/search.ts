@@ -10,6 +10,7 @@ import { generateQueryEmbedding } from './chunker/chunkEmbedding.js';
 import { searchChunksBySimilarity } from './chunker/chunkStorage.js';
 import { DocumentChunk } from './chunker/types.js';
 import { StoredObject, getObjectById } from '../objects.js';
+import { config } from '../../config/index.js';
 
 // === TYPES ===
 
@@ -86,7 +87,7 @@ export async function searchDocuments(
   const startTime = Date.now();
   const {
     limit = 10,
-    threshold = 0.5,
+    threshold = config.search.documentThreshold,
     documentId,
     includeDocumentMetadata = true,
   } = options;
@@ -294,7 +295,7 @@ export async function searchDocumentsOptimized(
   options: SearchOptions = {}
 ): Promise<SearchResponse> {
   const startTime = Date.now();
-  const { limit = 10, threshold = 0.5, documentId } = options;
+  const { limit = 10, threshold = config.search.documentThreshold, documentId } = options;
 
   // Generate embedding for the query
   const queryEmbedding = await generateQueryEmbedding(query);

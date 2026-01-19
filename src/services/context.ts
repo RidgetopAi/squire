@@ -9,6 +9,7 @@
  */
 
 import { pool } from '../db/pool.js';
+import { config } from '../config/index.js';
 import { generateEmbedding } from '../providers/embeddings.js';
 import { EntityType } from './entities.js';
 import { getNonEmptySummaries, type LivingSummary } from './summaries.js';
@@ -768,7 +769,7 @@ export async function generateContext(
   // If query provided, also search for relevant notes/lists
   if (query) {
     try {
-      const relevantNotes = await searchNotes(query, { limit: 5, threshold: 0.4 });
+      const relevantNotes = await searchNotes(query, { limit: 5, threshold: config.search.notesThreshold });
       for (const note of relevantNotes) {
         // Avoid duplicates from pinned notes
         if (!notes.some(n => n.id === note.id)) {
@@ -805,7 +806,7 @@ export async function generateContext(
     try {
       const docResults = await searchForContext(query, {
         maxTokens: maxDocumentTokens,
-        threshold: 0.4,
+        threshold: config.search.contextThreshold,
         limit: 10,
       });
       documents = docResults.chunks.map((chunk) => ({

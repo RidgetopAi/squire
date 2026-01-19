@@ -49,6 +49,11 @@ export const config = {
   features: {
     emotionTagging: optional('ENABLE_EMOTION_TAGGING', 'false') === 'true',
   },
+  search: {
+    documentThreshold: parseFloat(optional('SEARCH_DOCUMENT_THRESHOLD', '0.55')),
+    contextThreshold: parseFloat(optional('SEARCH_CONTEXT_THRESHOLD', '0.5')),
+    notesThreshold: parseFloat(optional('SEARCH_NOTES_THRESHOLD', '0.35')),
+  },
 } as const;
 
 export type Config = typeof config;
