@@ -105,12 +105,13 @@ Commit: 996d7e5
   - **Review Instance**: 6
   - **Completed by**: Instance 9 | Commit: 1af4932
 
-- [ ] **TASK-L3**: Make streaming timeout configurable
+- [x] **TASK-L3**: Make streaming timeout configurable
   - **File**: `src/api/socket/handlers.ts:752`
   - **Issue**: API_TIMEOUT_MS = 30000 hardcoded
   - **Fix**: Make configurable via environment variable
   - **Impact**: Long tool chains may timeout unexpectedly
   - **Review Instance**: 6
+  - **Completed by**: Instance 9 | Commit: a30f293
 
 - [ ] **TASK-L4**: Fix commitment tool duplicate items issue
   - **File**: `src/tools/commitments.ts:163-165`
@@ -200,6 +201,7 @@ When ALL tasks checked AND ALL validation passes:
 | 8 | TASK-M6: Remove dead reminder embedding code | Complete | Removed unused generateEmbedding import and embedding search fallback from findMatchingReminders(), deployed to VPS |
 | 9 | TASK-L1: Lower reinforcement similarity threshold | Complete | Changed SIMILARITY_THRESHOLD from 0.85 to 0.80 for paraphrased mentions, deployed to VPS |
 | 9 | TASK-L2: Make provider endpoint URLs configurable | Complete | Added GROQ_URL, XAI_URL, GEMINI_URL env vars to config, updated all LLM providers, deployed to VPS |
+| 9 | TASK-L3: Make streaming timeout configurable | Complete | Added LLM_API_TIMEOUT_MS env var to config, updated handlers.ts, deployed to VPS |
 
 ---
 

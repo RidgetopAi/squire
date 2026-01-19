@@ -100,11 +100,12 @@ async function handleListOpenCommitments(args: ListOpenCommitmentsArgs | null): 
       limit,
     });
 
-    // Get pending/sent reminders
-    const reminders = await listReminders({
+    // Get pending/sent reminders (exclude commitment-linked reminders to avoid duplicates)
+    const allReminders = await listReminders({
       status: ['pending', 'sent'],
       limit,
     });
+    const reminders = allReminders.filter((r) => r.commitment_id === null);
 
     const formattedCommitments = commitments.map((c) => ({
       ...formatCommitment(c),
