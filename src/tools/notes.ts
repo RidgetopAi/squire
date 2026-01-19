@@ -5,6 +5,7 @@
  */
 
 import { searchNotes, getPinnedNotes, listNotes, createNote, getNote, updateNote, findNoteByTitle } from '../services/notes.js';
+import { searchEntities } from '../services/entities.js';
 import type { ToolHandler } from './types.js';
 
 // =============================================================================
@@ -209,27 +210,45 @@ interface CreateNoteArgs {
   category?: string;
   tags?: string[];
   is_pinned?: boolean;
+  entity_name?: string;
 }
 
 async function handleCreateNote(args: CreateNoteArgs): Promise<string> {
-  const { content, title, category, tags, is_pinned } = args;
+  const { content, title, category, tags, is_pinned, entity_name } = args;
 
   if (!content || content.trim().length === 0) {
     return JSON.stringify({ error: 'Content is required', note: null });
   }
 
   try {
+    // Resolve entity_name to entity ID if provided
+    let primaryEntityId: string | undefined;
+    let resolvedEntityName: string | undefined;
+    if (entity_name) {
+      const matchingEntities = await searchEntities(entity_name);
+      const firstMatch = matchingEntities[0];
+      if (firstMatch) {
+        primaryEntityId = firstMatch.id;
+        resolvedEntityName = firstMatch.name;
+      }
+    }
+
     const note = await createNote({
       content: content.trim(),
       title: title?.trim(),
       category: category?.trim(),
       tags,
       is_pinned,
+      primary_entity_id: primaryEntityId,
       source_type: 'chat',
     });
 
+    const message = resolvedEntityName
+      ? `Note created successfully and linked to entity "${resolvedEntityName}"`
+      : 'Note created successfully';
+
     return JSON.stringify({
-      message: 'Note created successfully',
+      message,
       note: {
         id: note.id,
         title: note.title,
@@ -238,6 +257,7 @@ async function handleCreateNote(args: CreateNoteArgs): Promise<string> {
         tags: note.tags,
         is_pinned: note.is_pinned,
         created_at: note.created_at,
+        linked_entity: resolvedEntityName || null,
       },
     });
   } catch (error) {
@@ -274,6 +294,10 @@ export const createNoteToolParameters = {
     is_pinned: {
       type: 'boolean',
       description: 'Whether to pin this note as important (default: false)',
+    },
+    entity_name: {
+      type: 'string',
+      description: 'Name of a person, project, or other entity to link this note to (e.g., "Sarah", "Project Phoenix")',
     },
   },
   required: ['content'],
