@@ -373,6 +373,182 @@ class GeminiLLMProvider implements LLMProvider {
   }
 }
 
+// === ANTHROPIC PROVIDER ===
+
+/**
+ * Anthropic LLM provider
+ * Uses Anthropic API with Claude models (native format, not OpenAI-compatible)
+ */
+class AnthropicLLMProvider implements LLMProvider {
+  private apiKey: string;
+  private model: string;
+  private baseUrl: string;
+
+  constructor() {
+    this.apiKey = config.llm.anthropicApiKey ?? '';
+    this.model = config.llm.model;
+    this.baseUrl = config.llm.anthropicUrl;
+  }
+
+  async complete(
+    messages: LLMMessage[],
+    options: LLMCompletionOptions = {}
+  ): Promise<LLMCompletionResult> {
+    if (!this.apiKey) {
+      throw new Error('ANTHROPIC_API_KEY not configured');
+    }
+
+    // Separate system message from conversation
+    let systemPrompt: string | undefined;
+    const conversationMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+
+    for (const msg of messages) {
+      if (msg.role === 'system') {
+        systemPrompt = msg.content ?? undefined;
+      } else if (msg.role === 'user' || msg.role === 'assistant') {
+        conversationMessages.push({
+          role: msg.role,
+          content: msg.content ?? '',
+        });
+      } else if (msg.role === 'tool' && msg.tool_call_id) {
+        // Convert tool results to user message with tool_result content block
+        conversationMessages.push({
+          role: 'user',
+          content: JSON.stringify({
+            type: 'tool_result',
+            tool_use_id: msg.tool_call_id,
+            content: msg.content,
+          }),
+        });
+      }
+    }
+
+    // Build request body
+    const requestBody: Record<string, unknown> = {
+      model: this.model,
+      messages: conversationMessages,
+      max_tokens: options.maxTokens ?? config.llm.maxTokens,
+      temperature: options.temperature ?? config.llm.temperature,
+    };
+
+    if (systemPrompt) {
+      requestBody.system = systemPrompt;
+    }
+
+    if (options.stopSequences) {
+      requestBody.stop_sequences = options.stopSequences;
+    }
+
+    // Add tools if provided (convert to Anthropic format)
+    if (options.tools && options.tools.length > 0) {
+      requestBody.tools = options.tools.map((tool) => ({
+        name: tool.function.name,
+        description: tool.function.description,
+        input_schema: tool.function.parameters,
+      }));
+      if (options.toolChoice === 'required') {
+        requestBody.tool_choice = { type: 'any' };
+      } else if (options.toolChoice === 'none') {
+        requestBody.tool_choice = { type: 'none' };
+      } else {
+        requestBody.tool_choice = { type: 'auto' };
+      }
+    }
+
+    const response = await fetch(`${this.baseUrl}/v1/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': this.apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Anthropic API error: ${response.status} - ${error}`);
+    }
+
+    const data = (await response.json()) as {
+      content: Array<{
+        type: 'text' | 'tool_use';
+        text?: string;
+        id?: string;
+        name?: string;
+        input?: Record<string, unknown>;
+      }>;
+      stop_reason: 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence';
+      usage: {
+        input_tokens: number;
+        output_tokens: number;
+      };
+      model: string;
+    };
+
+    // Extract text content and tool calls
+    let textContent = '';
+    const toolCalls: ToolCall[] = [];
+
+    for (const block of data.content) {
+      if (block.type === 'text' && block.text) {
+        textContent += block.text;
+      } else if (block.type === 'tool_use' && block.id && block.name) {
+        toolCalls.push({
+          id: block.id,
+          type: 'function',
+          function: {
+            name: block.name,
+            arguments: JSON.stringify(block.input ?? {}),
+          },
+        });
+      }
+    }
+
+    const finishReason = data.stop_reason === 'tool_use' ? 'tool_calls' :
+                         data.stop_reason === 'max_tokens' ? 'length' : 'stop';
+
+    return {
+      content: textContent,
+      usage: {
+        promptTokens: data.usage.input_tokens,
+        completionTokens: data.usage.output_tokens,
+        totalTokens: data.usage.input_tokens + data.usage.output_tokens,
+      },
+      model: data.model,
+      provider: 'anthropic',
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      finishReason,
+    };
+  }
+
+  async isAvailable(): Promise<boolean> {
+    if (!this.apiKey) {
+      return false;
+    }
+
+    try {
+      // Simple health check - try to make a minimal request
+      const response = await fetch(`${this.baseUrl}/v1/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': this.apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: this.model,
+          messages: [{ role: 'user', content: 'hi' }],
+          max_tokens: 1,
+        }),
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
 // === OLLAMA PROVIDER ===
 
 /**
@@ -462,6 +638,9 @@ function getLLMProvider(): LLMProvider {
       case 'gemini':
         provider = new GeminiLLMProvider();
         break;
+      case 'anthropic':
+        provider = new AnthropicLLMProvider();
+        break;
       case 'ollama':
         provider = new OllamaLLMProvider();
         break;
@@ -518,9 +697,27 @@ export async function checkLLMHealth(): Promise<boolean> {
  * Get current LLM configuration info
  */
 export function getLLMInfo(): { provider: string; model: string; configured: boolean } {
+  let configured = true;
+  switch (config.llm.provider) {
+    case 'groq':
+      configured = !!config.llm.groqApiKey;
+      break;
+    case 'xai':
+      configured = !!config.llm.xaiApiKey;
+      break;
+    case 'gemini':
+      configured = !!config.llm.geminiApiKey;
+      break;
+    case 'anthropic':
+      configured = !!config.llm.anthropicApiKey;
+      break;
+    case 'ollama':
+      configured = true; // Local, always available if running
+      break;
+  }
   return {
     provider: config.llm.provider,
     model: config.llm.model,
-    configured: config.llm.provider === 'groq' ? !!config.llm.groqApiKey : true,
+    configured,
   };
 }
