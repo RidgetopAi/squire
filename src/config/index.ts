@@ -64,6 +64,22 @@ export const config = {
       .filter(Boolean),
     pollingIntervalMs: parseInt(optional('TELEGRAM_POLLING_INTERVAL_MS', '1000'), 10),
   },
+  coding: {
+    workingDirectory: optional('CODING_WORKING_DIR', process.cwd()),
+    defaultTimeoutMs: parseInt(optional('CODING_TIMEOUT_MS', '30000'), 10),
+    maxOutputBytes: parseInt(optional('CODING_MAX_OUTPUT_BYTES', '1048576'), 10), // 1MB
+    blockedCommands: [
+      'rm -rf /',
+      'rm -rf /*',
+      'mkfs',
+      'dd if=/dev/zero',
+      'dd if=/dev/random',
+      ':(){:|:&};:', // fork bomb
+      '> /dev/sda',
+      'chmod -R 777 /',
+      'chown -R',
+    ],
+  },
 } as const;
 
 export type Config = typeof config;

@@ -279,3 +279,50 @@ registerTool(completeCommitmentToolName, completeCommitmentToolDescription, comp
 
 // Register reminder tools
 registerTool(createReminderToolName, createReminderToolDescription, createReminderToolParameters, createReminderToolHandler);
+
+// === CODING TOOLS ===
+// File operations, search, and command execution
+
+import {
+  fileReadToolName,
+  fileReadToolDescription,
+  fileReadToolParameters,
+  fileReadToolHandler,
+  fileWriteToolName,
+  fileWriteToolDescription,
+  fileWriteToolParameters,
+  fileWriteToolHandler,
+  fileEditToolName,
+  fileEditToolDescription,
+  fileEditToolParameters,
+  fileEditToolHandler,
+  bashExecuteToolName,
+  bashExecuteToolDescription,
+  bashExecuteToolParameters,
+  bashExecuteToolHandler,
+  grepSearchToolName,
+  grepSearchToolDescription,
+  grepSearchToolParameters,
+  grepSearchToolHandler,
+  globFilesToolName,
+  globFilesToolDescription,
+  globFilesToolParameters,
+  globFilesToolHandler,
+  gitOperationsToolName,
+  gitOperationsToolDescription,
+  gitOperationsToolParameters,
+  gitOperationsToolHandler,
+} from './coding/index.js';
+
+// Register coding tools (read)
+registerTool(fileReadToolName, fileReadToolDescription, fileReadToolParameters, fileReadToolHandler);
+registerTool(grepSearchToolName, grepSearchToolDescription, grepSearchToolParameters, grepSearchToolHandler);
+registerTool(globFilesToolName, globFilesToolDescription, globFilesToolParameters, globFilesToolHandler);
+
+// Register coding tools (write)
+registerTool(fileWriteToolName, fileWriteToolDescription, fileWriteToolParameters, fileWriteToolHandler);
+registerTool(fileEditToolName, fileEditToolDescription, fileEditToolParameters, fileEditToolHandler);
+
+// Register coding tools (execute)
+registerTool(bashExecuteToolName, bashExecuteToolDescription, bashExecuteToolParameters, bashExecuteToolHandler);
+registerTool(gitOperationsToolName, gitOperationsToolDescription, gitOperationsToolParameters, gitOperationsToolHandler);
