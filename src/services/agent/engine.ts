@@ -5,6 +5,14 @@
  * calls tools repeatedly until the task is complete.
  */
 
+import { callLLM, type LLMMessage, type LLMResponse } from './llm.js';
+import {
+  getToolDefinitions,
+  executeTools,
+  type ToolDefinition,
+} from '../../tools/index.js';
+import { SQUIRE_SYSTEM_PROMPT_BASE, TOOL_CALLING_INSTRUCTIONS } from '../../constants/prompts.js';
+
 // === Types ===
 
 /**
@@ -57,6 +65,10 @@ export interface AgentEngineOptions {
   maxTurns?: number;
   /** Event callbacks */
   callbacks?: AgentCallbacks;
+  /** Custom system prompt (defaults to SQUIRE_SYSTEM_PROMPT_BASE + TOOL_CALLING_INSTRUCTIONS) */
+  systemPrompt?: string;
+  /** Tools to make available (defaults to all registered tools) */
+  tools?: ToolDefinition[];
 }
 
 // === AgentEngine Class ===
@@ -90,6 +102,9 @@ export class AgentEngine {
   private readonly conversationId: string;
   private readonly abortController: AbortController;
   private readonly callbacks: AgentCallbacks;
+  private readonly systemPrompt: string;
+  private readonly tools: ToolDefinition[];
+  private messages: LLMMessage[] = [];
 
   /**
    * Create a new AgentEngine instance
@@ -101,6 +116,16 @@ export class AgentEngine {
     this.maxTurns = options.maxTurns ?? 25;
     this.callbacks = options.callbacks ?? {};
     this.abortController = new AbortController();
+
+    // Set system prompt with tool calling instructions if using default
+    if (options.systemPrompt) {
+      this.systemPrompt = options.systemPrompt;
+    } else {
+      this.systemPrompt = SQUIRE_SYSTEM_PROMPT_BASE + TOOL_CALLING_INSTRUCTIONS;
+    }
+
+    // Use provided tools or default to all registered tools
+    this.tools = options.tools ?? getToolDefinitions();
   }
 
   /**
@@ -117,6 +142,7 @@ export class AgentEngine {
   async run(input: string, context?: string): Promise<AgentResult> {
     // Reset state for new run
     this.turnCount = 0;
+    this.messages = [];
     this.setState('gathering');
 
     try {
@@ -125,64 +151,108 @@ export class AgentEngine {
         return this.createResult('cancelled', '');
       }
 
-      // Gathering phase (placeholder for context loading)
-      // TODO: Implement context gathering in task 2.2
-      this.setState('thinking');
-
-      // Check for cancellation before LLM call
-      if (this.abortController.signal.aborted) {
-        return this.createResult('cancelled', '');
+      // Build system prompt with optional context
+      let systemContent = this.systemPrompt;
+      if (context) {
+        systemContent += `\n\n---\n\n${context}`;
       }
+
+      // Initialize messages with system prompt and user input
+      this.messages.push({ role: 'system', content: systemContent });
+      this.messages.push({ role: 'user', content: input });
+
+      // Track final response content
+      let finalContent = '';
 
       // Main agent loop
       while (this.turnCount < this.maxTurns) {
         // Check for cancellation at start of each turn
         if (this.abortController.signal.aborted) {
-          return this.createResult('cancelled', '');
+          return this.createResult('cancelled', finalContent);
         }
 
         this.turnCount++;
-
-        // TODO: Implement actual LLM call in task 2.2
-        // For now, this is a placeholder that simulates completion
         this.setState('thinking');
 
-        // Simulate LLM response check
-        // In the real implementation, we would:
-        // 1. Call the LLM
-        // 2. Check if it wants to use tools
-        // 3. If tools, setState('executing') and run them
-        // 4. Loop back to 'thinking' with tool results
-        // 5. If no tools, we're done
+        // Call the LLM
+        let response: LLMResponse;
+        try {
+          response = await callLLM(this.messages, this.tools, {
+            signal: this.abortController.signal,
+          });
+        } catch (error) {
+          // Check if this was an abort
+          if (this.abortController.signal.aborted) {
+            return this.createResult('cancelled', finalContent);
+          }
+          throw error;
+        }
 
-        // Placeholder: immediately complete
-        // Real implementation will check for tool_use in LLM response
-        const hasToolCalls = false; // Placeholder
+        // Update final content with latest response
+        finalContent = response.content;
 
-        if (hasToolCalls) {
-          this.setState('executing');
-          // TODO: Execute tools and continue loop
-        } else {
-          // No tool calls means we're done
+        // Check if there are tool calls
+        if (response.toolCalls.length === 0) {
+          // No tool calls - we're done
           this.setState('complete');
-          return this.createResult(
-            'complete',
-            `[AgentEngine placeholder] Processed input: "${input.substring(0, 50)}${input.length > 50 ? '...' : ''}"${context ? ' with context' : ''}`
+          return this.createResult('complete', finalContent);
+        }
+
+        // Have tool calls - execute them
+        this.setState('executing');
+
+        // Add assistant message with tool calls to conversation
+        this.messages.push({
+          role: 'assistant',
+          content: response.content,
+          tool_calls: response.toolCalls,
+        });
+
+        // Fire callback for each tool call before execution
+        for (const toolCall of response.toolCalls) {
+          this.callbacks.onToolCall?.(
+            toolCall.function.name,
+            this.safeParseArgs(toolCall.function.arguments)
           );
         }
+
+        // Execute all tool calls
+        const toolResults = await executeTools(response.toolCalls);
+
+        // Add tool results to messages
+        for (const result of toolResults) {
+          this.messages.push({
+            role: 'tool',
+            content: result.result,
+            tool_call_id: result.toolCallId,
+          });
+        }
+
+        // Loop continues - will call LLM again with tool results
       }
 
       // Max turns reached
       this.setState('complete');
       return this.createResult(
         'complete',
-        `[AgentEngine] Max turns (${this.maxTurns}) reached`
+        finalContent || `[AgentEngine] Max turns (${this.maxTurns}) reached without final response`
       );
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       this.setState('error');
       this.callbacks.onError?.(err);
       return this.createResult('error', '', err.message);
+    }
+  }
+
+  /**
+   * Safely parse JSON arguments, returning empty object on failure
+   */
+  private safeParseArgs(argsString: string): unknown {
+    try {
+      return JSON.parse(argsString);
+    } catch {
+      return {};
     }
   }
 

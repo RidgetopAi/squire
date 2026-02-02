@@ -12,3 +12,10 @@ export {
   type AgentCallbacks,
   type AgentEngineOptions,
 } from './engine.js';
+
+export {
+  callLLM,
+  type LLMMessage,
+  type LLMResponse,
+  type LLMCallOptions,
+} from './llm.js';
