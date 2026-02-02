@@ -80,6 +80,10 @@ export const config = {
       'chown -R',
     ],
   },
+  mandrel: {
+    baseUrl: optional('MANDREL_URL', 'http://localhost:8080'),
+    enabled: optional('MANDREL_ENABLED', 'true') === 'true',
+  },
 } as const;
 
 export type Config = typeof config;

@@ -326,3 +326,84 @@ registerTool(fileEditToolName, fileEditToolDescription, fileEditToolParameters, 
 // Register coding tools (execute)
 registerTool(bashExecuteToolName, bashExecuteToolDescription, bashExecuteToolParameters, bashExecuteToolHandler);
 registerTool(gitOperationsToolName, gitOperationsToolDescription, gitOperationsToolParameters, gitOperationsToolHandler);
+
+// === MANDREL TOOLS ===
+// Integration with Mandrel MCP for working memory
+
+import {
+  // Context tools
+  mandrelContextStoreToolName,
+  mandrelContextStoreToolDescription,
+  mandrelContextStoreToolParameters,
+  mandrelContextStoreToolHandler,
+  mandrelContextSearchToolName,
+  mandrelContextSearchToolDescription,
+  mandrelContextSearchToolParameters,
+  mandrelContextSearchToolHandler,
+  mandrelContextRecentToolName,
+  mandrelContextRecentToolDescription,
+  mandrelContextRecentToolParameters,
+  mandrelContextRecentToolHandler,
+  // Project tools
+  mandrelProjectSwitchToolName,
+  mandrelProjectSwitchToolDescription,
+  mandrelProjectSwitchToolParameters,
+  mandrelProjectSwitchToolHandler,
+  mandrelProjectCurrentToolName,
+  mandrelProjectCurrentToolDescription,
+  mandrelProjectCurrentToolParameters,
+  mandrelProjectCurrentToolHandler,
+  mandrelProjectListToolName,
+  mandrelProjectListToolDescription,
+  mandrelProjectListToolParameters,
+  mandrelProjectListToolHandler,
+  // Task tools
+  mandrelTaskCreateToolName,
+  mandrelTaskCreateToolDescription,
+  mandrelTaskCreateToolParameters,
+  mandrelTaskCreateToolHandler,
+  mandrelTaskListToolName,
+  mandrelTaskListToolDescription,
+  mandrelTaskListToolParameters,
+  mandrelTaskListToolHandler,
+  mandrelTaskUpdateToolName,
+  mandrelTaskUpdateToolDescription,
+  mandrelTaskUpdateToolParameters,
+  mandrelTaskUpdateToolHandler,
+  // Decision tools
+  mandrelDecisionRecordToolName,
+  mandrelDecisionRecordToolDescription,
+  mandrelDecisionRecordToolParameters,
+  mandrelDecisionRecordToolHandler,
+  mandrelDecisionSearchToolName,
+  mandrelDecisionSearchToolDescription,
+  mandrelDecisionSearchToolParameters,
+  mandrelDecisionSearchToolHandler,
+  // Search tools
+  mandrelSmartSearchToolName,
+  mandrelSmartSearchToolDescription,
+  mandrelSmartSearchToolParameters,
+  mandrelSmartSearchToolHandler,
+} from './mandrel/index.js';
+
+// Register Mandrel context tools
+registerTool(mandrelContextStoreToolName, mandrelContextStoreToolDescription, mandrelContextStoreToolParameters, mandrelContextStoreToolHandler);
+registerTool(mandrelContextSearchToolName, mandrelContextSearchToolDescription, mandrelContextSearchToolParameters, mandrelContextSearchToolHandler);
+registerTool(mandrelContextRecentToolName, mandrelContextRecentToolDescription, mandrelContextRecentToolParameters, mandrelContextRecentToolHandler);
+
+// Register Mandrel project tools
+registerTool(mandrelProjectSwitchToolName, mandrelProjectSwitchToolDescription, mandrelProjectSwitchToolParameters, mandrelProjectSwitchToolHandler);
+registerTool(mandrelProjectCurrentToolName, mandrelProjectCurrentToolDescription, mandrelProjectCurrentToolParameters, mandrelProjectCurrentToolHandler);
+registerTool(mandrelProjectListToolName, mandrelProjectListToolDescription, mandrelProjectListToolParameters, mandrelProjectListToolHandler);
+
+// Register Mandrel task tools
+registerTool(mandrelTaskCreateToolName, mandrelTaskCreateToolDescription, mandrelTaskCreateToolParameters, mandrelTaskCreateToolHandler);
+registerTool(mandrelTaskListToolName, mandrelTaskListToolDescription, mandrelTaskListToolParameters, mandrelTaskListToolHandler);
+registerTool(mandrelTaskUpdateToolName, mandrelTaskUpdateToolDescription, mandrelTaskUpdateToolParameters, mandrelTaskUpdateToolHandler);
+
+// Register Mandrel decision tools
+registerTool(mandrelDecisionRecordToolName, mandrelDecisionRecordToolDescription, mandrelDecisionRecordToolParameters, mandrelDecisionRecordToolHandler);
+registerTool(mandrelDecisionSearchToolName, mandrelDecisionSearchToolDescription, mandrelDecisionSearchToolParameters, mandrelDecisionSearchToolHandler);
+
+// Register Mandrel search tools
+registerTool(mandrelSmartSearchToolName, mandrelSmartSearchToolDescription, mandrelSmartSearchToolParameters, mandrelSmartSearchToolHandler);
