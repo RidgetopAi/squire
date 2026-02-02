@@ -2,8 +2,8 @@
  * Telegram Message Handler
  *
  * Processes incoming Telegram messages and routes them through
- * Squire's chat system. This is the bridge between Telegram and
- * the existing chat infrastructure.
+ * Squire's AgentEngine. This is a thin routing layer between
+ * Telegram and the agent infrastructure.
  */
 
 import { config } from '../../config/index.js';
@@ -12,46 +12,16 @@ import { detectStoryIntent, isStoryIntent } from '../storyIntent.js';
 import { generateStory } from '../storyEngine.js';
 import { getOrCreateConversation, addMessage, getMessages } from '../conversations.js';
 import { processMessageRealTime } from '../chatExtraction.js';
+import { AgentEngine } from '../agent/index.js';
 import { getUserIdentity } from '../identity.js';
-import { getToolDefinitions, hasTools, executeTools, type ToolCall } from '../../tools/index.js';
 import { SQUIRE_SYSTEM_PROMPT_BASE, TOOL_CALLING_INSTRUCTIONS } from '../../constants/prompts.js';
+import { hasTools, getToolDefinitions } from '../../tools/index.js';
 import {
   sendMessage,
   sendTypingAction,
   isUserAllowed,
   type TelegramMessage,
 } from './client.js';
-
-// === API Response Types ===
-
-interface AnthropicContentBlock {
-  type: 'text' | 'tool_use';
-  text?: string;
-  id?: string;
-  name?: string;
-  input?: unknown;
-}
-
-interface AnthropicResponse {
-  content?: AnthropicContentBlock[];
-  usage?: {
-    input_tokens: number;
-    output_tokens: number;
-  };
-}
-
-interface OpenAIResponse {
-  choices?: Array<{
-    message?: {
-      content?: string;
-      tool_calls?: ToolCall[];
-    };
-  }>;
-  usage?: {
-    prompt_tokens: number;
-    completion_tokens: number;
-  };
-}
 
 // Conversation ID prefix for Telegram users
 const TELEGRAM_CONVERSATION_PREFIX = 'telegram-';
@@ -61,24 +31,6 @@ const TELEGRAM_CONVERSATION_PREFIX = 'telegram-';
  */
 function getConversationId(telegramUserId: number): string {
   return `${TELEGRAM_CONVERSATION_PREFIX}${telegramUserId}`;
-}
-
-/**
- * Build the system prompt (same as socket handler)
- */
-async function buildSystemPrompt(): Promise<string> {
-  let prompt = SQUIRE_SYSTEM_PROMPT_BASE;
-
-  const identity = await getUserIdentity();
-  if (identity?.name) {
-    prompt = `You are talking to ${identity.name}.\n\n` + prompt;
-  }
-
-  if (hasTools()) {
-    prompt += TOOL_CALLING_INSTRUCTIONS;
-  }
-
-  return prompt;
 }
 
 /**
@@ -97,282 +49,28 @@ function getCurrentTimeContext(): string {
     timeZoneName: 'short',
   };
   const formatted = now.toLocaleString('en-US', options);
-  return `\n\nCurrent date and time: ${formatted}`;
+  return `Current date and time: ${formatted}`;
 }
 
 /**
- * Call the LLM and get a complete response (non-streaming)
- * Returns the full response text
+ * Build the system prompt with user identity and time context
  */
-async function callLLM(
-  messages: Array<{ role: string; content: string; tool_calls?: ToolCall[]; tool_call_id?: string }>,
-  tools?: Array<{ type: string; function: { name: string; description: string; parameters: unknown } }>
-): Promise<{ content: string; usage?: { promptTokens: number; completionTokens: number } }> {
-  const provider = config.llm.provider;
+async function buildSystemPrompt(): Promise<string> {
+  let prompt = SQUIRE_SYSTEM_PROMPT_BASE;
 
-  if (provider === 'anthropic') {
-    return callAnthropicLLM(messages, tools);
+  const identity = await getUserIdentity();
+  if (identity?.name) {
+    prompt = `You are talking to ${identity.name}.\n\n` + prompt;
   }
 
-  // For other providers (Groq, xAI, Gemini) - use OpenAI-compatible format
-  return callOpenAICompatibleLLM(messages, tools);
-}
-
-/**
- * Call Anthropic API (non-streaming)
- */
-async function callAnthropicLLM(
-  messages: Array<{ role: string; content: string; tool_calls?: ToolCall[]; tool_call_id?: string }>,
-  tools?: Array<{ type: string; function: { name: string; description: string; parameters: unknown } }>
-): Promise<{ content: string; usage?: { promptTokens: number; completionTokens: number } }> {
-  const apiKey = config.llm.anthropicApiKey;
-  const apiEndpoint = `${config.llm.anthropicUrl}/v1/messages`;
-
-  if (!apiKey) {
-    throw new Error('Anthropic API key not configured');
+  if (hasTools()) {
+    prompt += TOOL_CALLING_INSTRUCTIONS;
   }
 
-  // Separate system message from conversation
-  let systemPrompt: string | undefined;
-  const anthropicMessages: Array<{
-    role: 'user' | 'assistant';
-    content: string | Array<{ type: string; tool_use_id?: string; content?: string; id?: string; name?: string; input?: unknown; text?: string }>;
-  }> = [];
+  // Add time context
+  prompt += `\n\n${getCurrentTimeContext()}`;
 
-  for (const msg of messages) {
-    if (msg.role === 'system') {
-      systemPrompt = msg.content;
-    } else if (msg.role === 'user') {
-      anthropicMessages.push({ role: 'user', content: msg.content });
-    } else if (msg.role === 'assistant') {
-      if (msg.tool_calls && msg.tool_calls.length > 0) {
-        const content: Array<{ type: string; id?: string; name?: string; input?: unknown; text?: string }> = [];
-        if (msg.content) {
-          content.push({ type: 'text', text: msg.content });
-        }
-        for (const tc of msg.tool_calls) {
-          content.push({
-            type: 'tool_use',
-            id: tc.id,
-            name: tc.function.name,
-            input: JSON.parse(tc.function.arguments),
-          });
-        }
-        anthropicMessages.push({ role: 'assistant', content });
-      } else {
-        anthropicMessages.push({ role: 'assistant', content: msg.content });
-      }
-    } else if (msg.role === 'tool' && msg.tool_call_id) {
-      anthropicMessages.push({
-        role: 'user',
-        content: [{ type: 'tool_result', tool_use_id: msg.tool_call_id, content: msg.content }],
-      });
-    }
-  }
-
-  const requestBody: Record<string, unknown> = {
-    model: config.llm.model,
-    messages: anthropicMessages,
-    max_tokens: config.llm.maxTokens,
-    temperature: config.llm.temperature,
-    stream: false, // Non-streaming for Telegram
-  };
-
-  if (systemPrompt) {
-    requestBody.system = systemPrompt;
-  }
-
-  if (tools && tools.length > 0) {
-    requestBody.tools = tools.map((tool) => ({
-      name: tool.function.name,
-      description: tool.function.description,
-      input_schema: tool.function.parameters,
-    }));
-  }
-
-  const response = await fetch(apiEndpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify(requestBody),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Anthropic API error: ${response.status} - ${errorText}`);
-  }
-
-  const data = await response.json() as AnthropicResponse;
-
-  // Extract text content and tool calls
-  let textContent = '';
-  const toolCalls: ToolCall[] = [];
-
-  for (const block of data.content ?? []) {
-    if (block.type === 'text' && block.text) {
-      textContent += block.text;
-    } else if (block.type === 'tool_use' && block.id && block.name) {
-      toolCalls.push({
-        id: block.id,
-        type: 'function',
-        function: {
-          name: block.name,
-          arguments: JSON.stringify(block.input),
-        },
-      });
-    }
-  }
-
-  // Handle tool calls if any
-  if (toolCalls.length > 0) {
-    console.log(`[Telegram] Tool calls detected: ${toolCalls.map((t) => t.function.name).join(', ')}`);
-
-    const toolResults = await executeTools(toolCalls);
-
-    const updatedMessages = [
-      ...messages,
-      {
-        role: 'assistant',
-        content: textContent,
-        tool_calls: toolCalls,
-      },
-      ...toolResults.map((tr) => ({
-        role: 'tool',
-        content: tr.result,
-        tool_call_id: tr.toolCallId,
-      })),
-    ];
-
-    // Recursive call to continue after tool execution
-    return callAnthropicLLM(updatedMessages, tools);
-  }
-
-  return {
-    content: textContent,
-    usage: data.usage ? {
-      promptTokens: data.usage.input_tokens,
-      completionTokens: data.usage.output_tokens,
-    } : undefined,
-  };
-}
-
-/**
- * Call OpenAI-compatible API (Groq, xAI, Gemini) - non-streaming
- */
-async function callOpenAICompatibleLLM(
-  messages: Array<{ role: string; content: string; tool_calls?: ToolCall[]; tool_call_id?: string }>,
-  tools?: Array<{ type: string; function: { name: string; description: string; parameters: unknown } }>
-): Promise<{ content: string; usage?: { promptTokens: number; completionTokens: number } }> {
-  const provider = config.llm.provider;
-  let apiKey: string;
-  let apiEndpoint: string;
-
-  switch (provider) {
-    case 'groq':
-      apiKey = config.llm.groqApiKey;
-      apiEndpoint = `${config.llm.groqUrl}/chat/completions`;
-      break;
-    case 'xai':
-      apiKey = config.llm.xaiApiKey;
-      apiEndpoint = `${config.llm.xaiUrl}/chat/completions`;
-      break;
-    case 'gemini':
-      apiKey = config.llm.geminiApiKey;
-      apiEndpoint = `${config.llm.geminiUrl}/chat/completions`;
-      break;
-    default:
-      throw new Error(`Unsupported LLM provider for Telegram: ${provider}`);
-  }
-
-  if (!apiKey) {
-    throw new Error(`${provider} API key not configured`);
-  }
-
-  // Convert messages to OpenAI format
-  const openaiMessages = messages.map((msg) => {
-    if (msg.tool_calls) {
-      return {
-        role: msg.role,
-        content: msg.content || null,
-        tool_calls: msg.tool_calls,
-      };
-    }
-    if (msg.tool_call_id) {
-      return {
-        role: 'tool',
-        content: msg.content,
-        tool_call_id: msg.tool_call_id,
-      };
-    }
-    return { role: msg.role, content: msg.content };
-  });
-
-  const requestBody: Record<string, unknown> = {
-    model: config.llm.model,
-    messages: openaiMessages,
-    max_tokens: config.llm.maxTokens,
-    temperature: config.llm.temperature,
-    stream: false,
-  };
-
-  if (tools && tools.length > 0) {
-    requestBody.tools = tools;
-  }
-
-  const response = await fetch(apiEndpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(requestBody),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`${provider} API error: ${response.status} - ${errorText}`);
-  }
-
-  const data = await response.json() as OpenAIResponse;
-  const choice = data.choices?.[0];
-
-  if (!choice) {
-    throw new Error('No response from LLM');
-  }
-
-  // Handle tool calls
-  if (choice.message?.tool_calls && choice.message.tool_calls.length > 0) {
-    console.log(`[Telegram] Tool calls detected: ${choice.message.tool_calls.map((t: ToolCall) => t.function.name).join(', ')}`);
-
-    const toolResults = await executeTools(choice.message.tool_calls);
-
-    const updatedMessages = [
-      ...messages,
-      {
-        role: 'assistant',
-        content: choice.message.content ?? '',
-        tool_calls: choice.message.tool_calls,
-      },
-      ...toolResults.map((tr) => ({
-        role: 'tool',
-        content: tr.result,
-        tool_call_id: tr.toolCallId,
-      })),
-    ];
-
-    return callOpenAICompatibleLLM(updatedMessages, tools);
-  }
-
-  return {
-    content: choice.message?.content ?? '',
-    usage: data.usage ? {
-      promptTokens: data.usage.prompt_tokens,
-      completionTokens: data.usage.completion_tokens,
-    } : undefined,
-  };
+  return prompt;
 }
 
 /**
@@ -451,41 +149,58 @@ export async function handleTelegramMessage(message: TelegramMessage): Promise<v
       // Continue without context
     }
 
-    // Get conversation history (last 10 messages)
+    // Build system prompt with identity and time
+    const systemPrompt = await buildSystemPrompt();
+
+    // Create AgentEngine with custom system prompt
+    const engine = new AgentEngine({
+      conversationId,
+      maxTurns: 25,
+      systemPrompt,
+      tools: hasTools() ? getToolDefinitions() : [],
+      callbacks: {
+        onStateChange: (state, turn) => {
+          console.log(`[Telegram] State: ${state}, Turn: ${turn}`);
+        },
+        onToolCall: (name) => {
+          console.log(`[Telegram] Tool: ${name}`);
+        },
+      },
+    });
+
+    // Build context for the engine (history + generated context)
     const allMessages = await getMessages(conversation.id, { limit: 1000 });
     const recentMessages = allMessages.slice(-10);
-    const history = recentMessages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
 
-    // Build messages
-    const messages: Array<{ role: string; content: string }> = [];
+    // Format history as context for the engine
+    let fullContext = '';
 
-    let systemContent = await buildSystemPrompt();
-    systemContent += getCurrentTimeContext();
+    // Add conversation history
+    const historyExceptCurrent = recentMessages.slice(0, -1);
+    if (historyExceptCurrent.length > 0) {
+      fullContext += '## Recent Conversation\n\n';
+      for (const msg of historyExceptCurrent) {
+        const roleLabel = msg.role === 'user' ? 'User' : 'Assistant';
+        fullContext += `**${roleLabel}**: ${msg.content}\n\n`;
+      }
+    }
+
+    // Add generated context (story or RAG)
     if (contextMarkdown) {
-      systemContent += `\n\n---\n\n${contextMarkdown}`;
-    }
-    messages.push({ role: 'system', content: systemContent });
-
-    // Add history (excluding the message we just added)
-    for (const msg of history.slice(0, -1)) {
-      messages.push({ role: msg.role, content: msg.content });
+      fullContext += contextMarkdown;
     }
 
-    // Add current message
-    messages.push({ role: 'user', content: text });
+    // Run the agent
+    console.log(`[Telegram] Running AgentEngine (${engine.getConversationId()})`);
+    const result = await engine.run(text, fullContext || undefined);
 
-    // Call LLM
-    const tools = hasTools() ? getToolDefinitions() : undefined;
-    console.log(`[Telegram] Calling ${config.llm.provider} (${tools?.length ?? 0} tools available)`);
-
-    const llmResult = await callLLM(messages, tools);
+    if (!result.success) {
+      throw new Error(result.error ?? 'Agent execution failed');
+    }
 
     // Check extraction results
     const extracted = await extractionPromise;
-    let fullContent = llmResult.content;
+    let fullContent = result.content;
 
     if (extracted.reminderCreated) {
       const remindAt = new Date(extracted.reminderCreated.remind_at);
@@ -508,14 +223,12 @@ export async function handleTelegramMessage(message: TelegramMessage): Promise<v
       role: 'assistant',
       content: fullContent,
       memoryIds,
-      promptTokens: llmResult.usage?.promptTokens,
-      completionTokens: llmResult.usage?.completionTokens,
     });
 
     // Send response to Telegram
     await sendMessage(chatId, fullContent);
 
-    console.log(`[Telegram] Response sent (${fullContent.length} chars)`);
+    console.log(`[Telegram] Response sent (${fullContent.length} chars, ${result.turnCount} turns)`);
   } catch (error) {
     console.error('[Telegram] Error handling message:', error);
 
