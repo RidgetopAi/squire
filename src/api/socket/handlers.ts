@@ -650,6 +650,236 @@ async function executeParsedToolAndContinue(
 }
 
 /**
+ * Stream response from Anthropic API with tool calling support
+ * Uses native Anthropic format (not OpenAI-compatible)
+ */
+async function streamAnthropicResponse(
+  socket: TypedSocket,
+  conversationId: string,
+  messages: Array<{ role: string; content: string; tool_calls?: ToolCall[]; tool_call_id?: string }>,
+  signal: AbortSignal,
+  tools?: ToolDefinition[]
+): Promise<{ content: string; usage?: { promptTokens: number; completionTokens: number } }> {
+  const apiKey = config.llm.anthropicApiKey;
+  const apiEndpoint = `${config.llm.anthropicUrl}/v1/messages`;
+
+  if (!apiKey) {
+    socket.emit('chat:error', {
+      conversationId,
+      error: 'Anthropic API key not configured',
+      code: 'LLM_NOT_CONFIGURED',
+    });
+    return { content: '' };
+  }
+
+  // Separate system message from conversation
+  let systemPrompt: string | undefined;
+  const anthropicMessages: Array<{ role: 'user' | 'assistant'; content: string | Array<{ type: string; tool_use_id?: string; content?: string }> }> = [];
+
+  for (const msg of messages) {
+    if (msg.role === 'system') {
+      systemPrompt = msg.content;
+    } else if (msg.role === 'user') {
+      anthropicMessages.push({ role: 'user', content: msg.content });
+    } else if (msg.role === 'assistant') {
+      if (msg.tool_calls && msg.tool_calls.length > 0) {
+        // Assistant message with tool calls
+        const content: Array<{ type: string; id?: string; name?: string; input?: unknown; text?: string }> = [];
+        if (msg.content) {
+          content.push({ type: 'text', text: msg.content });
+        }
+        for (const tc of msg.tool_calls) {
+          content.push({
+            type: 'tool_use',
+            id: tc.id,
+            name: tc.function.name,
+            input: JSON.parse(tc.function.arguments),
+          });
+        }
+        anthropicMessages.push({ role: 'assistant', content: content as never });
+      } else {
+        anthropicMessages.push({ role: 'assistant', content: msg.content });
+      }
+    } else if (msg.role === 'tool' && msg.tool_call_id) {
+      // Tool results go as user message with tool_result content block
+      anthropicMessages.push({
+        role: 'user',
+        content: [{ type: 'tool_result', tool_use_id: msg.tool_call_id, content: msg.content }],
+      });
+    }
+  }
+
+  // Build request body
+  const requestBody: Record<string, unknown> = {
+    model: config.llm.model,
+    messages: anthropicMessages,
+    max_tokens: config.llm.maxTokens,
+    temperature: config.llm.temperature,
+    stream: true,
+  };
+
+  if (systemPrompt) {
+    requestBody.system = systemPrompt;
+  }
+
+  // Add tools if provided (convert to Anthropic format)
+  if (tools && tools.length > 0) {
+    requestBody.tools = tools.map((tool) => ({
+      name: tool.function.name,
+      description: tool.function.description,
+      input_schema: tool.function.parameters,
+    }));
+  }
+
+  const apiTimeoutMs = config.llm.apiTimeoutMs;
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => {
+    console.log(`[Socket] Anthropic API timeout after ${apiTimeoutMs}ms`);
+    timeoutController.abort();
+  }, apiTimeoutMs);
+
+  signal.addEventListener('abort', () => timeoutController.abort());
+
+  try {
+    const response = await fetch(apiEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify(requestBody),
+      signal: timeoutController.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Socket] Anthropic API error: ${response.status} - ${errorText}`);
+      throw new Error(`Anthropic API error: ${response.status} - ${errorText}`);
+    }
+
+    // Process SSE stream
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('No response body');
+    }
+
+    const decoder = new TextDecoder();
+    let fullContent = '';
+    let buffer = '';
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let currentToolCall: { id: string; name: string; input: string } | null = null;
+    const toolCalls: ToolCall[] = [];
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6);
+        if (data === '[DONE]') continue;
+
+        try {
+          const parsed = JSON.parse(data);
+
+          if (parsed.type === 'message_start' && parsed.message?.usage) {
+            inputTokens = parsed.message.usage.input_tokens ?? 0;
+          } else if (parsed.type === 'content_block_start') {
+            if (parsed.content_block?.type === 'tool_use') {
+              currentToolCall = {
+                id: parsed.content_block.id,
+                name: parsed.content_block.name,
+                input: '',
+              };
+            }
+          } else if (parsed.type === 'content_block_delta') {
+            if (parsed.delta?.type === 'text_delta' && parsed.delta.text) {
+              fullContent += parsed.delta.text;
+              socket.emit('chat:chunk', {
+                conversationId,
+                chunk: parsed.delta.text,
+                done: false,
+              });
+            } else if (parsed.delta?.type === 'input_json_delta' && currentToolCall) {
+              currentToolCall.input += parsed.delta.partial_json ?? '';
+            }
+          } else if (parsed.type === 'content_block_stop' && currentToolCall) {
+            toolCalls.push({
+              id: currentToolCall.id,
+              type: 'function',
+              function: {
+                name: currentToolCall.name,
+                arguments: currentToolCall.input,
+              },
+            });
+            currentToolCall = null;
+          } else if (parsed.type === 'message_delta' && parsed.usage) {
+            outputTokens = parsed.usage.output_tokens ?? 0;
+          }
+        } catch {
+          // Ignore parse errors for partial data
+        }
+      }
+    }
+
+    // Handle tool calls if any
+    if (toolCalls.length > 0) {
+      console.log(`[Socket] Anthropic tool calls detected: ${toolCalls.map((t) => t.function.name).join(', ')}`);
+
+      // Execute tools and continue
+      const toolResults = await executeTools(toolCalls);
+
+      // Build updated messages with tool results
+      const updatedMessages = [
+        ...messages,
+        {
+          role: 'assistant',
+          content: fullContent,
+          tool_calls: toolCalls,
+        },
+        ...toolResults.map((tr) => ({
+          role: 'tool',
+          content: tr.result,
+          tool_call_id: tr.toolCallId,
+        })),
+      ];
+
+      // Continue conversation
+      return await streamAnthropicResponse(socket, conversationId, updatedMessages, signal, tools);
+    }
+
+    socket.emit('chat:chunk', {
+      conversationId,
+      chunk: '',
+      done: true,
+    });
+
+    return {
+      content: fullContent,
+      usage: { promptTokens: inputTokens, completionTokens: outputTokens },
+    };
+  } catch (error) {
+    clearTimeout(timeoutId);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`[Socket] Anthropic streaming error: ${errorMessage}`);
+    socket.emit('chat:error', {
+      conversationId,
+      error: errorMessage,
+      code: 'LLM_ERROR',
+    });
+    return { content: '' };
+  }
+}
+
+/**
  * Stream response from Groq API with tool calling support
  * Returns the full content and usage for persistence
  */
@@ -665,7 +895,10 @@ async function streamGroqResponse(
   let apiKey: string;
   let apiEndpoint: string;
 
-  if (provider === 'xai') {
+  if (provider === 'anthropic') {
+    // Anthropic uses a different API format - handle separately
+    return await streamAnthropicResponse(socket, conversationId, messages, signal, tools);
+  } else if (provider === 'xai') {
     apiKey = config.llm.xaiApiKey;
     apiEndpoint = 'https://api.x.ai/v1/chat/completions';
   } else if (provider === 'gemini') {
