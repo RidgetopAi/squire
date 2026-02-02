@@ -28,6 +28,7 @@ import documentsRouter from './routes/documents.js';
 import { initScheduler, shutdownScheduler } from '../services/scheduler.js';
 import { migrateFromPersonalitySummary } from '../services/identity.js';
 import { syncAllAccounts } from '../services/google/sync.js';
+import { startTelegramPoller, stopTelegramPoller } from '../services/telegram/index.js';
 
 // Google Calendar sync interval (15 minutes)
 const CALENDAR_SYNC_INTERVAL_MS = 15 * 60 * 1000;
@@ -129,12 +130,23 @@ httpServer.listen(port, async () => {
   // Schedule periodic syncs
   calendarSyncTimer = setInterval(runCalendarSync, CALENDAR_SYNC_INTERVAL_MS);
   console.log(`Google Calendar sync scheduler started (every ${CALENDAR_SYNC_INTERVAL_MS / 60000} minutes)`);
+
+  // Start Telegram bot poller (if configured)
+  try {
+    const telegramStarted = await startTelegramPoller();
+    if (telegramStarted) {
+      console.log('Telegram bot poller started');
+    }
+  } catch (error) {
+    console.error('Failed to start Telegram poller:', error);
+  }
 });
 
 // Graceful shutdown
 const shutdown = () => {
   console.log('Shutting down gracefully...');
   shutdownScheduler();
+  stopTelegramPoller();
   if (calendarSyncTimer) {
     clearInterval(calendarSyncTimer);
     calendarSyncTimer = null;

@@ -56,6 +56,14 @@ export const config = {
     contextThreshold: parseFloat(optional('SEARCH_CONTEXT_THRESHOLD', '0.5')),
     notesThreshold: parseFloat(optional('SEARCH_NOTES_THRESHOLD', '0.35')),
   },
+  telegram: {
+    botToken: process.env['TELEGRAM_BOT_TOKEN'] ?? '',
+    allowedUserIds: (process.env['TELEGRAM_ALLOWED_USER_IDS'] ?? '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean),
+    pollingIntervalMs: parseInt(optional('TELEGRAM_POLLING_INTERVAL_MS', '1000'), 10),
+  },
 } as const;
 
 export type Config = typeof config;
