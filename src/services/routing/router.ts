@@ -92,6 +92,7 @@ export async function routedCallLLM(
 
   const selectedTier = tier ?? getDefaultTier();
   const tierConfig = getTierConfig(selectedTier);
+  console.log(`[Routing] Using ${selectedTier} tier: ${tierConfig.provider}/${tierConfig.model}`);
 
   const response = await callWithConfig(messages, tools, tierConfig, options);
   return {

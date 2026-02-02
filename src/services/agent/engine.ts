@@ -166,6 +166,7 @@ export class AgentEngine {
       // Classify task for routing (once per conversation)
       if (isRoutingEnabled()) {
         this.tier = classifyTask(input);
+        console.log(`[Routing] Task classified as "${this.tier}" tier`);
       }
 
       // Track final response content
