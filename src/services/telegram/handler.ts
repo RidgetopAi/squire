@@ -153,17 +153,49 @@ export async function handleTelegramMessage(message: TelegramMessage): Promise<v
     const systemPrompt = await buildSystemPrompt();
 
     // Create AgentEngine with custom system prompt
+    // Track whether we've sent a progress update to avoid spamming
+    let lastTypingTime = 0;
+    const TYPING_INTERVAL_MS = 4000; // Refresh typing indicator every 4 seconds
+
     const engine = new AgentEngine({
       conversationId,
       maxTurns: 25,
       systemPrompt,
       tools: hasTools() ? getToolDefinitions() : [],
       callbacks: {
-        onStateChange: (state, turn) => {
+        onStateChange: async (state, turn) => {
           console.log(`[Telegram] State: ${state}, Turn: ${turn}`);
+
+          // Send typing indicator for multi-turn tasks when entering thinking state
+          // Only refresh if enough time has passed (typing indicator lasts ~5 seconds)
+          if (turn > 1 && state === 'thinking') {
+            const now = Date.now();
+            if (now - lastTypingTime >= TYPING_INTERVAL_MS) {
+              try {
+                await sendTypingAction(chatId);
+                lastTypingTime = now;
+              } catch (error) {
+                // Fire and forget - don't let callback errors break the engine
+                console.error('[Telegram] Failed to send typing indicator in callback:', error);
+              }
+            }
+          }
         },
-        onToolCall: (name) => {
+        onToolCall: async (name) => {
           console.log(`[Telegram] Tool: ${name}`);
+
+          // Refresh typing indicator when tools are being used
+          // This keeps the indicator active during potentially long tool executions
+          const now = Date.now();
+          if (now - lastTypingTime >= TYPING_INTERVAL_MS) {
+            try {
+              await sendTypingAction(chatId);
+              lastTypingTime = now;
+            } catch (error) {
+              // Fire and forget - don't let callback errors break the engine
+              console.error('[Telegram] Failed to send typing indicator in callback:', error);
+            }
+          }
         },
       },
     });
