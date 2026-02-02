@@ -1,20 +1,16 @@
 /**
- * LLM Calling Functions for Agent Engine
+ * Model Router for Multi-Tier LLM Calls
  *
- * Non-streaming LLM call logic that can be used by AgentEngine
- * and other services. Returns raw responses without recursive
- * tool execution - the caller handles the loop.
+ * Routes LLM calls to appropriate provider based on model tier.
+ * Supports smart tier (Opus/Anthropic) and fast tier (Grok/xAI).
  */
 
 import { config } from '../../config/index.js';
 import type { ToolDefinition, ToolCall } from '../../tools/types.js';
-import { routedCallLLM, isRoutingEnabled, type ModelTier } from '../routing/index.js';
+import { getTierConfig, isRoutingEnabled, getDefaultTier, type ModelTier, type TierConfig } from './models.js';
 
 // === Types ===
 
-/**
- * Message format for LLM conversations
- */
 export interface LLMMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
@@ -22,29 +18,19 @@ export interface LLMMessage {
   tool_call_id?: string;
 }
 
-/**
- * Response from a single LLM call
- */
 export interface LLMResponse {
-  /** Text content from the response */
   content: string;
-  /** Tool calls requested by the model (if any) */
   toolCalls: ToolCall[];
-  /** Token usage statistics */
   usage?: {
     promptTokens: number;
     completionTokens: number;
   };
+  tier?: ModelTier;
+  model?: string;
 }
 
-/**
- * Options for LLM calls
- */
 export interface LLMCallOptions {
-  /** Abort signal for cancellation */
   signal?: AbortSignal;
-  /** Model tier for routing (smart, fast, etc.) */
-  tier?: ModelTier;
 }
 
 // === API Response Types ===
@@ -63,6 +49,7 @@ interface AnthropicResponse {
     input_tokens: number;
     output_tokens: number;
   };
+  model?: string;
 }
 
 interface OpenAIResponse {
@@ -76,57 +63,66 @@ interface OpenAIResponse {
     prompt_tokens: number;
     completion_tokens: number;
   };
+  model?: string;
 }
 
-// === Main Entry Point ===
+// === Main Router ===
 
 /**
- * Call the LLM and get a single response (non-streaming, non-recursive)
+ * Make an LLM call routed to the appropriate tier
  *
- * This function makes a single LLM call and returns the response including
- * any tool calls. It does NOT execute tools or loop - that's the caller's
- * responsibility.
- *
- * When routing is enabled (SQUIRE_ROUTING_ENABLED=true), calls are routed
- * to appropriate model tier. Otherwise, uses legacy single-provider behavior.
- *
- * @param messages - Conversation messages including system prompt
- * @param tools - Tool definitions to make available
- * @param options - Optional settings like abort signal and model tier
- * @returns LLM response with content and any tool calls
+ * @param messages - Conversation messages
+ * @param tools - Tool definitions
+ * @param tier - Model tier to use (defaults to config default)
+ * @param options - Call options (abort signal, etc)
  */
-export async function callLLM(
+export async function routedCallLLM(
   messages: LLMMessage[],
   tools?: ToolDefinition[],
+  tier?: ModelTier,
   options?: LLMCallOptions
 ): Promise<LLMResponse> {
-  // Use routing if enabled
-  if (isRoutingEnabled()) {
-    const response = await routedCallLLM(messages, tools, options?.tier, {
-      signal: options?.signal,
-    });
-    return response;
+  // If routing disabled, use legacy behavior
+  if (!isRoutingEnabled()) {
+    return callWithConfig(messages, tools, {
+      provider: config.llm.provider,
+      model: config.llm.model,
+    }, options);
   }
 
-  // Legacy behavior when routing disabled
-  const provider = config.llm.provider;
+  const selectedTier = tier ?? getDefaultTier();
+  const tierConfig = getTierConfig(selectedTier);
 
-  if (provider === 'anthropic') {
-    return callAnthropicLLM(messages, tools, options);
+  const response = await callWithConfig(messages, tools, tierConfig, options);
+  return {
+    ...response,
+    tier: selectedTier,
+  };
+}
+
+/**
+ * Call LLM with specific provider/model config
+ */
+async function callWithConfig(
+  messages: LLMMessage[],
+  tools: ToolDefinition[] | undefined,
+  tierConfig: TierConfig,
+  options?: LLMCallOptions
+): Promise<LLMResponse> {
+  if (tierConfig.provider === 'anthropic') {
+    return callAnthropic(messages, tools, tierConfig.model, options);
   }
 
-  // For other providers (Groq, xAI, Gemini) - use OpenAI-compatible format
-  return callOpenAICompatibleLLM(messages, tools, options);
+  // xAI, Groq, Gemini use OpenAI-compatible format
+  return callOpenAICompatible(messages, tools, tierConfig, options);
 }
 
 // === Anthropic Implementation ===
 
-/**
- * Call Anthropic API (non-streaming, non-recursive)
- */
-async function callAnthropicLLM(
+async function callAnthropic(
   messages: LLMMessage[],
-  tools?: ToolDefinition[],
+  tools: ToolDefinition[] | undefined,
+  model: string,
   options?: LLMCallOptions
 ): Promise<LLMResponse> {
   const apiKey = config.llm.anthropicApiKey;
@@ -189,7 +185,7 @@ async function callAnthropicLLM(
   }
 
   const requestBody: Record<string, unknown> = {
-    model: config.llm.model,
+    model,
     messages: anthropicMessages,
     max_tokens: config.llm.maxTokens,
     temperature: config.llm.temperature,
@@ -226,7 +222,6 @@ async function callAnthropicLLM(
 
   const data = await response.json() as AnthropicResponse;
 
-  // Extract text content and tool calls
   let textContent = '';
   const toolCalls: ToolCall[] = [];
 
@@ -252,42 +247,40 @@ async function callAnthropicLLM(
       promptTokens: data.usage.input_tokens,
       completionTokens: data.usage.output_tokens,
     } : undefined,
+    model: data.model,
   };
 }
 
-// === OpenAI-Compatible Implementation ===
+// === OpenAI-Compatible Implementation (xAI, Groq, Gemini) ===
 
-/**
- * Call OpenAI-compatible API (Groq, xAI, Gemini) - non-streaming, non-recursive
- */
-async function callOpenAICompatibleLLM(
+async function callOpenAICompatible(
   messages: LLMMessage[],
-  tools?: ToolDefinition[],
+  tools: ToolDefinition[] | undefined,
+  tierConfig: TierConfig,
   options?: LLMCallOptions
 ): Promise<LLMResponse> {
-  const provider = config.llm.provider;
   let apiKey: string;
   let apiEndpoint: string;
 
-  switch (provider) {
-    case 'groq':
-      apiKey = config.llm.groqApiKey;
-      apiEndpoint = `${config.llm.groqUrl}/chat/completions`;
-      break;
+  switch (tierConfig.provider) {
     case 'xai':
       apiKey = config.llm.xaiApiKey;
       apiEndpoint = `${config.llm.xaiUrl}/chat/completions`;
+      break;
+    case 'groq':
+      apiKey = config.llm.groqApiKey;
+      apiEndpoint = `${config.llm.groqUrl}/chat/completions`;
       break;
     case 'gemini':
       apiKey = config.llm.geminiApiKey;
       apiEndpoint = `${config.llm.geminiUrl}/chat/completions`;
       break;
     default:
-      throw new Error(`Unsupported LLM provider: ${provider}`);
+      throw new Error(`Unsupported provider: ${tierConfig.provider}`);
   }
 
   if (!apiKey) {
-    throw new Error(`${provider} API key not configured`);
+    throw new Error(`${tierConfig.provider} API key not configured`);
   }
 
   // Convert messages to OpenAI format
@@ -310,7 +303,7 @@ async function callOpenAICompatibleLLM(
   });
 
   const requestBody: Record<string, unknown> = {
-    model: config.llm.model,
+    model: tierConfig.model,
     messages: openaiMessages,
     max_tokens: config.llm.maxTokens,
     temperature: config.llm.temperature,
@@ -333,7 +326,7 @@ async function callOpenAICompatibleLLM(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`${provider} API error: ${response.status} - ${errorText}`);
+    throw new Error(`${tierConfig.provider} API error: ${response.status} - ${errorText}`);
   }
 
   const data = await response.json() as OpenAIResponse;
@@ -350,5 +343,6 @@ async function callOpenAICompatibleLLM(
       promptTokens: data.usage.prompt_tokens,
       completionTokens: data.usage.completion_tokens,
     } : undefined,
+    model: data.model,
   };
 }

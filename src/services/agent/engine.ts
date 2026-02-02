@@ -12,6 +12,7 @@ import {
   type ToolDefinition,
 } from '../../tools/index.js';
 import { SQUIRE_SYSTEM_PROMPT_BASE, TOOL_CALLING_INSTRUCTIONS } from '../../constants/prompts.js';
+import { classifyTask, type ModelTier, isRoutingEnabled } from '../routing/index.js';
 
 // === Types ===
 
@@ -105,6 +106,7 @@ export class AgentEngine {
   private readonly systemPrompt: string;
   private readonly tools: ToolDefinition[];
   private messages: LLMMessage[] = [];
+  private tier: ModelTier | undefined;
 
   /**
    * Create a new AgentEngine instance
@@ -161,6 +163,11 @@ export class AgentEngine {
       this.messages.push({ role: 'system', content: systemContent });
       this.messages.push({ role: 'user', content: input });
 
+      // Classify task for routing (once per conversation)
+      if (isRoutingEnabled()) {
+        this.tier = classifyTask(input);
+      }
+
       // Track final response content
       let finalContent = '';
 
@@ -179,6 +186,7 @@ export class AgentEngine {
         try {
           response = await callLLM(this.messages, this.tools, {
             signal: this.abortController.signal,
+            tier: this.tier,
           });
         } catch (error) {
           // Check if this was an abort

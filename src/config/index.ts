@@ -84,6 +84,18 @@ export const config = {
     baseUrl: optional('MANDREL_URL', 'http://localhost:8080'),
     enabled: optional('MANDREL_ENABLED', 'true') === 'true',
   },
+  routing: {
+    enabled: optional('ROUTING_ENABLED', 'true') === 'true',
+    defaultTier: optional('ROUTING_DEFAULT_TIER', 'smart') as 'smart' | 'fast',
+    smart: {
+      provider: optional('ROUTING_SMART_PROVIDER', 'anthropic') as 'anthropic' | 'xai' | 'groq' | 'gemini' | 'ollama',
+      model: optional('ROUTING_SMART_MODEL', 'claude-opus-4-5-20251101'),
+    },
+    fast: {
+      provider: optional('ROUTING_FAST_PROVIDER', 'xai') as 'anthropic' | 'xai' | 'groq' | 'gemini' | 'ollama',
+      model: optional('ROUTING_FAST_MODEL', 'grok-4-1-fast-reasoning'),
+    },
+  },
 } as const;
 
 export type Config = typeof config;
