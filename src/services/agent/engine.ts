@@ -13,6 +13,7 @@ import {
 } from '../../tools/index.js';
 import { SQUIRE_SYSTEM_PROMPT_BASE, TOOL_CALLING_INSTRUCTIONS } from '../../constants/prompts.js';
 import { classifyTask, type ModelTier, isRoutingEnabled } from '../routing/index.js';
+import { buildMemoryContext } from '../memory/index.js';
 
 // === Types ===
 
@@ -153,8 +154,18 @@ export class AgentEngine {
         return this.createResult('cancelled', '');
       }
 
+      // Retrieve relevant memory context
+      const memoryContext = await buildMemoryContext(input);
+
       // Build system prompt with optional context
       let systemContent = this.systemPrompt;
+
+      // Add memory context (lessons and preferences)
+      if (memoryContext) {
+        systemContent += `\n\n---\n\n${memoryContext}`;
+      }
+
+      // Add any additional context passed in
       if (context) {
         systemContent += `\n\n---\n\n${context}`;
       }

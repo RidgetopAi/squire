@@ -128,4 +128,16 @@ If the user asks about their schedule, calendar, or appointments, you MUST call 
   - type "handoff" at session end
   - type "error" for issues encountered
 - mandrel_task_create/update: Track work items
-- mandrel_smart_search: Find anything across all project data`;
+- mandrel_smart_search: Find anything across all project data
+
+**Memory (learning from experience):**
+- lesson_store: When you learn something valuable - a pattern that worked, a mistake to avoid, a preference discovered
+- lesson_search: Find relevant past lessons (auto-injected, but can search manually)
+- preference_update: Update self-tuning preferences about working style
+- preference_get: Check current preferences
+
+Store lessons when:
+- A pattern worked well or failed unexpectedly
+- Brian corrects you or expresses a preference
+- You discover a technical insight worth remembering
+- You infer a preference from repeated interactions`;

@@ -407,3 +407,33 @@ registerTool(mandrelDecisionSearchToolName, mandrelDecisionSearchToolDescription
 
 // Register Mandrel search tools
 registerTool(mandrelSmartSearchToolName, mandrelSmartSearchToolDescription, mandrelSmartSearchToolParameters, mandrelSmartSearchToolHandler);
+
+// === MEMORY TOOLS ===
+// Agent lessons and preferences for self-tuning
+
+import {
+  lessonStoreToolName,
+  lessonStoreToolDescription,
+  lessonStoreToolParameters,
+  lessonStoreToolHandler,
+  lessonSearchToolName,
+  lessonSearchToolDescription,
+  lessonSearchToolParameters,
+  lessonSearchToolHandler,
+  preferenceUpdateToolName,
+  preferenceUpdateToolDescription,
+  preferenceUpdateToolParameters,
+  preferenceUpdateToolHandler,
+  preferenceGetToolName,
+  preferenceGetToolDescription,
+  preferenceGetToolParameters,
+  preferenceGetToolHandler,
+} from './memory/index.js';
+
+// Register lesson tools
+registerTool(lessonStoreToolName, lessonStoreToolDescription, lessonStoreToolParameters, lessonStoreToolHandler);
+registerTool(lessonSearchToolName, lessonSearchToolDescription, lessonSearchToolParameters, lessonSearchToolHandler);
+
+// Register preference tools
+registerTool(preferenceUpdateToolName, preferenceUpdateToolDescription, preferenceUpdateToolParameters, preferenceUpdateToolHandler);
+registerTool(preferenceGetToolName, preferenceGetToolDescription, preferenceGetToolParameters, preferenceGetToolHandler);
