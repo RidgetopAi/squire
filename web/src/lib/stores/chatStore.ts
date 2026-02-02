@@ -41,9 +41,13 @@ function generateMessageId(): string {
   return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
-// Generate unique conversation IDs
+// Primary conversation ID - shared across all interfaces (Telegram, web UI)
+// Using a fixed ID ensures chat history is unified regardless of interface
+const PRIMARY_CONVERSATION_ID = 'primary';
+
+// Generate conversation ID - now returns the shared primary ID
 function generateConversationId(): string {
-  return `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  return PRIMARY_CONVERSATION_ID;
 }
 
 interface ChatState {

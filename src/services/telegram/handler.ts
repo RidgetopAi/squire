@@ -23,14 +23,16 @@ import {
   type TelegramMessage,
 } from './client.js';
 
-// Conversation ID prefix for Telegram users
-const TELEGRAM_CONVERSATION_PREFIX = 'telegram-';
+// Primary conversation ID - shared across all interfaces (Telegram, web UI)
+// This ensures chat history is unified regardless of which interface is used
+const PRIMARY_CONVERSATION_ID = 'primary';
 
 /**
- * Get or create conversation ID for a Telegram user
+ * Get the primary conversation ID
+ * Using a single ID ensures Telegram and web UI share the same history
  */
-function getConversationId(telegramUserId: number): string {
-  return `${TELEGRAM_CONVERSATION_PREFIX}${telegramUserId}`;
+function getConversationId(_telegramUserId: number): string {
+  return PRIMARY_CONVERSATION_ID;
 }
 
 /**
