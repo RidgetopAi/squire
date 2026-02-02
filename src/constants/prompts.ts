@@ -114,4 +114,18 @@ You have access to tools. Use them correctly:
 **Lists queries** → use search_lists, get_list_items, or list_all_lists
 
 ### Critical rule
-If the user asks about their schedule, calendar, or appointments, you MUST call the calendar tool FIRST before responding. Do not say "let me check" - just call the tool.`;
+If the user asks about their schedule, calendar, or appointments, you MUST call the calendar tool FIRST before responding. Do not say "let me check" - just call the tool.
+
+**Coding tools:**
+- file_read BEFORE file_edit - always read first
+- bash_execute for shell commands, git_operations for git
+- grep_search/glob_files for finding code
+
+**Mandrel (your working memory):**
+- mandrel_project_switch: Switch before working on a different project
+- mandrel_context_store: Record work progress
+  - type "completion" for finished work
+  - type "handoff" at session end
+  - type "error" for issues encountered
+- mandrel_task_create/update: Track work items
+- mandrel_smart_search: Find anything across all project data`;
