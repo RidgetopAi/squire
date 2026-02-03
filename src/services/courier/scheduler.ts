@@ -15,15 +15,18 @@ let stats: CourierStats = { ticks: 0, errors: 0, skippedQuietHours: 0, lastTickA
 
 // Check if current time is in quiet hours (10pm-7am EST by default)
 function isQuietHours(): boolean {
-  const now = new Date();
-  const hour = parseInt(now.toLocaleString('en-US', {
-    hour: 'numeric',
-    hour12: false,
-    timeZone: config.timezone
-  }));
-  const quietStart = config.courier.quietHoursStart;
-  const quietEnd = config.courier.quietHoursEnd;
-  return hour >= quietStart || hour < quietEnd;
+  // TODO: Re-enable after testing
+  return false;
+
+  // const now = new Date();
+  // const hour = parseInt(now.toLocaleString('en-US', {
+  //   hour: 'numeric',
+  //   hour12: false,
+  //   timeZone: config.timezone
+  // }));
+  // const quietStart = config.courier.quietHoursStart;
+  // const quietEnd = config.courier.quietHoursEnd;
+  // return hour >= quietStart || hour < quietEnd;
 }
 
 // Retry wrapper - uses config for attempts and delay
