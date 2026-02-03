@@ -570,6 +570,33 @@ export function initWebSocketListeners(): () => void {
     }
   }
 
+  // Handle email summary from Courier
+  function handleEmailSummary(payload: { summary: { count: number; emails: Array<{ from: string; subject: string; summary: string }> } }) {
+    console.log('[ChatStore] Email summary received:', payload.summary.count, 'emails');
+
+    // Format the email summary as a chat message
+    const header = `📧 **Email Summary** (${payload.summary.count} new)\n\n`;
+    const body = payload.summary.emails.map((e, i) => {
+      const sender = e.from.split('<')[0].trim() || e.from;
+      return `**${i + 1}. ${sender}**\n${e.subject}\n${e.summary}`;
+    }).join('\n\n');
+    const footer = '\n\n─────────────────\n_Say "check email" for full details_';
+    const content = header + body + footer;
+
+    // Add as assistant message
+    useChatStore.setState((state) => ({
+      messages: [
+        ...state.messages,
+        {
+          id: `email_${Date.now()}`,
+          role: 'assistant' as const,
+          content,
+          timestamp: new Date().toISOString(),
+        },
+      ],
+    }));
+  }
+
   // Handle synced messages from other devices
   function handleMessageSynced(payload: MessageSyncedPayload) {
     const { conversationId, messages } = store();
@@ -613,6 +640,7 @@ export function initWebSocketListeners(): () => void {
   socket.on('chat:done', handleChatDone);
   socket.on('chat:error', handleChatError);
   socket.on('message:synced', handleMessageSynced);
+  socket.on('email:summary', handleEmailSummary);
 
   listenersInitialized = true;
 
@@ -623,6 +651,7 @@ export function initWebSocketListeners(): () => void {
     socket.off('chat:done', handleChatDone);
     socket.off('chat:error', handleChatError);
     socket.off('message:synced', handleMessageSynced);
+    socket.off('email:summary', handleEmailSummary);
     listenersInitialized = false;
     cleanupFn = null;
   };

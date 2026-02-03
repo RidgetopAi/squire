@@ -56,10 +56,17 @@ export async function notifyEmailSummary(emails: EmailSummary[]): Promise<void> 
     return;
   }
 
-  // Build message
+  // Build message with better formatting
   const header = `📧 *Email Summary* (${emails.length} new)\n\n`;
-  const body = emails.map(e => e.summary).join('\n');
-  const footer = '\n\n_Reply "check email" for details_';
+
+  // Format each email with spacing and structure
+  const body = emails.map((e, i) => {
+    const senderPart = e.from.split('<')[0];
+    const sender = senderPart?.trim() || e.from;
+    return `*${i + 1}. ${sender}*\n${e.subject}\n${e.summary}`;
+  }).join('\n\n');
+
+  const footer = '\n\n─────────────────\n_Say "check email" for full details_';
   const message = header + body + footer;
 
   // Send to Telegram
