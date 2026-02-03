@@ -29,6 +29,7 @@ import { initScheduler, shutdownScheduler } from '../services/scheduler.js';
 import { migrateFromPersonalitySummary } from '../services/identity.js';
 import { syncAllAccounts } from '../services/google/sync.js';
 import { startTelegramPoller, stopTelegramPoller } from '../services/telegram/index.js';
+import { startCourier, stopCourier } from '../services/courier/index.js';
 
 // Google Calendar sync interval (15 minutes)
 const CALENDAR_SYNC_INTERVAL_MS = 15 * 60 * 1000;
@@ -140,6 +141,12 @@ httpServer.listen(port, async () => {
   } catch (error) {
     console.error('Failed to start Telegram poller:', error);
   }
+
+  // Start Courier scheduler
+  if (config.courier.enabled) {
+    startCourier();
+    console.log('[Server] Courier scheduler started');
+  }
 });
 
 // Graceful shutdown
@@ -147,6 +154,7 @@ const shutdown = () => {
   console.log('Shutting down gracefully...');
   shutdownScheduler();
   stopTelegramPoller();
+  stopCourier();
   if (calendarSyncTimer) {
     clearInterval(calendarSyncTimer);
     calendarSyncTimer = null;

@@ -430,6 +430,33 @@ import {
   preferenceGetToolHandler,
 } from './memory/index.js';
 
+import {
+  emailListToolName,
+  emailListToolDescription,
+  emailListToolParameters,
+  emailListToolHandler,
+  emailReadToolName,
+  emailReadToolDescription,
+  emailReadToolParameters,
+  emailReadToolHandler,
+  emailDeleteToolName,
+  emailDeleteToolDescription,
+  emailDeleteToolParameters,
+  emailDeleteToolHandler,
+  emailSendToolName,
+  emailSendToolDescription,
+  emailSendToolParameters,
+  emailSendToolHandler,
+  emailArchiveToolName,
+  emailArchiveToolDescription,
+  emailArchiveToolParameters,
+  emailArchiveToolHandler,
+  emailCheckToolName,
+  emailCheckToolDescription,
+  emailCheckToolParameters,
+  emailCheckToolHandler,
+} from './email/index.js';
+
 // Register lesson tools
 registerTool(lessonStoreToolName, lessonStoreToolDescription, lessonStoreToolParameters, lessonStoreToolHandler);
 registerTool(lessonSearchToolName, lessonSearchToolDescription, lessonSearchToolParameters, lessonSearchToolHandler);
@@ -437,3 +464,16 @@ registerTool(lessonSearchToolName, lessonSearchToolDescription, lessonSearchTool
 // Register preference tools
 registerTool(preferenceUpdateToolName, preferenceUpdateToolDescription, preferenceUpdateToolParameters, preferenceUpdateToolHandler);
 registerTool(preferenceGetToolName, preferenceGetToolDescription, preferenceGetToolParameters, preferenceGetToolHandler);
+
+// === EMAIL TOOLS ===
+// Gmail integration for reading, sending, and managing emails
+
+// Register email tools (read)
+registerTool(emailListToolName, emailListToolDescription, emailListToolParameters, emailListToolHandler);
+registerTool(emailReadToolName, emailReadToolDescription, emailReadToolParameters, emailReadToolHandler);
+registerTool(emailCheckToolName, emailCheckToolDescription, emailCheckToolParameters, emailCheckToolHandler);
+
+// Register email tools (write)
+registerTool(emailSendToolName, emailSendToolDescription, emailSendToolParameters, emailSendToolHandler);
+registerTool(emailDeleteToolName, emailDeleteToolDescription, emailDeleteToolParameters, emailDeleteToolHandler);
+registerTool(emailArchiveToolName, emailArchiveToolDescription, emailArchiveToolParameters, emailArchiveToolHandler);

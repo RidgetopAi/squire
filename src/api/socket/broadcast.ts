@@ -81,3 +81,19 @@ export function broadcastInsightCreated(insight: {
 
   console.log(`[Broadcast] insight:created - ${insight.id}`);
 }
+
+/**
+ * Broadcast email summary from Courier
+ */
+export function broadcastEmailSummary(summary: {
+  count: number;
+  emails: Array<{ from: string; subject: string; summary: string }>;
+}): void {
+  if (!ioInstance) {
+    console.warn('[Broadcast] Cannot broadcast email:summary - Socket.IO not initialized');
+    return;
+  }
+
+  ioInstance.emit('email:summary', { summary });
+  console.log(`[Broadcast] email:summary - ${summary.count} emails`);
+}

@@ -96,6 +96,14 @@ export const config = {
       model: optional('ROUTING_FAST_MODEL', 'grok-4-1-fast-reasoning'),
     },
   },
+  courier: {
+    enabled: optional('COURIER_ENABLED', 'true') === 'true',
+    intervalMs: parseInt(optional('COURIER_INTERVAL_MS', '1800000'), 10), // 30 min
+    quietHoursStart: parseInt(optional('COURIER_QUIET_START', '22'), 10), // 10pm
+    quietHoursEnd: parseInt(optional('COURIER_QUIET_END', '7'), 10), // 7am
+    retryAttempts: parseInt(optional('COURIER_RETRY_ATTEMPTS', '3'), 10),
+    retryDelayMs: parseInt(optional('COURIER_RETRY_DELAY_MS', '15000'), 10), // 15 sec
+  },
 } as const;
 
 export type Config = typeof config;

@@ -6,10 +6,16 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'https://squire.ridgetopai.net/api/integrations/google/callback';
 
-// Scopes needed for Calendar access
-const CALENDAR_SCOPES = [
+// Scopes needed for Calendar and Gmail access
+const GOOGLE_SCOPES = [
+  // Calendar
   'https://www.googleapis.com/auth/calendar.readonly',
   'https://www.googleapis.com/auth/calendar.events',
+  // Gmail
+  'https://www.googleapis.com/auth/gmail.readonly',
+  'https://www.googleapis.com/auth/gmail.modify',
+  'https://www.googleapis.com/auth/gmail.send',
+  // User info
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/userinfo.profile',
 ];
@@ -53,7 +59,7 @@ export function getAuthUrl(state?: string): string {
 
   return oauth2Client.generateAuthUrl({
     access_type: 'offline',
-    scope: CALENDAR_SCOPES,
+    scope: GOOGLE_SCOPES,
     prompt: 'consent', // Force consent to get refresh token
     state: state,
   });
@@ -113,7 +119,7 @@ export async function handleOAuthCallback(code: string): Promise<GoogleAccount> 
     tokens.access_token,
     tokens.refresh_token,
     tokenExpiresAt,
-    CALENDAR_SCOPES,
+    GOOGLE_SCOPES,
   ]);
 
   return result.rows[0] as GoogleAccount;

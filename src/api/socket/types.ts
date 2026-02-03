@@ -110,6 +110,13 @@ export interface ReminderCreatedPayload {
   remind_at: string;
 }
 
+export interface EmailSummaryPayload {
+  summary: {
+    count: number;
+    emails: Array<{ from: string; subject: string; summary: string }>;
+  };
+}
+
 export interface MessageSyncedPayload {
   conversationId: string;
   message: {
@@ -135,6 +142,7 @@ export interface ServerToClientEvents {
   'commitment:dismissed': (payload: CommitmentCreatedPayload) => void; // Phase 4: candidate dismissed
   'reminder:created': (payload: ReminderCreatedPayload) => void;
   'message:synced': (payload: MessageSyncedPayload) => void;
+  'email:summary': (payload: EmailSummaryPayload) => void;
 }
 
 // === SOCKET DATA ===
