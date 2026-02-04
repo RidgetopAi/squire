@@ -2,6 +2,7 @@
 
 import { useState, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import ReactMarkdown from 'react-markdown';
 import type { ChatMessage } from '@/lib/types';
 import {
   useShowMemoriesForMessage,
@@ -68,11 +69,58 @@ export const MessageBubble = memo(function MessageBubble({ message, isLatest = f
         {/* Message content */}
         <div
           className={`
-            text-sm leading-relaxed whitespace-pre-wrap break-words
-            ${isUser ? 'text-background' : 'text-foreground'}
+            text-sm leading-relaxed break-words prose prose-sm max-w-none
+            ${isUser ? 'text-background prose-invert' : 'text-foreground'}
           `}
         >
-          {message.content}
+          <ReactMarkdown
+            components={{
+              // Code blocks
+              pre: ({ children }) => (
+                <pre className="bg-background-tertiary/50 rounded-lg p-3 my-2 overflow-x-auto text-xs font-mono">
+                  {children}
+                </pre>
+              ),
+              code: ({ className, children, ...props }) => {
+                const isInline = !className;
+                if (isInline) {
+                  return (
+                    <code className="bg-background-tertiary/50 px-1.5 py-0.5 rounded text-xs font-mono" {...props}>
+                      {children}
+                    </code>
+                  );
+                }
+                return (
+                  <code className="block text-xs font-mono whitespace-pre-wrap" {...props}>
+                    {children}
+                  </code>
+                );
+              },
+              // Paragraphs - avoid extra spacing during streaming
+              p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+              // Lists
+              ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
+              ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
+              // Links
+              a: ({ href, children }) => (
+                <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80">
+                  {children}
+                </a>
+              ),
+              // Headers
+              h1: ({ children }) => <h1 className="text-lg font-bold mt-3 mb-2">{children}</h1>,
+              h2: ({ children }) => <h2 className="text-base font-bold mt-2 mb-1">{children}</h2>,
+              h3: ({ children }) => <h3 className="text-sm font-semibold mt-2 mb-1">{children}</h3>,
+              // Blockquotes
+              blockquote: ({ children }) => (
+                <blockquote className="border-l-2 border-primary/50 pl-3 my-2 italic opacity-80">
+                  {children}
+                </blockquote>
+              ),
+            }}
+          >
+            {message.content}
+          </ReactMarkdown>
         </div>
 
         {/* Timestamp and Memory Badge row */}
