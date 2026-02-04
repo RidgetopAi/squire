@@ -933,12 +933,16 @@ export async function expireCandidates(): Promise<number> {
 /**
  * Get the most recently offered candidate (for response detection).
  * Used to match user's "yes/no" response to the right candidate.
+ *
+ * IMPORTANT: Only returns candidates offered within the last 2 minutes
+ * to avoid confirming stale offers when user says "yes" to something else.
  */
 export async function getLastOfferedCandidate(): Promise<Commitment | null> {
   const result = await pool.query(
     `SELECT * FROM commitments
      WHERE status = 'candidate'
        AND confirmation_offered_at IS NOT NULL
+       AND confirmation_offered_at > NOW() - INTERVAL '2 minutes'
        AND (auto_expires_at IS NULL OR auto_expires_at > NOW())
      ORDER BY confirmation_offered_at DESC
      LIMIT 1`
