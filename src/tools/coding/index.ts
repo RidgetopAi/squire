@@ -16,6 +16,8 @@ export type {
   GlobArgs,
   GitArgs,
   GitOperation,
+  ClaudeCodeArgs,
+  ClaudeCodeResult,
 } from './types.js';
 
 // Policies
@@ -84,3 +86,11 @@ export {
   gitOperationsToolParameters,
   gitOperationsToolHandler,
 } from './git.js';
+
+// Claude Code tool
+export {
+  claudeCodeToolName,
+  claudeCodeToolDescription,
+  claudeCodeToolParameters,
+  claudeCodeToolHandler,
+} from './claude-code.js';

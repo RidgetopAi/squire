@@ -105,3 +105,31 @@ export interface GitArgs {
   /** Working directory (defaults to config.coding.workingDirectory) */
   cwd?: string;
 }
+
+// === CLAUDE CODE ===
+
+export interface ClaudeCodeArgs {
+  /** The task/prompt for Claude Code to execute */
+  prompt: string;
+  /** Working directory on VPS (default: /opt/projects) */
+  workingDir?: string;
+  /** Session ID for continuity within conversation */
+  sessionId?: string;
+  /** Model to use (default: opus) */
+  model?: 'opus' | 'sonnet' | 'haiku';
+  /** Timeout in milliseconds (default: 900000 = 15 min) */
+  timeout?: number;
+}
+
+export interface ClaudeCodeResult {
+  /** The response content from Claude Code */
+  result: string;
+  /** Session ID for future calls */
+  sessionId: string;
+  /** Whether the call succeeded */
+  success: boolean;
+  /** Duration in milliseconds */
+  durationMs?: number;
+  /** Error message if failed */
+  error?: string;
+}

@@ -312,6 +312,10 @@ import {
   gitOperationsToolDescription,
   gitOperationsToolParameters,
   gitOperationsToolHandler,
+  claudeCodeToolName,
+  claudeCodeToolDescription,
+  claudeCodeToolParameters,
+  claudeCodeToolHandler,
 } from './coding/index.js';
 
 // Register coding tools (read)
@@ -326,6 +330,9 @@ registerTool(fileEditToolName, fileEditToolDescription, fileEditToolParameters, 
 // Register coding tools (execute)
 registerTool(bashExecuteToolName, bashExecuteToolDescription, bashExecuteToolParameters, bashExecuteToolHandler);
 registerTool(gitOperationsToolName, gitOperationsToolDescription, gitOperationsToolParameters, gitOperationsToolHandler);
+
+// Register Claude Code tool (VPS coding worker)
+registerTool(claudeCodeToolName, claudeCodeToolDescription, claudeCodeToolParameters, claudeCodeToolHandler);
 
 // === MANDREL TOOLS ===
 // Integration with Mandrel MCP for working memory
