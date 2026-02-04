@@ -143,7 +143,7 @@ async function claudeCode(args: ClaudeCodeArgs): Promise<string> {
   console.log(`[claude_code] Model: ${effectiveModel}`);
 
   try {
-    const { stdout } = await execAsync(command, {
+    const { stdout, stderr } = await execAsync(command, {
       timeout: effectiveTimeout,
       maxBuffer: 10 * 1024 * 1024, // 10MB buffer for large outputs
       env: {
@@ -153,6 +153,13 @@ async function claudeCode(args: ClaudeCodeArgs): Promise<string> {
         GIT_ASKPASS: '',
       },
     });
+
+    // Debug logging
+    console.log(`[claude_code] stdout length: ${stdout.length}`);
+    console.log(`[claude_code] stdout preview: ${stdout.substring(0, 200)}`);
+    if (stderr) {
+      console.log(`[claude_code] stderr: ${stderr.substring(0, 500)}`);
+    }
 
     // Parse the JSON output
     const result = parseClaudeCodeOutput(stdout.trim());
