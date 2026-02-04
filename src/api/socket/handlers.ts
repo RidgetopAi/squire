@@ -689,11 +689,17 @@ async function streamAnthropicResponse(
           content.push({ type: 'text', text: msg.content });
         }
         for (const tc of msg.tool_calls) {
+          let parsedInput = {};
+          try {
+            parsedInput = tc.function.arguments ? JSON.parse(tc.function.arguments) : {};
+          } catch {
+            console.warn(`[Socket] Failed to parse tool arguments for ${tc.function.name}: ${tc.function.arguments}`);
+          }
           content.push({
             type: 'tool_use',
             id: tc.id,
             name: tc.function.name,
-            input: JSON.parse(tc.function.arguments),
+            input: parsedInput,
           });
         }
         anthropicMessages.push({ role: 'assistant', content: content as never });
