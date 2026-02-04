@@ -17,8 +17,8 @@ import type { ClaudeCodeArgs, ClaudeCodeResult } from './types.js';
 
 const execAsync = promisify(exec);
 
-// Session storage (in-memory, per Squire conversation)
-const sessionStore = new Map<string, string>();
+// UUID validation regex
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Default configuration
 const DEFAULTS = {
@@ -42,19 +42,18 @@ function isRunningOnVPS(): boolean {
 }
 
 /**
- * Generate or retrieve session ID for continuity
+ * Validate and get session ID
+ * Always generates fresh UUIDs to avoid session collision issues
  */
 function getSessionId(providedId?: string): string {
-  if (providedId) {
+  // If provided ID is a valid UUID, use it (allows explicit resume)
+  if (providedId && UUID_REGEX.test(providedId)) {
     return providedId;
   }
 
-  // Use a conversation-level session key
-  const conversationKey = 'default';
-  if (!sessionStore.has(conversationKey)) {
-    sessionStore.set(conversationKey, crypto.randomUUID());
-  }
-  return sessionStore.get(conversationKey)!;
+  // Always generate fresh UUID to avoid session collisions
+  // (Claude Code rejects session IDs that are in use by other processes)
+  return crypto.randomUUID();
 }
 
 /**
@@ -166,11 +165,6 @@ async function claudeCode(args: ClaudeCodeArgs): Promise<string> {
     // Parse the JSON output
     const result = parseClaudeCodeOutput(stdout.trim());
 
-    // Update session store if we got a new session ID
-    if (result.sessionId) {
-      sessionStore.set('default', result.sessionId);
-    }
-
     if (!result.success) {
       return `Claude Code Error: ${result.error || 'Unknown error'}\n\nSession: ${sessionId}`;
     }
@@ -233,7 +227,7 @@ Use this for:
 Claude Code has access to Mandrel for context storage - it will persist important
 decisions, completions, and context automatically.
 
-The session persists within this conversation for continuity.`;
+Each call generates a fresh session. To resume a previous session, pass a valid UUID as sessionId.`;
 
 export const claudeCodeToolParameters = {
   type: 'object',
@@ -248,7 +242,7 @@ export const claudeCodeToolParameters = {
     },
     sessionId: {
       type: 'string',
-      description: 'Session ID for continuity. Usually omit to use automatic session management.',
+      description: 'Session ID (must be valid UUID) to resume a previous session. Omit for fresh session.',
     },
     model: {
       type: 'string',
