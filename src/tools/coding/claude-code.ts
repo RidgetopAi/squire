@@ -29,6 +29,18 @@ const DEFAULTS = {
 };
 
 /**
+ * Check if we're running on the VPS (no need to SSH)
+ */
+function isRunningOnVPS(): boolean {
+  // Check for VPS-specific indicators
+  const hostname = process.env.HOSTNAME || '';
+  const hasSquireDir = require('fs').existsSync('/opt/squire');
+  const hasVPSMarker = require('fs').existsSync('/etc/systemd/system/squire.service');
+
+  return hostname.includes('ubuntu') || hasSquireDir || hasVPSMarker;
+}
+
+/**
  * Generate or retrieve session ID for continuity
  */
 function getSessionId(providedId?: string): string {
@@ -112,15 +124,25 @@ async function claudeCode(args: ClaudeCodeArgs): Promise<string> {
     `'${escapedPrompt}'`,
   ].join(' ');
 
-  // Wrap in SSH command
-  const sshCommand = `ssh ${DEFAULTS.sshHost} 'sudo -u ${DEFAULTS.vpsUser} bash -c "cd ${effectiveWorkingDir} && ${claudeCommand}"'`;
+  // Determine if we're on VPS or need to SSH
+  const onVPS = isRunningOnVPS();
+  let command: string;
 
-  console.log(`[claude_code] Executing on VPS: ${effectiveWorkingDir}`);
+  if (onVPS) {
+    // Running on VPS - execute directly as ridgetop user
+    command = `sudo -u ${DEFAULTS.vpsUser} bash -c "cd ${effectiveWorkingDir} && ${claudeCommand}"`;
+    console.log(`[claude_code] Executing LOCALLY on VPS: ${effectiveWorkingDir}`);
+  } else {
+    // Running remotely - SSH to VPS
+    command = `ssh ${DEFAULTS.sshHost} 'sudo -u ${DEFAULTS.vpsUser} bash -c "cd ${effectiveWorkingDir} && ${claudeCommand}"'`;
+    console.log(`[claude_code] Executing via SSH to VPS: ${effectiveWorkingDir}`);
+  }
+
   console.log(`[claude_code] Session: ${sessionId}`);
   console.log(`[claude_code] Model: ${effectiveModel}`);
 
   try {
-    const { stdout } = await execAsync(sshCommand, {
+    const { stdout } = await execAsync(command, {
       timeout: effectiveTimeout,
       maxBuffer: 10 * 1024 * 1024, // 10MB buffer for large outputs
       env: {
