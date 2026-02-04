@@ -155,6 +155,12 @@ claude_code({
 
 Session persists within our conversation - Claude Code remembers previous calls.
 
+**System Health (steward):**
+- steward_health_check: Check system health - services, endpoints, recent errors
+  - Use when Brian asks about system status or if something seems broken
+  - Returns: service status (squire, mandrel), endpoint health, recent error summaries
+  - Optional: verbose=true for detailed error info
+
 **Memory (learning from experience):**
 - lesson_store: When you learn something valuable - a pattern that worked, a mistake to avoid, a preference discovered
 - lesson_search: Find relevant past lessons (auto-injected, but can search manually)
