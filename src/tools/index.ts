@@ -12,6 +12,7 @@ import type {
   ToolHandler,
   RegisteredTool,
 } from './types.js';
+import { logToolCall } from '../services/tool-logger.js';
 
 // Re-export types for convenience
 export type {
@@ -92,8 +93,17 @@ export function getToolCount(): number {
  */
 export async function executeTool(call: ToolCall): Promise<ToolResult> {
   const tool = tools.get(call.function.name);
+  const startTime = Date.now();
 
   if (!tool) {
+    // Log unknown tool call
+    logToolCall({
+      toolName: call.function.name,
+      arguments: {},
+      success: false,
+      errorMessage: `Unknown tool '${call.function.name}'`,
+      durationMs: Date.now() - startTime,
+    });
     return {
       toolCallId: call.id,
       name: call.function.name,
@@ -104,11 +114,19 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
 
   try {
     // Parse arguments from JSON string
-    let args: unknown = {};
+    let args: Record<string, unknown> = {};
     if (call.function.arguments) {
       try {
         args = JSON.parse(call.function.arguments);
       } catch {
+        // Log parse error
+        logToolCall({
+          toolName: call.function.name,
+          arguments: {},
+          success: false,
+          errorMessage: `Invalid JSON arguments: ${call.function.arguments}`,
+          durationMs: Date.now() - startTime,
+        });
         return {
           toolCallId: call.id,
           name: call.function.name,
@@ -120,6 +138,16 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
 
     // Execute handler
     const result = await tool.handler(args);
+    const durationMs = Date.now() - startTime;
+
+    // Log successful call
+    logToolCall({
+      toolName: call.function.name,
+      arguments: args,
+      resultSummary: result,
+      success: true,
+      durationMs,
+    });
 
     return {
       toolCallId: call.id,
@@ -129,6 +157,17 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    const durationMs = Date.now() - startTime;
+
+    // Log error
+    logToolCall({
+      toolName: call.function.name,
+      arguments: {},
+      success: false,
+      errorMessage: message,
+      durationMs,
+    });
+
     return {
       toolCallId: call.id,
       name: call.function.name,
