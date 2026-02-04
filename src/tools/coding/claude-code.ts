@@ -131,10 +131,12 @@ async function claudeCode(args: ClaudeCodeArgs): Promise<string> {
 
   if (onVPS) {
     // Running on VPS - execute directly as ridgetop user
-    command = `sudo -u ${DEFAULTS.vpsUser} bash -c "cd ${effectiveWorkingDir} && ${claudeCommand}"`;
+    // Use 'script' to provide a PTY (Claude Code needs TTY for output)
+    const innerCommand = `cd ${effectiveWorkingDir} && ${claudeCommand}`;
+    command = `script -q -c "sudo -u ${DEFAULTS.vpsUser} bash -c '${innerCommand.replace(/'/g, "'\\''")}'" /dev/null`;
     console.log(`[claude_code] Executing LOCALLY on VPS: ${effectiveWorkingDir}`);
   } else {
-    // Running remotely - SSH to VPS
+    // Running remotely - SSH to VPS (SSH provides PTY)
     command = `ssh ${DEFAULTS.sshHost} 'sudo -u ${DEFAULTS.vpsUser} bash -c "cd ${effectiveWorkingDir} && ${claudeCommand}"'`;
     console.log(`[claude_code] Executing via SSH to VPS: ${effectiveWorkingDir}`);
   }
