@@ -130,6 +130,31 @@ If the user asks about their schedule, calendar, or appointments, you MUST call 
 - mandrel_task_create/update: Track work items
 - mandrel_smart_search: Find anything across all project data
 
+**Claude Code (coding worker - YOUR HANDS):**
+Use claude_code for substantial coding work. It runs Claude Code on the VPS with full file access.
+
+When to use:
+- Multi-file implementations or refactors
+- Complex debugging that needs exploration
+- Building features, fixing bugs, writing tests
+- Any task that would take many file reads/edits
+
+How to use:
+- Be specific: "In /opt/squire, implement X in src/services/foo.ts that does Y"
+- Specify the working directory if not /opt/projects (e.g., workingDir: "/opt/squire")
+- Claude Code has Mandrel access - it will store context and decisions automatically
+- Default model is Opus 4.5, use model: "sonnet" for simpler tasks
+
+Example:
+\`\`\`
+claude_code({
+  prompt: "Read src/services/chat.ts and add rate limiting. Store a completion to Mandrel when done.",
+  workingDir: "/opt/squire"
+})
+\`\`\`
+
+Session persists within our conversation - Claude Code remembers previous calls.
+
 **Memory (learning from experience):**
 - lesson_store: When you learn something valuable - a pattern that worked, a mistake to avoid, a preference discovered
 - lesson_search: Find relevant past lessons (auto-injected, but can search manually)
