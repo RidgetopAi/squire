@@ -744,7 +744,7 @@ async function streamAnthropicResponse(
     timeoutController.abort();
   }, apiTimeoutMs);
 
-  signal.addEventListener('abort', () => timeoutController.abort());
+  signal.addEventListener('abort', () => timeoutController.abort(), { once: true });
 
   try {
     const response = await fetch(apiEndpoint, {
@@ -934,7 +934,7 @@ async function streamGroqResponse(
   }, apiTimeoutMs);
 
   // Abort if either the external signal or timeout fires
-  signal.addEventListener('abort', () => timeoutController.abort());
+  signal.addEventListener('abort', () => timeoutController.abort(), { once: true });
 
   // Build request body
   const requestBody: Record<string, unknown> = {
