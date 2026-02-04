@@ -11,6 +11,7 @@
 
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { existsSync } from 'fs';
 import type { ToolHandler } from '../types.js';
 import type { ClaudeCodeArgs, ClaudeCodeResult } from './types.js';
 
@@ -34,8 +35,8 @@ const DEFAULTS = {
 function isRunningOnVPS(): boolean {
   // Check for VPS-specific indicators
   const hostname = process.env.HOSTNAME || '';
-  const hasSquireDir = require('fs').existsSync('/opt/squire');
-  const hasVPSMarker = require('fs').existsSync('/etc/systemd/system/squire.service');
+  const hasSquireDir = existsSync('/opt/squire');
+  const hasVPSMarker = existsSync('/etc/systemd/system/squire.service');
 
   return hostname.includes('ubuntu') || hasSquireDir || hasVPSMarker;
 }
