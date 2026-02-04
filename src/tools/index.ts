@@ -373,6 +373,18 @@ registerTool(gitOperationsToolName, gitOperationsToolDescription, gitOperationsT
 // Register Claude Code tool (VPS coding worker)
 registerTool(claudeCodeToolName, claudeCodeToolDescription, claudeCodeToolParameters, claudeCodeToolHandler);
 
+// === STEWARD TOOLS ===
+// System health monitoring
+
+import {
+  stewardHealthCheckToolName,
+  stewardHealthCheckToolDescription,
+  stewardHealthCheckToolParameters,
+  stewardHealthCheckToolHandler,
+} from './steward.js';
+
+registerTool(stewardHealthCheckToolName, stewardHealthCheckToolDescription, stewardHealthCheckToolParameters, stewardHealthCheckToolHandler);
+
 // === MANDREL TOOLS ===
 // Integration with Mandrel MCP for working memory
 
