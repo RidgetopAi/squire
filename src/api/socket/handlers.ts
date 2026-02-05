@@ -725,16 +725,30 @@ async function streamAnthropicResponse(
   };
 
   if (systemPrompt) {
-    requestBody.system = systemPrompt;
+    // Use cache_control for prompt caching (90% cost reduction on cached tokens)
+    requestBody.system = [
+      {
+        type: 'text',
+        text: systemPrompt,
+        cache_control: { type: 'ephemeral' },
+      },
+    ];
   }
 
   // Add tools if provided (convert to Anthropic format)
   if (tools && tools.length > 0) {
-    requestBody.tools = tools.map((tool) => ({
-      name: tool.function.name,
-      description: tool.function.description,
-      input_schema: tool.function.parameters,
-    }));
+    // Add cache_control to last tool so entire tool set gets cached
+    requestBody.tools = tools.map((tool, index) => {
+      const toolDef: Record<string, unknown> = {
+        name: tool.function.name,
+        description: tool.function.description,
+        input_schema: tool.function.parameters,
+      };
+      if (index === tools.length - 1) {
+        toolDef.cache_control = { type: 'ephemeral' };
+      }
+      return toolDef;
+    });
   }
 
   const apiTimeoutMs = config.llm.apiTimeoutMs;
@@ -753,6 +767,7 @@ async function streamAnthropicResponse(
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'prompt-caching-2024-07-31',
       },
       body: JSON.stringify(requestBody),
       signal: timeoutController.signal,
