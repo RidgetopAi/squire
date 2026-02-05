@@ -34,7 +34,7 @@ export const config = {
   },
   llm: {
     provider: optional('LLM_PROVIDER', 'anthropic') as 'groq' | 'xai' | 'ollama' | 'gemini' | 'anthropic',
-    model: optional('LLM_MODEL', 'claude-opus-4-5-20251101'),
+    model: optional('LLM_MODEL', 'claude-sonnet-4-5-20250929'),
     groqApiKey: process.env['GROQ_API_KEY'] ?? '',
     xaiApiKey: process.env['XAI_API_KEY'] ?? '',
     geminiApiKey: process.env['GEMINI_API_KEY'] ?? '',
@@ -89,7 +89,7 @@ export const config = {
     defaultTier: optional('ROUTING_DEFAULT_TIER', 'smart') as 'smart' | 'fast',
     smart: {
       provider: optional('ROUTING_SMART_PROVIDER', 'anthropic') as 'anthropic' | 'xai' | 'groq' | 'gemini' | 'ollama',
-      model: optional('ROUTING_SMART_MODEL', 'claude-opus-4-5-20251101'),
+      model: optional('ROUTING_SMART_MODEL', 'claude-sonnet-4-5-20250929'),
     },
     fast: {
       provider: optional('ROUTING_FAST_PROVIDER', 'xai') as 'anthropic' | 'xai' | 'groq' | 'gemini' | 'ollama',
