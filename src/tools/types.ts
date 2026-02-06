@@ -54,6 +54,17 @@ export interface ToolResult {
 export type ToolHandler<T = unknown> = (args: T) => Promise<string> | string;
 
 /**
+ * Compact tool specification for registration.
+ * Each tool module exports an array of these.
+ */
+export interface ToolSpec {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+  handler: ToolHandler;
+}
+
+/**
  * Registered tool with definition and handler
  */
 export interface RegisteredTool {

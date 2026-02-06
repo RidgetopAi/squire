@@ -7,36 +7,12 @@
  */
 
 import { getPreference, getAllPreferences, updatePreference } from '../../services/memory/index.js';
-import type { ToolHandler } from '../types.js';
+import type { ToolHandler, ToolSpec } from '../types.js';
 import type { PreferenceUpdateArgs, PreferenceGetArgs } from './types.js';
 
 // === preference_update ===
 
-export const preferenceUpdateToolName = 'preference_update';
-
-export const preferenceUpdateToolDescription =
-  'Update a self-tuning preference about working style. Preferences help you remember how Brian likes things done.';
-
-export const preferenceUpdateToolParameters = {
-  type: 'object',
-  properties: {
-    key: {
-      type: 'string',
-      description: 'Preference key (e.g., "response_length", "code_style", "humor_level")',
-    },
-    value: {
-      type: 'string',
-      description: 'The preference value',
-    },
-    reasoning: {
-      type: 'string',
-      description: 'Why this preference was set (optional)',
-    },
-  },
-  required: ['key', 'value'],
-};
-
-export const preferenceUpdateToolHandler: ToolHandler<PreferenceUpdateArgs> = async (args) => {
+const preferenceUpdateHandler: ToolHandler<PreferenceUpdateArgs> = async (args) => {
   try {
     const { key, value, reasoning } = args;
     const pref = await updatePreference(key, value, reasoning);
@@ -53,23 +29,7 @@ export const preferenceUpdateToolHandler: ToolHandler<PreferenceUpdateArgs> = as
 
 // === preference_get ===
 
-export const preferenceGetToolName = 'preference_get';
-
-export const preferenceGetToolDescription =
-  'Get current preferences. Call without key to get all preferences, or with key to get a specific one.';
-
-export const preferenceGetToolParameters = {
-  type: 'object',
-  properties: {
-    key: {
-      type: 'string',
-      description: 'Specific preference key to get (optional - omit for all)',
-    },
-  },
-  required: [],
-};
-
-export const preferenceGetToolHandler: ToolHandler<PreferenceGetArgs> = async (args) => {
+const preferenceGetHandler: ToolHandler<PreferenceGetArgs> = async (args) => {
   try {
     const { key } = args || {};
 
@@ -100,3 +60,48 @@ export const preferenceGetToolHandler: ToolHandler<PreferenceGetArgs> = async (a
     return `Failed to get preferences: ${error instanceof Error ? error.message : String(error)}`;
   }
 };
+
+// === Tool Specs ===
+
+export const tools: ToolSpec[] = [
+  {
+    name: 'preference_update',
+    description:
+      'Update a self-tuning preference about working style. Preferences help you remember how Brian likes things done.',
+    parameters: {
+      type: 'object',
+      properties: {
+        key: {
+          type: 'string',
+          description: 'Preference key (e.g., "response_length", "code_style", "humor_level")',
+        },
+        value: {
+          type: 'string',
+          description: 'The preference value',
+        },
+        reasoning: {
+          type: 'string',
+          description: 'Why this preference was set (optional)',
+        },
+      },
+      required: ['key', 'value'],
+    },
+    handler: preferenceUpdateHandler as ToolHandler,
+  },
+  {
+    name: 'preference_get',
+    description:
+      'Get current preferences. Call without key to get all preferences, or with key to get a specific one.',
+    parameters: {
+      type: 'object',
+      properties: {
+        key: {
+          type: 'string',
+          description: 'Specific preference key to get (optional - omit for all)',
+        },
+      },
+      required: [],
+    },
+    handler: preferenceGetHandler as ToolHandler,
+  },
+];

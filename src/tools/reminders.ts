@@ -8,7 +8,7 @@
 
 import { createScheduledReminder, createStandaloneReminder } from '../services/reminders.js';
 import { config } from '../config/index.js';
-import type { ToolHandler } from './types.js';
+import type { ToolHandler, ToolSpec } from './types.js';
 
 // =============================================================================
 // CREATE REMINDER TOOL
@@ -112,34 +112,32 @@ async function handleCreateReminder(args: CreateReminderArgs): Promise<string> {
   }
 }
 
-export const createReminderToolName = 'create_reminder';
-
-export const createReminderToolDescription =
-  'Create a reminder for the user. Use this tool when the user explicitly asks to be reminded about something. ' +
-  'Examples: "remind me to call John tomorrow at 9am", "set a reminder for Monday to take sample to Carpet Shop", ' +
-  '"create a reminder in 30 minutes to check the oven". ' +
-  'IMPORTANT: Use this tool instead of just saying you\'ll create a reminder - actually call this tool.';
-
-export const createReminderToolParameters = {
-  type: 'object',
-  properties: {
-    title: {
-      type: 'string',
-      description: 'What to remind the user about (e.g., "Call John", "Take sample to Carpet Shop")',
+export const tools: ToolSpec[] = [{
+  name: 'create_reminder',
+  description: 'Create a reminder for the user. Use this tool when the user explicitly asks to be reminded about something. ' +
+    'Examples: "remind me to call John tomorrow at 9am", "set a reminder for Monday to take sample to Carpet Shop", ' +
+    '"create a reminder in 30 minutes to check the oven". ' +
+    'IMPORTANT: Use this tool instead of just saying you\'ll create a reminder - actually call this tool.',
+  parameters: {
+    type: 'object',
+    properties: {
+      title: {
+        type: 'string',
+        description: 'What to remind the user about (e.g., "Call John", "Take sample to Carpet Shop")',
+      },
+      scheduled_at: {
+        type: 'string',
+        description: 'The date/time for the reminder in ISO 8601 UTC format (e.g., "2026-01-19T14:00:00Z" for 9am EST). ' +
+          'TIMEZONE RULE: User is in EST (UTC-5). Convert local times to UTC by adding 5 hours. ' +
+          'Examples: 9am EST = 14:00 UTC, 2pm EST = 19:00 UTC. ' +
+          'If user gives only a date (e.g., "Monday"), default to 9am local time (14:00 UTC).',
+      },
+      delay_minutes: {
+        type: 'number',
+        description: 'Alternative to scheduled_at: remind in X minutes from now (e.g., 30 for "in 30 minutes")',
+      },
     },
-    scheduled_at: {
-      type: 'string',
-      description: 'The date/time for the reminder in ISO 8601 UTC format (e.g., "2026-01-19T14:00:00Z" for 9am EST). ' +
-        'TIMEZONE RULE: User is in EST (UTC-5). Convert local times to UTC by adding 5 hours. ' +
-        'Examples: 9am EST = 14:00 UTC, 2pm EST = 19:00 UTC. ' +
-        'If user gives only a date (e.g., "Monday"), default to 9am local time (14:00 UTC).',
-    },
-    delay_minutes: {
-      type: 'number',
-      description: 'Alternative to scheduled_at: remind in X minutes from now (e.g., 30 for "in 30 minutes")',
-    },
+    required: ['title'],
   },
-  required: ['title'],
-};
-
-export const createReminderToolHandler: ToolHandler<CreateReminderArgs> = handleCreateReminder;
+  handler: handleCreateReminder as ToolHandler,
+}];

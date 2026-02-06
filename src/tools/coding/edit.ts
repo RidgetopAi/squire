@@ -6,7 +6,7 @@
  */
 
 import * as fs from 'fs/promises';
-import type { ToolHandler } from '../types.js';
+import type { ToolHandler, ToolSpec } from '../types.js';
 import type { FileEditArgs } from './types.js';
 import { resolvePath, generateDiff } from './policies.js';
 
@@ -125,9 +125,9 @@ function countOccurrences(content: string, search: string): number {
 
 // === TOOL DEFINITION ===
 
-export const fileEditToolName = 'file_edit';
-
-export const fileEditToolDescription = `Edit a file by replacing a specific string with new content.
+export const tools: ToolSpec[] = [{
+  name: 'file_edit',
+  description: `Edit a file by replacing a specific string with new content.
 
 IMPORTANT: The old_string must match EXACTLY, including:
 - Whitespace and indentation
@@ -138,29 +138,28 @@ By default, the string must be unique in the file. If there are multiple matches
 - Provide more context to make it unique, OR
 - Set replace_all: true to replace all occurrences
 
-Returns a diff showing what changed.`;
-
-export const fileEditToolParameters = {
-  type: 'object',
-  properties: {
-    path: {
-      type: 'string',
-      description: 'Path to the file to edit',
+Returns a diff showing what changed.`,
+  parameters: {
+    type: 'object',
+    properties: {
+      path: {
+        type: 'string',
+        description: 'Path to the file to edit',
+      },
+      old_string: {
+        type: 'string',
+        description: 'The exact string to find and replace',
+      },
+      new_string: {
+        type: 'string',
+        description: 'The string to replace it with',
+      },
+      replace_all: {
+        type: 'boolean',
+        description: 'Replace all occurrences (default: false, requires unique match)',
+      },
     },
-    old_string: {
-      type: 'string',
-      description: 'The exact string to find and replace',
-    },
-    new_string: {
-      type: 'string',
-      description: 'The string to replace it with',
-    },
-    replace_all: {
-      type: 'boolean',
-      description: 'Replace all occurrences (default: false, requires unique match)',
-    },
+    required: ['path', 'old_string', 'new_string'],
   },
-  required: ['path', 'old_string', 'new_string'],
-};
-
-export const fileEditToolHandler: ToolHandler<FileEditArgs> = fileEdit;
+  handler: fileEdit as ToolHandler,
+}];

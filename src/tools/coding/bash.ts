@@ -8,7 +8,7 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { config } from '../../config/index.js';
-import type { ToolHandler } from '../types.js';
+import type { ToolHandler, ToolSpec } from '../types.js';
 import type { BashArgs } from './types.js';
 import { resolvePath, isBlockedCommand, truncateOutput } from './policies.js';
 
@@ -136,9 +136,9 @@ function combineOutput(stdout: string, stderr: string): string {
 
 // === TOOL DEFINITION ===
 
-export const bashExecuteToolName = 'bash_execute';
-
-export const bashExecuteToolDescription = `Execute a bash command and return the output.
+export const tools: ToolSpec[] = [{
+  name: 'bash_execute',
+  description: `Execute a bash command and return the output.
 
 Use this tool to:
 - Run build commands (npm, cargo, make)
@@ -151,25 +151,24 @@ The command runs in a bash shell with a timeout.
 Dangerous commands (rm -rf /, etc.) are blocked.
 
 Note: Commands that require interactive input will fail.
-Use non-interactive alternatives when available.`;
-
-export const bashExecuteToolParameters = {
-  type: 'object',
-  properties: {
-    command: {
-      type: 'string',
-      description: 'The bash command to execute',
+Use non-interactive alternatives when available.`,
+  parameters: {
+    type: 'object',
+    properties: {
+      command: {
+        type: 'string',
+        description: 'The bash command to execute',
+      },
+      cwd: {
+        type: 'string',
+        description: 'Working directory for the command (defaults to config working directory)',
+      },
+      timeout: {
+        type: 'number',
+        description: 'Timeout in milliseconds (default: 30000, max: 600000)',
+      },
     },
-    cwd: {
-      type: 'string',
-      description: 'Working directory for the command (defaults to config working directory)',
-    },
-    timeout: {
-      type: 'number',
-      description: 'Timeout in milliseconds (default: 30000, max: 600000)',
-    },
+    required: ['command'],
   },
-  required: ['command'],
-};
-
-export const bashExecuteToolHandler: ToolHandler<BashArgs> = bashExecute;
+  handler: bashExecute as ToolHandler,
+}];

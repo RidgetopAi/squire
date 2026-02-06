@@ -19,7 +19,7 @@ import {
 } from '../services/reminders.js';
 import { pool } from '../db/pool.js';
 import { config } from '../config/index.js';
-import type { ToolHandler } from './types.js';
+import type { ToolHandler, ToolSpec } from './types.js';
 
 // =============================================================================
 // REMINDER SEARCH HELPER
@@ -158,27 +158,7 @@ async function handleListOpenCommitments(args: ListOpenCommitmentsArgs | null): 
   }
 }
 
-export const listOpenCommitmentsToolName = 'list_open_commitments';
-
-export const listOpenCommitmentsToolDescription =
-  'List the user\'s open commitments, tasks, and pending reminders. Use this when the user asks "what do I have to do?", "what tasks are open?", "show my commitments", "what reminders do I have?", or when you need to find something to mark complete.';
-
-export const listOpenCommitmentsToolParameters = {
-  type: 'object',
-  properties: {
-    include_overdue: {
-      type: 'boolean',
-      description: 'Include overdue commitments (default: true)',
-    },
-    limit: {
-      type: 'number',
-      description: 'Maximum number of commitments to return (default: 20)',
-    },
-  },
-  required: [],
-};
-
-export const listOpenCommitmentsToolHandler: ToolHandler<ListOpenCommitmentsArgs> = handleListOpenCommitments;
+// Exported in tools array below
 
 // =============================================================================
 // COMPLETE COMMITMENT TOOL
@@ -340,29 +320,54 @@ async function handleCompleteCommitment(args: CompleteCommitmentArgs | null): Pr
   }
 }
 
-export const completeCommitmentToolName = 'complete_commitment';
+// =============================================================================
+// TOOL SPECS EXPORT
+// =============================================================================
 
-export const completeCommitmentToolDescription =
-  'Mark a commitment, task, or reminder as complete/done. Use this when the user says they finished something, completed a task, did a reminder, or wants to mark something done. Searches both commitments AND reminders. You can specify by ID or by title match. Examples: "mark the dentist appointment done", "I finished that", "that call is done".';
-
-export const completeCommitmentToolParameters = {
-  type: 'object',
-  properties: {
-    commitment_id: {
-      type: 'string',
-      description: 'The UUID of the commitment to complete (from list_open_commitments)',
+export const tools: ToolSpec[] = [
+  {
+    name: 'list_open_commitments',
+    description:
+      'List the user\'s open commitments, tasks, and pending reminders. Use this when the user asks "what do I have to do?", "what tasks are open?", "show my commitments", "what reminders do I have?", or when you need to find something to mark complete.',
+    parameters: {
+      type: 'object',
+      properties: {
+        include_overdue: {
+          type: 'boolean',
+          description: 'Include overdue commitments (default: true)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of commitments to return (default: 20)',
+        },
+      },
+      required: [],
     },
-    title_match: {
-      type: 'string',
-      description: 'A phrase to match against commitment titles (used if commitment_id not provided)',
-    },
-    resolution_type: {
-      type: 'string',
-      enum: ['completed', 'canceled', 'no_longer_relevant', 'superseded'],
-      description: 'How the commitment was resolved (default: completed)',
-    },
+    handler: handleListOpenCommitments as ToolHandler,
   },
-  required: [],
-};
-
-export const completeCommitmentToolHandler: ToolHandler<CompleteCommitmentArgs> = handleCompleteCommitment;
+  {
+    name: 'complete_commitment',
+    description:
+      'Mark a commitment, task, or reminder as complete/done. Use this when the user says they finished something, completed a task, did a reminder, or wants to mark something done. Searches both commitments AND reminders. You can specify by ID or by title match. Examples: "mark the dentist appointment done", "I finished that", "that call is done".',
+    parameters: {
+      type: 'object',
+      properties: {
+        commitment_id: {
+          type: 'string',
+          description: 'The UUID of the commitment to complete (from list_open_commitments)',
+        },
+        title_match: {
+          type: 'string',
+          description: 'A phrase to match against commitment titles (used if commitment_id not provided)',
+        },
+        resolution_type: {
+          type: 'string',
+          enum: ['completed', 'canceled', 'no_longer_relevant', 'superseded'],
+          description: 'How the commitment was resolved (default: completed)',
+        },
+      },
+      required: [],
+    },
+    handler: handleCompleteCommitment as ToolHandler,
+  },
+];

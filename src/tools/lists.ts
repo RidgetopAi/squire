@@ -14,7 +14,7 @@ import {
   addItem,
   toggleItem,
 } from '../services/lists.js';
-import type { ToolHandler } from './types.js';
+import type { ToolHandler, ToolSpec } from './types.js';
 
 // =============================================================================
 // SEARCH LISTS TOOL
@@ -65,27 +65,7 @@ async function handleSearchLists(args: SearchListsArgs): Promise<string> {
   }
 }
 
-export const searchListsToolName = 'search_lists';
-
-export const searchListsToolDescription =
-  'Search for a specific list by name or topic. Use when user asks to FIND a particular list (e.g., "find my grocery list", "do I have a list about movies?"). Do NOT use for listing all lists - use list_all_lists instead.';
-
-export const searchListsToolParameters = {
-  type: 'object',
-  properties: {
-    query: {
-      type: 'string',
-      description: 'The search query to find relevant lists (uses semantic similarity matching)',
-    },
-    limit: {
-      type: 'number',
-      description: 'Maximum number of lists to return (default: 10, max: 50)',
-    },
-  },
-  required: ['query'],
-};
-
-export const searchListsToolHandler: ToolHandler<SearchListsArgs> = handleSearchLists;
+// Exported in tools array below
 
 // =============================================================================
 // GET LIST ITEMS TOOL
@@ -165,27 +145,7 @@ async function handleGetListItems(args: GetListItemsArgs): Promise<string> {
   }
 }
 
-export const getListItemsToolName = 'get_list_items';
-
-export const getListItemsToolDescription =
-  'Get a specific list and all its items. Use this when the user asks to see the contents of a list, what\'s on a list, or asks about specific items. You can find the list by name (fuzzy match supported) or ID.';
-
-export const getListItemsToolParameters = {
-  type: 'object',
-  properties: {
-    name: {
-      type: 'string',
-      description: 'The name of the list to retrieve (supports fuzzy matching)',
-    },
-    id: {
-      type: 'string',
-      description: 'The exact UUID of the list (use if you already know the ID)',
-    },
-  },
-  required: [],
-};
-
-export const getListItemsToolHandler: ToolHandler<GetListItemsArgs> = handleGetListItems;
+// Exported in tools array below
 
 // =============================================================================
 // LIST ALL LISTS TOOL
@@ -232,32 +192,7 @@ async function handleListAllLists(args: ListAllListsArgs | null): Promise<string
   }
 }
 
-export const listAllListsToolName = 'list_all_lists';
-
-export const listAllListsToolDescription =
-  'Get ALL of the user\'s lists. Use this when the user asks "what lists do I have?", "show me my lists", or wants to see all their lists. This is the DEFAULT tool for viewing lists. Returns list names only - use get_list_items to see items in a specific list.';
-
-export const listAllListsToolParameters = {
-  type: 'object',
-  properties: {
-    limit: {
-      type: 'number',
-      description: 'Maximum number of lists to return (default: 20, max: 50)',
-    },
-    list_type: {
-      type: 'string',
-      enum: ['checklist', 'simple', 'ranked'],
-      description: 'Filter by list type',
-    },
-    category: {
-      type: 'string',
-      description: 'Filter by category (e.g., "work", "personal", "shopping")',
-    },
-  },
-  required: [],
-};
-
-export const listAllListsToolHandler: ToolHandler<ListAllListsArgs> = handleListAllLists;
+// Exported in tools array below
 
 // =============================================================================
 // CREATE LIST TOOL
@@ -321,50 +256,7 @@ async function handleCreateList(args: CreateListArgs): Promise<string> {
   }
 }
 
-export const createListToolName = 'create_list';
-
-export const createListToolDescription =
-  'Create a new list for the user. Use this when the user wants to start a new list, checklist, or to-do list. You can include initial items when creating the list.';
-
-export const createListToolParameters = {
-  type: 'object',
-  properties: {
-    name: {
-      type: 'string',
-      description: 'The name of the list (e.g., "Grocery List", "Project Tasks")',
-    },
-    description: {
-      type: 'string',
-      description: 'Optional description of what this list is for',
-    },
-    list_type: {
-      type: 'string',
-      enum: ['checklist', 'simple', 'ranked'],
-      description: 'Type of list: checklist (items can be completed), simple (plain list), or ranked (ordered by priority). Default: checklist',
-    },
-    category: {
-      type: 'string',
-      description: 'Optional category (e.g., "work", "personal", "shopping")',
-    },
-    tags: {
-      type: 'array',
-      items: { type: 'string' },
-      description: 'Optional tags for organization',
-    },
-    is_pinned: {
-      type: 'boolean',
-      description: 'Whether to pin this list as important (default: false)',
-    },
-    items: {
-      type: 'array',
-      items: { type: 'string' },
-      description: 'Optional initial items to add to the list when creating it',
-    },
-  },
-  required: ['name'],
-};
-
-export const createListToolHandler: ToolHandler<CreateListArgs> = handleCreateList;
+// Exported in tools array below
 
 // =============================================================================
 // ADD LIST ITEM TOOL
@@ -427,39 +319,7 @@ async function handleAddListItem(args: AddListItemArgs): Promise<string> {
   }
 }
 
-export const addListItemToolName = 'add_list_item';
-
-export const addListItemToolDescription =
-  'Add an item to an existing list. Use this when the user wants to add something to a list. You can specify the list by name (fuzzy match supported) or ID.';
-
-export const addListItemToolParameters = {
-  type: 'object',
-  properties: {
-    list_name: {
-      type: 'string',
-      description: 'The name of the list to add to (supports fuzzy matching)',
-    },
-    list_id: {
-      type: 'string',
-      description: 'The UUID of the list (use if you already have the ID)',
-    },
-    content: {
-      type: 'string',
-      description: 'The text content of the item to add',
-    },
-    notes: {
-      type: 'string',
-      description: 'Optional additional notes for the item',
-    },
-    priority: {
-      type: 'number',
-      description: 'Optional priority level (1-5, where 1 is highest)',
-    },
-  },
-  required: ['content'],
-};
-
-export const addListItemToolHandler: ToolHandler<AddListItemArgs> = handleAddListItem;
+// Exported in tools array below
 
 // =============================================================================
 // TOGGLE LIST ITEM TOOL
@@ -545,32 +405,177 @@ async function handleToggleListItem(args: ToggleListItemArgs): Promise<string> {
   }
 }
 
-export const toggleListItemToolName = 'toggle_list_item';
+// =============================================================================
+// TOOL SPECS EXPORT
+// =============================================================================
 
-export const toggleListItemToolDescription =
-  'Toggle a list item between completed and incomplete. Use this when the user wants to check off an item, mark something done, or uncheck an item. You can find the item by its content (partial match) within a list, or by item_id if you have it.';
-
-export const toggleListItemToolParameters = {
-  type: 'object',
-  properties: {
-    list_name: {
-      type: 'string',
-      description: 'The name of the list containing the item (supports fuzzy matching)',
+export const tools: ToolSpec[] = [
+  {
+    name: 'search_lists',
+    description:
+      'Search for a specific list by name or topic. Use when user asks to FIND a particular list (e.g., "find my grocery list", "do I have a list about movies?"). Do NOT use for listing all lists - use list_all_lists instead.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'The search query to find relevant lists (uses semantic similarity matching)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of lists to return (default: 10, max: 50)',
+        },
+      },
+      required: ['query'],
     },
-    list_id: {
-      type: 'string',
-      description: 'The UUID of the list (use if you already have it)',
-    },
-    item_content: {
-      type: 'string',
-      description: 'Text to search for in item content (partial match, case-insensitive)',
-    },
-    item_id: {
-      type: 'string',
-      description: 'The UUID of the item to toggle (use if you already have it)',
-    },
+    handler: handleSearchLists as ToolHandler,
   },
-  required: [],
-};
-
-export const toggleListItemToolHandler: ToolHandler<ToggleListItemArgs> = handleToggleListItem;
+  {
+    name: 'get_list_items',
+    description:
+      'Get a specific list and all its items. Use this when the user asks to see the contents of a list, what\'s on a list, or asks about specific items. You can find the list by name (fuzzy match supported) or ID.',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'The name of the list to retrieve (supports fuzzy matching)',
+        },
+        id: {
+          type: 'string',
+          description: 'The exact UUID of the list (use if you already know the ID)',
+        },
+      },
+      required: [],
+    },
+    handler: handleGetListItems as ToolHandler,
+  },
+  {
+    name: 'list_all_lists',
+    description:
+      'Get ALL of the user\'s lists. Use this when the user asks "what lists do I have?", "show me my lists", or wants to see all their lists. This is the DEFAULT tool for viewing lists. Returns list names only - use get_list_items to see items in a specific list.',
+    parameters: {
+      type: 'object',
+      properties: {
+        limit: {
+          type: 'number',
+          description: 'Maximum number of lists to return (default: 20, max: 50)',
+        },
+        list_type: {
+          type: 'string',
+          enum: ['checklist', 'simple', 'ranked'],
+          description: 'Filter by list type',
+        },
+        category: {
+          type: 'string',
+          description: 'Filter by category (e.g., "work", "personal", "shopping")',
+        },
+      },
+      required: [],
+    },
+    handler: handleListAllLists as ToolHandler,
+  },
+  {
+    name: 'create_list',
+    description:
+      'Create a new list for the user. Use this when the user wants to start a new list, checklist, or to-do list. You can include initial items when creating the list.',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'The name of the list (e.g., "Grocery List", "Project Tasks")',
+        },
+        description: {
+          type: 'string',
+          description: 'Optional description of what this list is for',
+        },
+        list_type: {
+          type: 'string',
+          enum: ['checklist', 'simple', 'ranked'],
+          description: 'Type of list: checklist (items can be completed), simple (plain list), or ranked (ordered by priority). Default: checklist',
+        },
+        category: {
+          type: 'string',
+          description: 'Optional category (e.g., "work", "personal", "shopping")',
+        },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Optional tags for organization',
+        },
+        is_pinned: {
+          type: 'boolean',
+          description: 'Whether to pin this list as important (default: false)',
+        },
+        items: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Optional initial items to add to the list when creating it',
+        },
+      },
+      required: ['name'],
+    },
+    handler: handleCreateList as ToolHandler,
+  },
+  {
+    name: 'add_list_item',
+    description:
+      'Add an item to an existing list. Use this when the user wants to add something to a list. You can specify the list by name (fuzzy match supported) or ID.',
+    parameters: {
+      type: 'object',
+      properties: {
+        list_name: {
+          type: 'string',
+          description: 'The name of the list to add to (supports fuzzy matching)',
+        },
+        list_id: {
+          type: 'string',
+          description: 'The UUID of the list (use if you already have the ID)',
+        },
+        content: {
+          type: 'string',
+          description: 'The text content of the item to add',
+        },
+        notes: {
+          type: 'string',
+          description: 'Optional additional notes for the item',
+        },
+        priority: {
+          type: 'number',
+          description: 'Optional priority level (1-5, where 1 is highest)',
+        },
+      },
+      required: ['content'],
+    },
+    handler: handleAddListItem as ToolHandler,
+  },
+  {
+    name: 'toggle_list_item',
+    description:
+      'Toggle a list item between completed and incomplete. Use this when the user wants to check off an item, mark something done, or uncheck an item. You can find the item by its content (partial match) within a list, or by item_id if you have it.',
+    parameters: {
+      type: 'object',
+      properties: {
+        list_name: {
+          type: 'string',
+          description: 'The name of the list containing the item (supports fuzzy matching)',
+        },
+        list_id: {
+          type: 'string',
+          description: 'The UUID of the list (use if you already have it)',
+        },
+        item_content: {
+          type: 'string',
+          description: 'Text to search for in item content (partial match, case-insensitive)',
+        },
+        item_id: {
+          type: 'string',
+          description: 'The UUID of the item to toggle (use if you already have it)',
+        },
+      },
+      required: [],
+    },
+    handler: handleToggleListItem as ToolHandler,
+  },
+];

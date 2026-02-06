@@ -1,22 +1,8 @@
+import type { ToolHandler, ToolSpec } from '../types.js';
 import { listSyncEnabledAccounts } from '../../services/google/auth.js';
 import { trashEmail } from '../../services/google/gmail.js';
 
-export const emailDeleteToolName = 'email_delete';
-
-export const emailDeleteToolDescription = 'Move an email to trash. Use email_list first to get email IDs.';
-
-export const emailDeleteToolParameters = {
-  type: 'object',
-  properties: {
-    emailId: {
-      type: 'string',
-      description: 'The email ID to delete (from email_list results)',
-    },
-  },
-  required: ['emailId'],
-};
-
-export async function emailDeleteToolHandler(args: { emailId: string }): Promise<string> {
+async function emailDeleteToolHandler(args: { emailId: string }): Promise<string> {
   try {
     const accounts = await listSyncEnabledAccounts();
     if (accounts.length === 0) {
@@ -34,3 +20,21 @@ export async function emailDeleteToolHandler(args: { emailId: string }): Promise
     return `Error: ${error instanceof Error ? error.message : 'Unknown error'}`;
   }
 }
+
+export const tools: ToolSpec[] = [
+  {
+    name: 'email_delete',
+    description: 'Move an email to trash. Use email_list first to get email IDs.',
+    parameters: {
+      type: 'object',
+      properties: {
+        emailId: {
+          type: 'string',
+          description: 'The email ID to delete (from email_list results)',
+        },
+      },
+      required: ['emailId'],
+    },
+    handler: emailDeleteToolHandler as ToolHandler,
+  },
+];

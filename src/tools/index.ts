@@ -10,6 +10,7 @@ import type {
   ToolCall,
   ToolResult,
   ToolHandler,
+  ToolSpec,
   RegisteredTool,
 } from './types.js';
 import { logToolCall } from '../services/tool-logger.js';
@@ -20,10 +21,16 @@ export type {
   ToolCall,
   ToolResult,
   ToolHandler,
+  ToolSpec,
   RegisteredTool,
   ToolMessage,
   AssistantMessageWithTools,
 } from './types.js';
+
+// === CONSTANTS ===
+
+/** Max characters for a single tool result before truncation (~8K tokens) */
+const MAX_TOOL_RESULT_LENGTH = 32_000;
 
 // === REGISTRY ===
 
@@ -137,8 +144,16 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
     }
 
     // Execute handler
-    const result = await tool.handler(args);
+    let result = await tool.handler(args);
     const durationMs = Date.now() - startTime;
+
+    // Truncate oversized results to prevent token explosion
+    if (result.length > MAX_TOOL_RESULT_LENGTH) {
+      const originalLength = result.length;
+      result = result.slice(0, MAX_TOOL_RESULT_LENGTH) +
+        `\n\n[Result truncated: ${originalLength.toLocaleString()} chars → ${MAX_TOOL_RESULT_LENGTH.toLocaleString()} chars]`;
+      console.warn(`[Tools] ${call.function.name} result truncated: ${originalLength} → ${MAX_TOOL_RESULT_LENGTH} chars`);
+    }
 
     // Log successful call
     logToolCall({
@@ -188,362 +203,37 @@ export async function executeTools(calls: ToolCall[]): Promise<ToolResult[]> {
 }
 
 // === TOOL REGISTRATION ===
-// Import tool definitions and register them
+// Import tool arrays and register them
 // This happens after the registry Map is initialized
 
-import {
-  timeToolName,
-  timeToolDescription,
-  timeToolParameters,
-  timeToolHandler,
-} from './time.js';
+import { tools as timeTools } from './time.js';
+import { tools as notesTools } from './notes.js';
+import { tools as listsTools } from './lists.js';
+import { tools as calendarTools } from './calendar.js';
+import { tools as commitmentTools } from './commitments.js';
+import { tools as reminderTools } from './reminders.js';
+import { tools as codingTools } from './coding/index.js';
+import { tools as stewardTools } from './steward.js';
+import { tools as mandrelTools } from './mandrel/index.js';
+import { tools as memoryTools } from './memory/index.js';
+import { tools as emailTools } from './email/index.js';
+import { tools as searchTools } from './search.js';
 
-import {
-  searchNotesToolName,
-  searchNotesToolDescription,
-  searchNotesToolParameters,
-  searchNotesToolHandler,
-  getPinnedNotesToolName,
-  getPinnedNotesToolDescription,
-  getPinnedNotesToolParameters,
-  getPinnedNotesToolHandler,
-  listRecentNotesToolName,
-  listRecentNotesToolDescription,
-  listRecentNotesToolParameters,
-  listRecentNotesToolHandler,
-  createNoteToolName,
-  createNoteToolDescription,
-  createNoteToolParameters,
-  createNoteToolHandler,
-  appendToNoteToolName,
-  appendToNoteToolDescription,
-  appendToNoteToolParameters,
-  appendToNoteToolHandler,
-} from './notes.js';
+const allToolSpecs: ToolSpec[] = [
+  ...timeTools,
+  ...notesTools,
+  ...listsTools,
+  ...calendarTools,
+  ...commitmentTools,
+  ...reminderTools,
+  ...codingTools,
+  ...stewardTools,
+  ...mandrelTools,
+  ...memoryTools,
+  ...emailTools,
+  ...searchTools,
+];
 
-import {
-  searchListsToolName,
-  searchListsToolDescription,
-  searchListsToolParameters,
-  searchListsToolHandler,
-  getListItemsToolName,
-  getListItemsToolDescription,
-  getListItemsToolParameters,
-  getListItemsToolHandler,
-  listAllListsToolName,
-  listAllListsToolDescription,
-  listAllListsToolParameters,
-  listAllListsToolHandler,
-  createListToolName,
-  createListToolDescription,
-  createListToolParameters,
-  createListToolHandler,
-  addListItemToolName,
-  addListItemToolDescription,
-  addListItemToolParameters,
-  addListItemToolHandler,
-  toggleListItemToolName,
-  toggleListItemToolDescription,
-  toggleListItemToolParameters,
-  toggleListItemToolHandler,
-} from './lists.js';
-
-import {
-  getUpcomingEventsToolName,
-  getUpcomingEventsToolDescription,
-  getUpcomingEventsToolParameters,
-  getUpcomingEventsToolHandler,
-  getTodaysEventsToolName,
-  getTodaysEventsToolDescription,
-  getTodaysEventsToolParameters,
-  getTodaysEventsToolHandler,
-  getEventsDueSoonToolName,
-  getEventsDueSoonToolDescription,
-  getEventsDueSoonToolParameters,
-  getEventsDueSoonToolHandler,
-  createCalendarEventToolName,
-  createCalendarEventToolDescription,
-  createCalendarEventToolParameters,
-  createCalendarEventToolHandler,
-} from './calendar.js';
-
-import {
-  listOpenCommitmentsToolName,
-  listOpenCommitmentsToolDescription,
-  listOpenCommitmentsToolParameters,
-  listOpenCommitmentsToolHandler,
-  completeCommitmentToolName,
-  completeCommitmentToolDescription,
-  completeCommitmentToolParameters,
-  completeCommitmentToolHandler,
-} from './commitments.js';
-
-import {
-  createReminderToolName,
-  createReminderToolDescription,
-  createReminderToolParameters,
-  createReminderToolHandler,
-} from './reminders.js';
-
-// Register time tool
-registerTool(timeToolName, timeToolDescription, timeToolParameters, timeToolHandler);
-
-// Register notes tools (read)
-registerTool(searchNotesToolName, searchNotesToolDescription, searchNotesToolParameters, searchNotesToolHandler);
-registerTool(getPinnedNotesToolName, getPinnedNotesToolDescription, getPinnedNotesToolParameters, getPinnedNotesToolHandler);
-registerTool(listRecentNotesToolName, listRecentNotesToolDescription, listRecentNotesToolParameters, listRecentNotesToolHandler);
-// Register notes tools (write)
-registerTool(createNoteToolName, createNoteToolDescription, createNoteToolParameters, createNoteToolHandler);
-registerTool(appendToNoteToolName, appendToNoteToolDescription, appendToNoteToolParameters, appendToNoteToolHandler);
-
-// Register lists tools (read)
-registerTool(searchListsToolName, searchListsToolDescription, searchListsToolParameters, searchListsToolHandler);
-registerTool(getListItemsToolName, getListItemsToolDescription, getListItemsToolParameters, getListItemsToolHandler);
-registerTool(listAllListsToolName, listAllListsToolDescription, listAllListsToolParameters, listAllListsToolHandler);
-// Register lists tools (write)
-registerTool(createListToolName, createListToolDescription, createListToolParameters, createListToolHandler);
-registerTool(addListItemToolName, addListItemToolDescription, addListItemToolParameters, addListItemToolHandler);
-registerTool(toggleListItemToolName, toggleListItemToolDescription, toggleListItemToolParameters, toggleListItemToolHandler);
-
-// Register calendar tools (read)
-registerTool(getUpcomingEventsToolName, getUpcomingEventsToolDescription, getUpcomingEventsToolParameters, getUpcomingEventsToolHandler);
-registerTool(getTodaysEventsToolName, getTodaysEventsToolDescription, getTodaysEventsToolParameters, getTodaysEventsToolHandler);
-registerTool(getEventsDueSoonToolName, getEventsDueSoonToolDescription, getEventsDueSoonToolParameters, getEventsDueSoonToolHandler);
-// Register calendar tools (write)
-registerTool(createCalendarEventToolName, createCalendarEventToolDescription, createCalendarEventToolParameters, createCalendarEventToolHandler);
-
-// Register commitment tools
-registerTool(listOpenCommitmentsToolName, listOpenCommitmentsToolDescription, listOpenCommitmentsToolParameters, listOpenCommitmentsToolHandler);
-registerTool(completeCommitmentToolName, completeCommitmentToolDescription, completeCommitmentToolParameters, completeCommitmentToolHandler);
-
-// Register reminder tools
-registerTool(createReminderToolName, createReminderToolDescription, createReminderToolParameters, createReminderToolHandler);
-
-// === CODING TOOLS ===
-// File operations, search, and command execution
-
-import {
-  fileReadToolName,
-  fileReadToolDescription,
-  fileReadToolParameters,
-  fileReadToolHandler,
-  fileWriteToolName,
-  fileWriteToolDescription,
-  fileWriteToolParameters,
-  fileWriteToolHandler,
-  fileEditToolName,
-  fileEditToolDescription,
-  fileEditToolParameters,
-  fileEditToolHandler,
-  bashExecuteToolName,
-  bashExecuteToolDescription,
-  bashExecuteToolParameters,
-  bashExecuteToolHandler,
-  grepSearchToolName,
-  grepSearchToolDescription,
-  grepSearchToolParameters,
-  grepSearchToolHandler,
-  globFilesToolName,
-  globFilesToolDescription,
-  globFilesToolParameters,
-  globFilesToolHandler,
-  gitOperationsToolName,
-  gitOperationsToolDescription,
-  gitOperationsToolParameters,
-  gitOperationsToolHandler,
-  claudeCodeToolName,
-  claudeCodeToolDescription,
-  claudeCodeToolParameters,
-  claudeCodeToolHandler,
-} from './coding/index.js';
-
-// Register coding tools (read)
-registerTool(fileReadToolName, fileReadToolDescription, fileReadToolParameters, fileReadToolHandler);
-registerTool(grepSearchToolName, grepSearchToolDescription, grepSearchToolParameters, grepSearchToolHandler);
-registerTool(globFilesToolName, globFilesToolDescription, globFilesToolParameters, globFilesToolHandler);
-
-// Register coding tools (write)
-registerTool(fileWriteToolName, fileWriteToolDescription, fileWriteToolParameters, fileWriteToolHandler);
-registerTool(fileEditToolName, fileEditToolDescription, fileEditToolParameters, fileEditToolHandler);
-
-// Register coding tools (execute)
-registerTool(bashExecuteToolName, bashExecuteToolDescription, bashExecuteToolParameters, bashExecuteToolHandler);
-registerTool(gitOperationsToolName, gitOperationsToolDescription, gitOperationsToolParameters, gitOperationsToolHandler);
-
-// Register Claude Code tool (VPS coding worker)
-registerTool(claudeCodeToolName, claudeCodeToolDescription, claudeCodeToolParameters, claudeCodeToolHandler);
-
-// === STEWARD TOOLS ===
-// System health monitoring
-
-import {
-  stewardHealthCheckToolName,
-  stewardHealthCheckToolDescription,
-  stewardHealthCheckToolParameters,
-  stewardHealthCheckToolHandler,
-} from './steward.js';
-
-registerTool(stewardHealthCheckToolName, stewardHealthCheckToolDescription, stewardHealthCheckToolParameters, stewardHealthCheckToolHandler);
-
-// === MANDREL TOOLS ===
-// Integration with Mandrel MCP for working memory
-
-import {
-  // Context tools
-  mandrelContextStoreToolName,
-  mandrelContextStoreToolDescription,
-  mandrelContextStoreToolParameters,
-  mandrelContextStoreToolHandler,
-  mandrelContextSearchToolName,
-  mandrelContextSearchToolDescription,
-  mandrelContextSearchToolParameters,
-  mandrelContextSearchToolHandler,
-  mandrelContextRecentToolName,
-  mandrelContextRecentToolDescription,
-  mandrelContextRecentToolParameters,
-  mandrelContextRecentToolHandler,
-  // Project tools
-  mandrelProjectSwitchToolName,
-  mandrelProjectSwitchToolDescription,
-  mandrelProjectSwitchToolParameters,
-  mandrelProjectSwitchToolHandler,
-  mandrelProjectCurrentToolName,
-  mandrelProjectCurrentToolDescription,
-  mandrelProjectCurrentToolParameters,
-  mandrelProjectCurrentToolHandler,
-  mandrelProjectListToolName,
-  mandrelProjectListToolDescription,
-  mandrelProjectListToolParameters,
-  mandrelProjectListToolHandler,
-  // Task tools
-  mandrelTaskCreateToolName,
-  mandrelTaskCreateToolDescription,
-  mandrelTaskCreateToolParameters,
-  mandrelTaskCreateToolHandler,
-  mandrelTaskListToolName,
-  mandrelTaskListToolDescription,
-  mandrelTaskListToolParameters,
-  mandrelTaskListToolHandler,
-  mandrelTaskUpdateToolName,
-  mandrelTaskUpdateToolDescription,
-  mandrelTaskUpdateToolParameters,
-  mandrelTaskUpdateToolHandler,
-  // Decision tools
-  mandrelDecisionRecordToolName,
-  mandrelDecisionRecordToolDescription,
-  mandrelDecisionRecordToolParameters,
-  mandrelDecisionRecordToolHandler,
-  mandrelDecisionSearchToolName,
-  mandrelDecisionSearchToolDescription,
-  mandrelDecisionSearchToolParameters,
-  mandrelDecisionSearchToolHandler,
-  // Search tools
-  mandrelSmartSearchToolName,
-  mandrelSmartSearchToolDescription,
-  mandrelSmartSearchToolParameters,
-  mandrelSmartSearchToolHandler,
-} from './mandrel/index.js';
-
-// Register Mandrel context tools
-registerTool(mandrelContextStoreToolName, mandrelContextStoreToolDescription, mandrelContextStoreToolParameters, mandrelContextStoreToolHandler);
-registerTool(mandrelContextSearchToolName, mandrelContextSearchToolDescription, mandrelContextSearchToolParameters, mandrelContextSearchToolHandler);
-registerTool(mandrelContextRecentToolName, mandrelContextRecentToolDescription, mandrelContextRecentToolParameters, mandrelContextRecentToolHandler);
-
-// Register Mandrel project tools
-registerTool(mandrelProjectSwitchToolName, mandrelProjectSwitchToolDescription, mandrelProjectSwitchToolParameters, mandrelProjectSwitchToolHandler);
-registerTool(mandrelProjectCurrentToolName, mandrelProjectCurrentToolDescription, mandrelProjectCurrentToolParameters, mandrelProjectCurrentToolHandler);
-registerTool(mandrelProjectListToolName, mandrelProjectListToolDescription, mandrelProjectListToolParameters, mandrelProjectListToolHandler);
-
-// Register Mandrel task tools
-registerTool(mandrelTaskCreateToolName, mandrelTaskCreateToolDescription, mandrelTaskCreateToolParameters, mandrelTaskCreateToolHandler);
-registerTool(mandrelTaskListToolName, mandrelTaskListToolDescription, mandrelTaskListToolParameters, mandrelTaskListToolHandler);
-registerTool(mandrelTaskUpdateToolName, mandrelTaskUpdateToolDescription, mandrelTaskUpdateToolParameters, mandrelTaskUpdateToolHandler);
-
-// Register Mandrel decision tools
-registerTool(mandrelDecisionRecordToolName, mandrelDecisionRecordToolDescription, mandrelDecisionRecordToolParameters, mandrelDecisionRecordToolHandler);
-registerTool(mandrelDecisionSearchToolName, mandrelDecisionSearchToolDescription, mandrelDecisionSearchToolParameters, mandrelDecisionSearchToolHandler);
-
-// Register Mandrel search tools
-registerTool(mandrelSmartSearchToolName, mandrelSmartSearchToolDescription, mandrelSmartSearchToolParameters, mandrelSmartSearchToolHandler);
-
-// === MEMORY TOOLS ===
-// Agent lessons and preferences for self-tuning
-
-import {
-  lessonStoreToolName,
-  lessonStoreToolDescription,
-  lessonStoreToolParameters,
-  lessonStoreToolHandler,
-  lessonSearchToolName,
-  lessonSearchToolDescription,
-  lessonSearchToolParameters,
-  lessonSearchToolHandler,
-  preferenceUpdateToolName,
-  preferenceUpdateToolDescription,
-  preferenceUpdateToolParameters,
-  preferenceUpdateToolHandler,
-  preferenceGetToolName,
-  preferenceGetToolDescription,
-  preferenceGetToolParameters,
-  preferenceGetToolHandler,
-} from './memory/index.js';
-
-import {
-  emailListToolName,
-  emailListToolDescription,
-  emailListToolParameters,
-  emailListToolHandler,
-  emailReadToolName,
-  emailReadToolDescription,
-  emailReadToolParameters,
-  emailReadToolHandler,
-  emailDeleteToolName,
-  emailDeleteToolDescription,
-  emailDeleteToolParameters,
-  emailDeleteToolHandler,
-  emailSendToolName,
-  emailSendToolDescription,
-  emailSendToolParameters,
-  emailSendToolHandler,
-  emailArchiveToolName,
-  emailArchiveToolDescription,
-  emailArchiveToolParameters,
-  emailArchiveToolHandler,
-  emailCheckToolName,
-  emailCheckToolDescription,
-  emailCheckToolParameters,
-  emailCheckToolHandler,
-} from './email/index.js';
-
-// Register lesson tools
-registerTool(lessonStoreToolName, lessonStoreToolDescription, lessonStoreToolParameters, lessonStoreToolHandler);
-registerTool(lessonSearchToolName, lessonSearchToolDescription, lessonSearchToolParameters, lessonSearchToolHandler);
-
-// Register preference tools
-registerTool(preferenceUpdateToolName, preferenceUpdateToolDescription, preferenceUpdateToolParameters, preferenceUpdateToolHandler);
-registerTool(preferenceGetToolName, preferenceGetToolDescription, preferenceGetToolParameters, preferenceGetToolHandler);
-
-// === EMAIL TOOLS ===
-// Gmail integration for reading, sending, and managing emails
-
-// Register email tools (read)
-registerTool(emailListToolName, emailListToolDescription, emailListToolParameters, emailListToolHandler);
-registerTool(emailReadToolName, emailReadToolDescription, emailReadToolParameters, emailReadToolHandler);
-registerTool(emailCheckToolName, emailCheckToolDescription, emailCheckToolParameters, emailCheckToolHandler);
-
-// Register email tools (write)
-registerTool(emailSendToolName, emailSendToolDescription, emailSendToolParameters, emailSendToolHandler);
-registerTool(emailDeleteToolName, emailDeleteToolDescription, emailDeleteToolParameters, emailDeleteToolHandler);
-registerTool(emailArchiveToolName, emailArchiveToolDescription, emailArchiveToolParameters, emailArchiveToolHandler);
-
-// === WEB SEARCH TOOLS ===
-// Internet search via Tavily API
-
-import {
-  webSearchToolName,
-  webSearchToolDescription,
-  webSearchToolParameters,
-  webSearchToolHandler,
-} from './search.js';
-
-registerTool(webSearchToolName, webSearchToolDescription, webSearchToolParameters, webSearchToolHandler);
+for (const spec of allToolSpecs) {
+  registerTool(spec.name, spec.description, spec.parameters, spec.handler);
+}

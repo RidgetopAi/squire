@@ -12,7 +12,7 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { existsSync, writeFileSync, unlinkSync } from 'fs';
-import type { ToolHandler } from '../types.js';
+import type { ToolHandler, ToolSpec } from '../types.js';
 import type { ClaudeCodeArgs, ClaudeCodeResult } from './types.js';
 
 const execAsync = promisify(exec);
@@ -210,9 +210,9 @@ async function claudeCode(args: ClaudeCodeArgs): Promise<string> {
 
 // === TOOL DEFINITION ===
 
-export const claudeCodeToolName = 'claude_code';
-
-export const claudeCodeToolDescription = `Execute coding tasks using Claude Code on VPS.
+export const tools: ToolSpec[] = [{
+  name: 'claude_code',
+  description: `Execute coding tasks using Claude Code on VPS.
 
 This tool dispatches complex coding work to Claude Code running on the VPS with:
 - Full file system access
@@ -231,34 +231,33 @@ Use this for:
 Claude Code has access to Mandrel for context storage - it will persist important
 decisions, completions, and context automatically.
 
-Each call generates a fresh session. To resume a previous session, pass a valid UUID as sessionId.`;
-
-export const claudeCodeToolParameters = {
-  type: 'object',
-  properties: {
-    prompt: {
-      type: 'string',
-      description: 'The coding task to execute. Be specific about what to do, which files, and expected outcome.',
+Each call generates a fresh session. To resume a previous session, pass a valid UUID as sessionId.`,
+  parameters: {
+    type: 'object',
+    properties: {
+      prompt: {
+        type: 'string',
+        description: 'The coding task to execute. Be specific about what to do, which files, and expected outcome.',
+      },
+      workingDir: {
+        type: 'string',
+        description: 'Working directory on VPS (default: /opt/projects). Can be any path like /opt/squire for specific projects.',
+      },
+      sessionId: {
+        type: 'string',
+        description: 'Session ID (must be valid UUID) to resume a previous session. Omit for fresh session.',
+      },
+      model: {
+        type: 'string',
+        enum: ['opus', 'sonnet', 'haiku'],
+        description: 'Model to use (default: opus). Use sonnet/haiku for simpler tasks to save quota.',
+      },
+      timeout: {
+        type: 'number',
+        description: 'Timeout in milliseconds (default: 900000 = 15 min, max: 15 min).',
+      },
     },
-    workingDir: {
-      type: 'string',
-      description: 'Working directory on VPS (default: /opt/projects). Can be any path like /opt/squire for specific projects.',
-    },
-    sessionId: {
-      type: 'string',
-      description: 'Session ID (must be valid UUID) to resume a previous session. Omit for fresh session.',
-    },
-    model: {
-      type: 'string',
-      enum: ['opus', 'sonnet', 'haiku'],
-      description: 'Model to use (default: opus). Use sonnet/haiku for simpler tasks to save quota.',
-    },
-    timeout: {
-      type: 'number',
-      description: 'Timeout in milliseconds (default: 900000 = 15 min, max: 15 min).',
-    },
+    required: ['prompt'],
   },
-  required: ['prompt'],
-};
-
-export const claudeCodeToolHandler: ToolHandler<ClaudeCodeArgs> = claudeCode;
+  handler: claudeCode as ToolHandler,
+}];

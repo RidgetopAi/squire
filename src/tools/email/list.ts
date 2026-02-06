@@ -1,26 +1,8 @@
+import type { ToolHandler, ToolSpec } from '../types.js';
 import { listSyncEnabledAccounts } from '../../services/google/auth.js';
 import { listUnread } from '../../services/google/gmail.js';
 
-export const emailListToolName = 'email_list';
-
-export const emailListToolDescription = 'List recent or unread emails from Gmail. Returns email subjects, senders, and snippets.';
-
-export const emailListToolParameters = {
-  type: 'object',
-  properties: {
-    limit: {
-      type: 'number',
-      description: 'Maximum number of emails to return (default 10, max 20)',
-    },
-    unreadOnly: {
-      type: 'boolean',
-      description: 'Only show unread emails (default true)',
-    },
-  },
-  required: [],
-};
-
-export async function emailListToolHandler(args: { limit?: number; unreadOnly?: boolean }): Promise<string> {
+async function emailListToolHandler(args: { limit?: number; unreadOnly?: boolean }): Promise<string> {
   try {
     const accounts = await listSyncEnabledAccounts();
     if (accounts.length === 0) {
@@ -46,3 +28,25 @@ export async function emailListToolHandler(args: { limit?: number; unreadOnly?: 
     return `Error: ${error instanceof Error ? error.message : 'Unknown error'}`;
   }
 }
+
+export const tools: ToolSpec[] = [
+  {
+    name: 'email_list',
+    description: 'List recent or unread emails from Gmail. Returns email subjects, senders, and snippets.',
+    parameters: {
+      type: 'object',
+      properties: {
+        limit: {
+          type: 'number',
+          description: 'Maximum number of emails to return (default 10, max 20)',
+        },
+        unreadOnly: {
+          type: 'boolean',
+          description: 'Only show unread emails (default true)',
+        },
+      },
+      required: [],
+    },
+    handler: emailListToolHandler as ToolHandler,
+  },
+];

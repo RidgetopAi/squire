@@ -7,7 +7,7 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import type { ToolHandler } from '../types.js';
+import type { ToolHandler, ToolSpec } from '../types.js';
 import type { FileWriteArgs } from './types.js';
 import { resolvePath } from './policies.js';
 
@@ -65,9 +65,9 @@ Lines: ${lineCount}`;
 
 // === TOOL DEFINITION ===
 
-export const fileWriteToolName = 'file_write';
-
-export const fileWriteToolDescription = `Create a new file or overwrite an existing file with content.
+export const tools: ToolSpec[] = [{
+  name: 'file_write',
+  description: `Create a new file or overwrite an existing file with content.
 
 Use this tool to:
 - Create new source files
@@ -75,21 +75,20 @@ Use this tool to:
 - Save generated content
 
 Parent directories are created automatically if they don't exist.
-CAUTION: This will overwrite existing files without warning.`;
-
-export const fileWriteToolParameters = {
-  type: 'object',
-  properties: {
-    path: {
-      type: 'string',
-      description: 'Path to the file (absolute or relative to working directory)',
+CAUTION: This will overwrite existing files without warning.`,
+  parameters: {
+    type: 'object',
+    properties: {
+      path: {
+        type: 'string',
+        description: 'Path to the file (absolute or relative to working directory)',
+      },
+      content: {
+        type: 'string',
+        description: 'Content to write to the file',
+      },
     },
-    content: {
-      type: 'string',
-      description: 'Content to write to the file',
-    },
+    required: ['path', 'content'],
   },
-  required: ['path', 'content'],
-};
-
-export const fileWriteToolHandler: ToolHandler<FileWriteArgs> = fileWrite;
+  handler: fileWrite as ToolHandler,
+}];

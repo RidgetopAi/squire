@@ -9,7 +9,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
 import { config } from '../../config/index.js';
-import type { ToolHandler } from '../types.js';
+import type { ToolHandler, ToolSpec } from '../types.js';
 import type { GrepArgs } from './types.js';
 import { resolvePath, truncateOutput } from './policies.js';
 
@@ -259,9 +259,9 @@ async function executeBasicGrep(
 
 // === TOOL DEFINITION ===
 
-export const grepSearchToolName = 'grep_search';
-
-export const grepSearchToolDescription = `Search file contents for a pattern (regex supported).
+export const tools: ToolSpec[] = [{
+  name: 'grep_search',
+  description: `Search file contents for a pattern (regex supported).
 
 Output modes:
 - "content" (default): Show matching lines with context
@@ -269,38 +269,37 @@ Output modes:
 - "count": Show count of matches per file
 
 Uses ripgrep (rg) if available for fast searching, otherwise falls back to grep.
-Automatically ignores node_modules, .git, and minified files.`;
-
-export const grepSearchToolParameters = {
-  type: 'object',
-  properties: {
-    pattern: {
-      type: 'string',
-      description: 'Search pattern (supports regex)',
+Automatically ignores node_modules, .git, and minified files.`,
+  parameters: {
+    type: 'object',
+    properties: {
+      pattern: {
+        type: 'string',
+        description: 'Search pattern (supports regex)',
+      },
+      path: {
+        type: 'string',
+        description: 'Directory or file to search in (defaults to working directory)',
+      },
+      glob: {
+        type: 'string',
+        description: 'Glob pattern to filter files (e.g., "*.ts")',
+      },
+      context: {
+        type: 'number',
+        description: 'Number of context lines to show around matches',
+      },
+      case_sensitive: {
+        type: 'boolean',
+        description: 'Case sensitive search (default: smart-case)',
+      },
+      output_mode: {
+        type: 'string',
+        enum: ['content', 'files', 'count'],
+        description: 'Output format: content (lines), files (paths only), or count',
+      },
     },
-    path: {
-      type: 'string',
-      description: 'Directory or file to search in (defaults to working directory)',
-    },
-    glob: {
-      type: 'string',
-      description: 'Glob pattern to filter files (e.g., "*.ts")',
-    },
-    context: {
-      type: 'number',
-      description: 'Number of context lines to show around matches',
-    },
-    case_sensitive: {
-      type: 'boolean',
-      description: 'Case sensitive search (default: smart-case)',
-    },
-    output_mode: {
-      type: 'string',
-      enum: ['content', 'files', 'count'],
-      description: 'Output format: content (lines), files (paths only), or count',
-    },
+    required: ['pattern'],
   },
-  required: ['pattern'],
-};
-
-export const grepSearchToolHandler: ToolHandler<GrepArgs> = grepSearch;
+  handler: grepSearch as ToolHandler,
+}];

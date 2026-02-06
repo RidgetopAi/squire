@@ -6,7 +6,7 @@
 
 import { searchNotes, getPinnedNotes, listNotes, createNote, getNote, updateNote, findNoteByTitle } from '../services/notes.js';
 import { searchEntities } from '../services/entities.js';
-import type { ToolHandler } from './types.js';
+import type { ToolHandler, ToolSpec } from './types.js';
 
 // =============================================================================
 // SEARCH NOTES TOOL
@@ -57,31 +57,7 @@ async function handleSearchNotes(args: SearchNotesArgs): Promise<string> {
   }
 }
 
-export const searchNotesToolName = 'search_notes';
-
-export const searchNotesToolDescription =
-  'Search the user\'s notes using semantic similarity. Use this when the user asks to FIND a specific note or topic (e.g., "find my notes about cooking", "what did I write about the project?"). Do NOT use for listing all notes - use list_recent_notes instead.';
-
-export const searchNotesToolParameters = {
-  type: 'object',
-  properties: {
-    query: {
-      type: 'string',
-      description: 'The search query to find relevant notes (uses semantic similarity matching)',
-    },
-    limit: {
-      type: 'number',
-      description: 'Maximum number of notes to return (default: 10, max: 50)',
-    },
-    category: {
-      type: 'string',
-      description: 'Optional category filter (e.g., "work", "personal", "health")',
-    },
-  },
-  required: ['query'],
-};
-
-export const searchNotesToolHandler: ToolHandler<SearchNotesArgs> = handleSearchNotes;
+// Exported in tools array below
 
 // =============================================================================
 // GET PINNED NOTES TOOL
@@ -122,18 +98,7 @@ async function handleGetPinnedNotes(_args: GetPinnedNotesArgs | null): Promise<s
   }
 }
 
-export const getPinnedNotesToolName = 'get_pinned_notes';
-
-export const getPinnedNotesToolDescription =
-  'Get the user\'s pinned (important) notes. Use this when the user asks about their important notes or when you need quick access to notes they\'ve marked as significant.';
-
-export const getPinnedNotesToolParameters = {
-  type: 'object',
-  properties: {},
-  required: [],
-};
-
-export const getPinnedNotesToolHandler: ToolHandler<GetPinnedNotesArgs> = handleGetPinnedNotes;
+// Exported in tools array below
 
 // =============================================================================
 // LIST RECENT NOTES TOOL
@@ -178,27 +143,7 @@ async function handleListRecentNotes(args: ListRecentNotesArgs | null): Promise<
   }
 }
 
-export const listRecentNotesToolName = 'list_recent_notes';
-
-export const listRecentNotesToolDescription =
-  'Get ALL of the user\'s notes (most recent first). Use this when the user asks "what notes do I have?", "show me my notes", "list my notes", or wants to see all their notes. This is the DEFAULT tool for viewing notes - use search_notes only when looking for a specific topic.';
-
-export const listRecentNotesToolParameters = {
-  type: 'object',
-  properties: {
-    limit: {
-      type: 'number',
-      description: 'Maximum number of notes to return (default: 10, max: 50)',
-    },
-    category: {
-      type: 'string',
-      description: 'Optional category filter (e.g., "work", "personal", "health")',
-    },
-  },
-  required: [],
-};
-
-export const listRecentNotesToolHandler: ToolHandler<ListRecentNotesArgs> = handleListRecentNotes;
+// Exported in tools array below
 
 // =============================================================================
 // CREATE NOTE TOOL
@@ -266,44 +211,7 @@ async function handleCreateNote(args: CreateNoteArgs): Promise<string> {
   }
 }
 
-export const createNoteToolName = 'create_note';
-
-export const createNoteToolDescription =
-  'Create a NEW note for the user. Use ONLY when creating a brand new note, NOT when adding to an existing note. If the user mentions adding to or updating an existing note by name (e.g., "add to my Ruby note"), use append_to_note instead.';
-
-export const createNoteToolParameters = {
-  type: 'object',
-  properties: {
-    content: {
-      type: 'string',
-      description: 'The main content/body of the note',
-    },
-    title: {
-      type: 'string',
-      description: 'Optional title for the note (infer from content if not specified)',
-    },
-    category: {
-      type: 'string',
-      description: 'Optional category (e.g., "work", "personal", "health", "project")',
-    },
-    tags: {
-      type: 'array',
-      items: { type: 'string' },
-      description: 'Optional tags for organization',
-    },
-    is_pinned: {
-      type: 'boolean',
-      description: 'Whether to pin this note as important (default: false)',
-    },
-    entity_name: {
-      type: 'string',
-      description: 'Name of a person, project, or other entity to link this note to (e.g., "Sarah", "Project Phoenix")',
-    },
-  },
-  required: ['content'],
-};
-
-export const createNoteToolHandler: ToolHandler<CreateNoteArgs> = handleCreateNote;
+// Exported in tools array below
 
 // =============================================================================
 // APPEND TO NOTE TOOL
@@ -370,32 +278,129 @@ async function handleAppendToNote(args: AppendToNoteArgs): Promise<string> {
   }
 }
 
-export const appendToNoteToolName = 'append_to_note';
+// =============================================================================
+// TOOL SPECS EXPORT
+// =============================================================================
 
-export const appendToNoteToolDescription =
-  'Append additional content to an existing note. Use this when the user wants to ADD to or UPDATE an existing note (e.g., "add this to my Ruby note", "update my project notes with..."). You can find the note by title (fuzzy match) or ID.';
-
-export const appendToNoteToolParameters = {
-  type: 'object',
-  properties: {
-    note_title: {
-      type: 'string',
-      description: 'The title of the note to append to (supports fuzzy matching). Use this when the user refers to a note by name.',
+export const tools: ToolSpec[] = [
+  {
+    name: 'search_notes',
+    description:
+      'Search the user\'s notes using semantic similarity. Use this when the user asks to FIND a specific note or topic (e.g., "find my notes about cooking", "what did I write about the project?"). Do NOT use for listing all notes - use list_recent_notes instead.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'The search query to find relevant notes (uses semantic similarity matching)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of notes to return (default: 10, max: 50)',
+        },
+        category: {
+          type: 'string',
+          description: 'Optional category filter (e.g., "work", "personal", "health")',
+        },
+      },
+      required: ['query'],
     },
-    note_id: {
-      type: 'string',
-      description: 'The UUID of the note (use if you already have it from a previous operation)',
-    },
-    content: {
-      type: 'string',
-      description: 'The content to append to the note',
-    },
-    separator: {
-      type: 'string',
-      description: 'Separator between existing and new content (default: double newline)',
-    },
+    handler: handleSearchNotes as ToolHandler,
   },
-  required: ['content'],
-};
-
-export const appendToNoteToolHandler: ToolHandler<AppendToNoteArgs> = handleAppendToNote;
+  {
+    name: 'get_pinned_notes',
+    description:
+      'Get the user\'s pinned (important) notes. Use this when the user asks about their important notes or when you need quick access to notes they\'ve marked as significant.',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+    handler: handleGetPinnedNotes as ToolHandler,
+  },
+  {
+    name: 'list_recent_notes',
+    description:
+      'Get ALL of the user\'s notes (most recent first). Use this when the user asks "what notes do I have?", "show me my notes", "list my notes", or wants to see all their notes. This is the DEFAULT tool for viewing notes - use search_notes only when looking for a specific topic.',
+    parameters: {
+      type: 'object',
+      properties: {
+        limit: {
+          type: 'number',
+          description: 'Maximum number of notes to return (default: 10, max: 50)',
+        },
+        category: {
+          type: 'string',
+          description: 'Optional category filter (e.g., "work", "personal", "health")',
+        },
+      },
+      required: [],
+    },
+    handler: handleListRecentNotes as ToolHandler,
+  },
+  {
+    name: 'create_note',
+    description:
+      'Create a NEW note for the user. Use ONLY when creating a brand new note, NOT when adding to an existing note. If the user mentions adding to or updating an existing note by name (e.g., "add to my Ruby note"), use append_to_note instead.',
+    parameters: {
+      type: 'object',
+      properties: {
+        content: {
+          type: 'string',
+          description: 'The main content/body of the note',
+        },
+        title: {
+          type: 'string',
+          description: 'Optional title for the note (infer from content if not specified)',
+        },
+        category: {
+          type: 'string',
+          description: 'Optional category (e.g., "work", "personal", "health", "project")',
+        },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Optional tags for organization',
+        },
+        is_pinned: {
+          type: 'boolean',
+          description: 'Whether to pin this note as important (default: false)',
+        },
+        entity_name: {
+          type: 'string',
+          description: 'Name of a person, project, or other entity to link this note to (e.g., "Sarah", "Project Phoenix")',
+        },
+      },
+      required: ['content'],
+    },
+    handler: handleCreateNote as ToolHandler,
+  },
+  {
+    name: 'append_to_note',
+    description:
+      'Append additional content to an existing note. Use this when the user wants to ADD to or UPDATE an existing note (e.g., "add this to my Ruby note", "update my project notes with..."). You can find the note by title (fuzzy match) or ID.',
+    parameters: {
+      type: 'object',
+      properties: {
+        note_title: {
+          type: 'string',
+          description: 'The title of the note to append to (supports fuzzy matching). Use this when the user refers to a note by name.',
+        },
+        note_id: {
+          type: 'string',
+          description: 'The UUID of the note (use if you already have it from a previous operation)',
+        },
+        content: {
+          type: 'string',
+          description: 'The content to append to the note',
+        },
+        separator: {
+          type: 'string',
+          description: 'Separator between existing and new content (default: double newline)',
+        },
+      },
+      required: ['content'],
+    },
+    handler: handleAppendToNote as ToolHandler,
+  },
+];

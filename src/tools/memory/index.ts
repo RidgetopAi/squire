@@ -1,27 +1,14 @@
 /**
  * Memory Tools - lessons and preferences
  *
- * Re-exports all memory tool definitions for registration.
+ * Re-exports all memory tool specs for registration.
  */
 
-export {
-  lessonStoreToolName,
-  lessonStoreToolDescription,
-  lessonStoreToolParameters,
-  lessonStoreToolHandler,
-  lessonSearchToolName,
-  lessonSearchToolDescription,
-  lessonSearchToolParameters,
-  lessonSearchToolHandler,
-} from './lesson.js';
+import type { ToolSpec } from '../types.js';
+import { tools as lessonTools } from './lesson.js';
+import { tools as preferenceTools } from './preference.js';
 
-export {
-  preferenceUpdateToolName,
-  preferenceUpdateToolDescription,
-  preferenceUpdateToolParameters,
-  preferenceUpdateToolHandler,
-  preferenceGetToolName,
-  preferenceGetToolDescription,
-  preferenceGetToolParameters,
-  preferenceGetToolHandler,
-} from './preference.js';
+export const tools: ToolSpec[] = [
+  ...lessonTools,
+  ...preferenceTools,
+];

@@ -9,7 +9,7 @@ import { glob } from 'glob';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { config } from '../../config/index.js';
-import type { ToolHandler } from '../types.js';
+import type { ToolHandler, ToolSpec } from '../types.js';
 import type { GlobArgs } from './types.js';
 import { resolvePath } from './policies.js';
 
@@ -120,9 +120,9 @@ function formatSize(bytes: number): string {
 
 // === TOOL DEFINITION ===
 
-export const globFilesToolName = 'glob_files';
-
-export const globFilesToolDescription = `Find files matching a glob pattern.
+export const tools: ToolSpec[] = [{
+  name: 'glob_files',
+  description: `Find files matching a glob pattern.
 
 Common patterns:
 - "*.ts" - TypeScript files in current directory
@@ -131,25 +131,24 @@ Common patterns:
 - "**/test*.ts" - Test files anywhere
 
 Returns file paths with size and modification time.
-Automatically ignores node_modules and .git directories.`;
-
-export const globFilesToolParameters = {
-  type: 'object',
-  properties: {
-    pattern: {
-      type: 'string',
-      description: 'Glob pattern to match files (e.g., "**/*.ts")',
+Automatically ignores node_modules and .git directories.`,
+  parameters: {
+    type: 'object',
+    properties: {
+      pattern: {
+        type: 'string',
+        description: 'Glob pattern to match files (e.g., "**/*.ts")',
+      },
+      path: {
+        type: 'string',
+        description: 'Base directory to search from (defaults to working directory)',
+      },
+      limit: {
+        type: 'number',
+        description: 'Maximum number of results to return (default: 100)',
+      },
     },
-    path: {
-      type: 'string',
-      description: 'Base directory to search from (defaults to working directory)',
-    },
-    limit: {
-      type: 'number',
-      description: 'Maximum number of results to return (default: 100)',
-    },
+    required: ['pattern'],
   },
-  required: ['pattern'],
-};
-
-export const globFilesToolHandler: ToolHandler<GlobArgs> = globFiles;
+  handler: globFiles as ToolHandler,
+}];

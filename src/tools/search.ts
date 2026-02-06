@@ -5,7 +5,7 @@
  * Allows the LLM to look up current information, research topics, etc.
  */
 
-import type { ToolHandler } from './types.js';
+import type { ToolHandler, ToolSpec } from './types.js';
 
 // === TYPES ===
 
@@ -98,29 +98,27 @@ async function webSearch(args: WebSearchArgs): Promise<string> {
 
 // === TOOL DEFINITION ===
 
-export const webSearchToolName = 'web_search';
-
-export const webSearchToolDescription =
-  'Search the internet for current information. Use this when you need to look up recent events, find documentation, research topics, or get information that may not be in your training data. Returns titles, URLs, and snippets from relevant web pages.';
-
-export const webSearchToolParameters = {
-  type: 'object',
-  properties: {
-    query: {
-      type: 'string',
-      description: 'The search query to look up on the internet',
+export const tools: ToolSpec[] = [{
+  name: 'web_search',
+  description: 'Search the internet for current information. Use this when you need to look up recent events, find documentation, research topics, or get information that may not be in your training data. Returns titles, URLs, and snippets from relevant web pages.',
+  parameters: {
+    type: 'object',
+    properties: {
+      query: {
+        type: 'string',
+        description: 'The search query to look up on the internet',
+      },
+      max_results: {
+        type: 'number',
+        description: 'Maximum number of results to return (default: 5, max: 10)',
+      },
+      search_depth: {
+        type: 'string',
+        enum: ['basic', 'advanced'],
+        description: 'Search depth: "basic" for quick results, "advanced" for more thorough search',
+      },
     },
-    max_results: {
-      type: 'number',
-      description: 'Maximum number of results to return (default: 5, max: 10)',
-    },
-    search_depth: {
-      type: 'string',
-      enum: ['basic', 'advanced'],
-      description: 'Search depth: "basic" for quick results, "advanced" for more thorough search',
-    },
+    required: ['query'],
   },
-  required: ['query'],
-};
-
-export const webSearchToolHandler: ToolHandler<WebSearchArgs> = webSearch;
+  handler: webSearch as ToolHandler,
+}];

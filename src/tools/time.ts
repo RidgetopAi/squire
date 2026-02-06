@@ -6,7 +6,7 @@
  */
 
 import { config } from '../config/index.js';
-import type { ToolHandler } from './types.js';
+import type { ToolHandler, ToolSpec } from './types.js';
 
 // === TYPES ===
 
@@ -67,22 +67,19 @@ function getCurrentTime(args: GetCurrentTimeArgs): string {
 
 // === TOOL DEFINITION ===
 
-export const timeToolName = 'get_current_time';
-
-export const timeToolDescription =
-  'Get the current date and time. Use this when the user asks about the current time, date, day of the week, or when you need to calculate relative times like "in 30 minutes" or "tomorrow".';
-
-export const timeToolParameters = {
-  type: 'object',
-  properties: {
-    format: {
-      type: 'string',
-      enum: ['full', 'date', 'time'],
-      description:
-        'Output format: "full" for date and time (default), "date" for date only, "time" for time only',
+export const tools: ToolSpec[] = [{
+  name: 'get_current_time',
+  description: 'Get the current date and time. Use this when the user asks about the current time, date, day of the week, or when you need to calculate relative times like "in 30 minutes" or "tomorrow".',
+  parameters: {
+    type: 'object',
+    properties: {
+      format: {
+        type: 'string',
+        enum: ['full', 'date', 'time'],
+        description: 'Output format: "full" for date and time (default), "date" for date only, "time" for time only',
+      },
     },
+    required: [],
   },
-  required: [],
-};
-
-export const timeToolHandler: ToolHandler<GetCurrentTimeArgs> = getCurrentTime;
+  handler: getCurrentTime as ToolHandler,
+}];

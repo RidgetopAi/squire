@@ -14,7 +14,7 @@ import { getAllEvents, pushEventToGoogle, type GoogleEvent } from '../services/g
 import { getDefaultPushCalendar } from '../services/google/calendars.js';
 import { listSyncEnabledAccounts } from '../services/google/auth.js';
 import { config } from '../config/index.js';
-import type { ToolHandler } from './types.js';
+import type { ToolHandler, ToolSpec } from './types.js';
 
 // =============================================================================
 // DATE/TIME FORMATTING HELPERS
@@ -231,31 +231,7 @@ async function handleGetUpcomingEvents(args: GetUpcomingEventsArgs | null): Prom
   }
 }
 
-export const getUpcomingEventsToolName = 'get_upcoming_events';
-
-export const getUpcomingEventsToolDescription =
-  'Get the user\'s upcoming scheduled items (commitments, tasks with due dates, and calendar events if synced). Use when user asks "what\'s coming up?", "what do I have planned?", or "what\'s on my schedule?" Returns scheduled items for the next N days. IMPORTANT: Use the date_label and time_local fields directly when presenting events - these are pre-computed for the user\'s timezone.';
-
-export const getUpcomingEventsToolParameters = {
-  type: 'object',
-  properties: {
-    days: {
-      type: 'number',
-      description: 'Number of days ahead to look (default: 7, max: 30)',
-    },
-    limit: {
-      type: 'number',
-      description: 'Maximum number of events to return (default: 50)',
-    },
-    include_completed: {
-      type: 'boolean',
-      description: 'Include completed events (default: false)',
-    },
-  },
-  required: [],
-};
-
-export const getUpcomingEventsToolHandler: ToolHandler<GetUpcomingEventsArgs> = handleGetUpcomingEvents;
+// Exported in tools array below
 
 // =============================================================================
 // GET TODAY'S EVENTS TOOL
@@ -338,23 +314,7 @@ async function handleGetTodaysEvents(args: GetTodaysEventsArgs | null): Promise<
   }
 }
 
-export const getTodaysEventsToolName = 'get_todays_events';
-
-export const getTodaysEventsToolDescription =
-  'Get the user\'s scheduled items for TODAY plus any overdue items. Use when user asks "what do I have today?", "what\'s on my schedule today?", or "anything due today?" IMPORTANT: Use the time_local field when presenting event times.';
-
-export const getTodaysEventsToolParameters = {
-  type: 'object',
-  properties: {
-    include_overdue: {
-      type: 'boolean',
-      description: 'Include overdue events from previous days (default: true)',
-    },
-  },
-  required: [],
-};
-
-export const getTodaysEventsToolHandler: ToolHandler<GetTodaysEventsArgs> = handleGetTodaysEvents;
+// Exported in tools array below
 
 // =============================================================================
 // GET EVENTS DUE SOON TOOL
@@ -428,23 +388,7 @@ async function handleGetEventsDueSoon(args: GetEventsDueSoonArgs | null): Promis
   }
 }
 
-export const getEventsDueSoonToolName = 'get_events_due_soon';
-
-export const getEventsDueSoonToolDescription =
-  'Get events that are due soon (within a specified number of hours). Use this when the user asks "what\'s coming up soon?", "do I have anything urgent?", or needs to know about imminent deadlines. IMPORTANT: Use date_label and time_local fields when presenting events.';
-
-export const getEventsDueSoonToolParameters = {
-  type: 'object',
-  properties: {
-    within_hours: {
-      type: 'number',
-      description: 'Hours ahead to look for due events (default: 24)',
-    },
-  },
-  required: [],
-};
-
-export const getEventsDueSoonToolHandler: ToolHandler<GetEventsDueSoonArgs> = handleGetEventsDueSoon;
+// Exported in tools array below
 
 // =============================================================================
 // CREATE CALENDAR EVENT TOOL
@@ -577,40 +521,101 @@ async function handleCreateCalendarEvent(args: CreateCalendarEventArgs): Promise
   }
 }
 
-export const createCalendarEventToolName = 'create_calendar_event';
+// =============================================================================
+// TOOL SPECS EXPORT
+// =============================================================================
 
-export const createCalendarEventToolDescription =
-  'Create a new event in the user\'s Google Calendar. Use this when the user asks to add something to their calendar, schedule an event, or block time. Examples: "add a meeting to my calendar", "schedule dentist appointment", "block Friday 8am-5pm for Pad-A-Thon".';
-
-export const createCalendarEventToolParameters = {
-  type: 'object',
-  properties: {
-    title: {
-      type: 'string',
-      description: 'The title/name of the event (e.g., "Team Meeting", "Dentist Appointment")',
+export const tools: ToolSpec[] = [
+  {
+    name: 'get_upcoming_events',
+    description:
+      'Get the user\'s upcoming scheduled items (commitments, tasks with due dates, and calendar events if synced). Use when user asks "what\'s coming up?", "what do I have planned?", or "what\'s on my schedule?" Returns scheduled items for the next N days. IMPORTANT: Use the date_label and time_local fields directly when presenting events - these are pre-computed for the user\'s timezone.',
+    parameters: {
+      type: 'object',
+      properties: {
+        days: {
+          type: 'number',
+          description: 'Number of days ahead to look (default: 7, max: 30)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of events to return (default: 50)',
+        },
+        include_completed: {
+          type: 'boolean',
+          description: 'Include completed events (default: false)',
+        },
+      },
+      required: [],
     },
-    start_time: {
-      type: 'string',
-      description: 'The start date/time in ISO 8601 format. For timed events use full datetime (e.g., "2026-01-09T08:00:00"). For all-day events use date only (e.g., "2026-01-09").',
-    },
-    duration_minutes: {
-      type: 'number',
-      description: 'Duration in minutes (default: 60). For multi-hour events, calculate minutes (e.g., 8am-5pm = 540 minutes).',
-    },
-    all_day: {
-      type: 'boolean',
-      description: 'Whether this is an all-day event (default: false). If true, only the date portion of start_time is used.',
-    },
-    description: {
-      type: 'string',
-      description: 'Optional description or notes for the event.',
-    },
-    location: {
-      type: 'string',
-      description: 'Optional location for the event.',
-    },
+    handler: handleGetUpcomingEvents as ToolHandler,
   },
-  required: ['title', 'start_time'],
-};
-
-export const createCalendarEventToolHandler: ToolHandler<CreateCalendarEventArgs> = handleCreateCalendarEvent;
+  {
+    name: 'get_todays_events',
+    description:
+      'Get the user\'s scheduled items for TODAY plus any overdue items. Use when user asks "what do I have today?", "what\'s on my schedule today?", or "anything due today?" IMPORTANT: Use the time_local field when presenting event times.',
+    parameters: {
+      type: 'object',
+      properties: {
+        include_overdue: {
+          type: 'boolean',
+          description: 'Include overdue events from previous days (default: true)',
+        },
+      },
+      required: [],
+    },
+    handler: handleGetTodaysEvents as ToolHandler,
+  },
+  {
+    name: 'get_events_due_soon',
+    description:
+      'Get events that are due soon (within a specified number of hours). Use this when the user asks "what\'s coming up soon?", "do I have anything urgent?", or needs to know about imminent deadlines. IMPORTANT: Use date_label and time_local fields when presenting events.',
+    parameters: {
+      type: 'object',
+      properties: {
+        within_hours: {
+          type: 'number',
+          description: 'Hours ahead to look for due events (default: 24)',
+        },
+      },
+      required: [],
+    },
+    handler: handleGetEventsDueSoon as ToolHandler,
+  },
+  {
+    name: 'create_calendar_event',
+    description:
+      'Create a new event in the user\'s Google Calendar. Use this when the user asks to add something to their calendar, schedule an event, or block time. Examples: "add a meeting to my calendar", "schedule dentist appointment", "block Friday 8am-5pm for Pad-A-Thon".',
+    parameters: {
+      type: 'object',
+      properties: {
+        title: {
+          type: 'string',
+          description: 'The title/name of the event (e.g., "Team Meeting", "Dentist Appointment")',
+        },
+        start_time: {
+          type: 'string',
+          description: 'The start date/time in ISO 8601 format. For timed events use full datetime (e.g., "2026-01-09T08:00:00"). For all-day events use date only (e.g., "2026-01-09").',
+        },
+        duration_minutes: {
+          type: 'number',
+          description: 'Duration in minutes (default: 60). For multi-hour events, calculate minutes (e.g., 8am-5pm = 540 minutes).',
+        },
+        all_day: {
+          type: 'boolean',
+          description: 'Whether this is an all-day event (default: false). If true, only the date portion of start_time is used.',
+        },
+        description: {
+          type: 'string',
+          description: 'Optional description or notes for the event.',
+        },
+        location: {
+          type: 'string',
+          description: 'Optional location for the event.',
+        },
+      },
+      required: ['title', 'start_time'],
+    },
+    handler: handleCreateCalendarEvent as ToolHandler,
+  },
+];

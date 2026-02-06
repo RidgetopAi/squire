@@ -6,7 +6,7 @@
  */
 
 import { getSystemHealth } from '../services/steward/index.js';
-import type { ToolHandler } from './types.js';
+import type { ToolHandler, ToolSpec } from './types.js';
 
 // === TYPES ===
 
@@ -77,21 +77,18 @@ async function stewardHealthCheck(args: StewardHealthCheckArgs): Promise<string>
 
 // === TOOL DEFINITION ===
 
-export const stewardHealthCheckToolName = 'steward_health_check';
-
-export const stewardHealthCheckToolDescription =
-  'Check the health of Squire system services and endpoints. Returns status of systemd services (squire, mandrel), health endpoints, and recent errors. Use this when troubleshooting issues or verifying system status.';
-
-export const stewardHealthCheckToolParameters = {
-  type: 'object',
-  properties: {
-    verbose: {
-      type: 'boolean',
-      description:
-        'If true, includes detailed error messages and all recent errors. Default is false for a concise summary.',
+export const tools: ToolSpec[] = [{
+  name: 'steward_health_check',
+  description: 'Check the health of Squire system services and endpoints. Returns status of systemd services (squire, mandrel), health endpoints, and recent errors. Use this when troubleshooting issues or verifying system status.',
+  parameters: {
+    type: 'object',
+    properties: {
+      verbose: {
+        type: 'boolean',
+        description: 'If true, includes detailed error messages and all recent errors. Default is false for a concise summary.',
+      },
     },
+    required: [],
   },
-  required: [],
-};
-
-export const stewardHealthCheckToolHandler: ToolHandler<StewardHealthCheckArgs> = stewardHealthCheck;
+  handler: stewardHealthCheck as ToolHandler,
+}];

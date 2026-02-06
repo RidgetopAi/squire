@@ -7,7 +7,7 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import type { ToolHandler } from '../types.js';
+import type { ToolHandler, ToolSpec } from '../types.js';
 import type { FileReadArgs } from './types.js';
 import {
   resolvePath,
@@ -128,9 +128,9 @@ Binary files cannot be displayed as text. Use appropriate tools to view or manip
 
 // === TOOL DEFINITION ===
 
-export const fileReadToolName = 'file_read';
-
-export const fileReadToolDescription = `Read the contents of a file. Returns the file content with line numbers.
+export const tools: ToolSpec[] = [{
+  name: 'file_read',
+  description: `Read the contents of a file. Returns the file content with line numbers.
 
 Use this tool to:
 - View source code files
@@ -138,26 +138,25 @@ Use this tool to:
 - Check file contents before editing
 
 For large files, use offset and limit to read specific sections.
-Binary files will return metadata instead of content.`;
-
-export const fileReadToolParameters = {
-  type: 'object',
-  properties: {
-    path: {
-      type: 'string',
-      description:
-        'Path to the file (absolute or relative to working directory)',
+Binary files will return metadata instead of content.`,
+  parameters: {
+    type: 'object',
+    properties: {
+      path: {
+        type: 'string',
+        description:
+          'Path to the file (absolute or relative to working directory)',
+      },
+      offset: {
+        type: 'number',
+        description: 'Line number to start reading from (1-indexed)',
+      },
+      limit: {
+        type: 'number',
+        description: 'Maximum number of lines to read',
+      },
     },
-    offset: {
-      type: 'number',
-      description: 'Line number to start reading from (1-indexed)',
-    },
-    limit: {
-      type: 'number',
-      description: 'Maximum number of lines to read',
-    },
+    required: ['path'],
   },
-  required: ['path'],
-};
-
-export const fileReadToolHandler: ToolHandler<FileReadArgs> = fileRead;
+  handler: fileRead as ToolHandler,
+}];

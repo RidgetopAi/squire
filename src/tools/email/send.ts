@@ -1,30 +1,8 @@
+import type { ToolHandler, ToolSpec } from '../types.js';
 import { listSyncEnabledAccounts } from '../../services/google/auth.js';
 import { sendEmail } from '../../services/google/gmail.js';
 
-export const emailSendToolName = 'email_send';
-
-export const emailSendToolDescription = 'Compose and send an email. Requires recipient, subject, and body.';
-
-export const emailSendToolParameters = {
-  type: 'object',
-  properties: {
-    to: {
-      type: 'string',
-      description: 'Recipient email address',
-    },
-    subject: {
-      type: 'string',
-      description: 'Email subject line',
-    },
-    body: {
-      type: 'string',
-      description: 'Email body content (plain text)',
-    },
-  },
-  required: ['to', 'subject', 'body'],
-};
-
-export async function emailSendToolHandler(args: { to: string; subject: string; body: string }): Promise<string> {
+async function emailSendToolHandler(args: { to: string; subject: string; body: string }): Promise<string> {
   try {
     const accounts = await listSyncEnabledAccounts();
     if (accounts.length === 0) {
@@ -42,3 +20,29 @@ export async function emailSendToolHandler(args: { to: string; subject: string; 
     return `Error: ${error instanceof Error ? error.message : 'Unknown error'}`;
   }
 }
+
+export const tools: ToolSpec[] = [
+  {
+    name: 'email_send',
+    description: 'Compose and send an email. Requires recipient, subject, and body.',
+    parameters: {
+      type: 'object',
+      properties: {
+        to: {
+          type: 'string',
+          description: 'Recipient email address',
+        },
+        subject: {
+          type: 'string',
+          description: 'Email subject line',
+        },
+        body: {
+          type: 'string',
+          description: 'Email body content (plain text)',
+        },
+      },
+      required: ['to', 'subject', 'body'],
+    },
+    handler: emailSendToolHandler as ToolHandler,
+  },
+];

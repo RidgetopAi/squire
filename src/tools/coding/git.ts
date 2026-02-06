@@ -8,7 +8,7 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { config } from '../../config/index.js';
-import type { ToolHandler } from '../types.js';
+import type { ToolHandler, ToolSpec } from '../types.js';
 import type { GitArgs, GitOperation } from './types.js';
 import { resolvePath, truncateOutput } from './policies.js';
 
@@ -149,9 +149,9 @@ function buildGitCommand(operation: GitOperation, args: string[]): string {
 
 // === TOOL DEFINITION ===
 
-export const gitOperationsToolName = 'git_operations';
-
-export const gitOperationsToolDescription = `Execute git operations in a repository.
+export const tools: ToolSpec[] = [{
+  name: 'git_operations',
+  description: `Execute git operations in a repository.
 
 Available operations:
 - status: Show working tree status (porcelain format)
@@ -173,27 +173,26 @@ Examples:
 - add: args: ["file1.ts", "file2.ts"]
 - commit: args: ["-m", "Fix bug in login"]
 - branch: args: ["-d", "feature-branch"] to delete
-- checkout: args: ["main"] or args: ["-b", "new-branch"]`;
-
-export const gitOperationsToolParameters = {
-  type: 'object',
-  properties: {
-    operation: {
-      type: 'string',
-      enum: ['status', 'diff', 'log', 'add', 'commit', 'branch', 'checkout', 'pull', 'push'],
-      description: 'Git operation to perform',
+- checkout: args: ["main"] or args: ["-b", "new-branch"]`,
+  parameters: {
+    type: 'object',
+    properties: {
+      operation: {
+        type: 'string',
+        enum: ['status', 'diff', 'log', 'add', 'commit', 'branch', 'checkout', 'pull', 'push'],
+        description: 'Git operation to perform',
+      },
+      args: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Additional arguments for the operation',
+      },
+      cwd: {
+        type: 'string',
+        description: 'Repository directory (defaults to working directory)',
+      },
     },
-    args: {
-      type: 'array',
-      items: { type: 'string' },
-      description: 'Additional arguments for the operation',
-    },
-    cwd: {
-      type: 'string',
-      description: 'Repository directory (defaults to working directory)',
-    },
+    required: ['operation'],
   },
-  required: ['operation'],
-};
-
-export const gitOperationsToolHandler: ToolHandler<GitArgs> = gitOperations;
+  handler: gitOperations as ToolHandler,
+}];
