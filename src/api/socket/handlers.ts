@@ -27,6 +27,7 @@ import {
   type ToolDefinition,
 } from '../../tools/index.js';
 import { streamLLM } from '../../services/llm/index.js';
+import { buildMemoryContext } from '../../services/memory/index.js';
 import { SQUIRE_SYSTEM_PROMPT_BASE, TOOL_CALLING_INSTRUCTIONS } from '../../constants/prompts.js';
 import type {
   ClientToServerEvents,
@@ -405,9 +406,20 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
     // Step 3: Build messages
     const messages: Array<{ role: string; content: string }> = [];
 
-    // System prompt with user identity, time grounding, tool instructions, and context
+    // System prompt with user identity, time grounding, tool instructions, memory, and context
     let systemContent = await buildSystemPrompt();
     systemContent += getCurrentTimeContext();
+
+    // Inject lessons and preferences from memory
+    try {
+      const memoryContext = await buildMemoryContext(message);
+      if (memoryContext) {
+        systemContent += `\n\n---\n\n${memoryContext}`;
+      }
+    } catch (error) {
+      console.error('[Socket] Memory context retrieval failed:', error);
+    }
+
     if (contextMarkdown) {
       systemContent += `\n\n---\n\n${contextMarkdown}`;
     }
