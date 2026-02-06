@@ -218,6 +218,7 @@ import { tools as mandrelTools } from './mandrel/index.js';
 import { tools as memoryTools } from './memory/index.js';
 import { tools as emailTools } from './email/index.js';
 import { tools as searchTools } from './search.js';
+import { tools as scratchpadTools } from './scratchpad.js';
 
 const allToolSpecs: ToolSpec[] = [
   ...timeTools,
@@ -232,6 +233,7 @@ const allToolSpecs: ToolSpec[] = [
   ...memoryTools,
   ...emailTools,
   ...searchTools,
+  ...scratchpadTools,
 ];
 
 for (const spec of allToolSpecs) {
