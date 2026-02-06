@@ -618,14 +618,14 @@ export async function refreshCommitmentsSummary(): Promise<LivingSummary> {
 
 Rules:
 1. ONLY describe commitments that are currently OPEN - not past ones
-2. Use RELATIVE time references ("tomorrow", "this Wednesday", "next week") instead of absolute dates
+2. Use ABSOLUTE dates (e.g., "Monday, Feb 10" or "Thu, Feb 13") - NEVER use relative references like "tomorrow", "this Wednesday", or "next week" because this summary may be read on a different day than when it was generated
 3. Keep it concise but actionable
 4. Use second person ("you have", "you need to")
 5. Group by urgency if possible (today, this week, upcoming, no deadline)
 6. DO NOT mention any dates that have already passed
 7. Keep it to 100-200 words maximum
 
-Today's date is: ${dateStr}`;
+Today's date is: ${dateStr} (this summary was generated on this date)`;
 
   const prompt = `Current open commitments:
 ${commitmentList}
