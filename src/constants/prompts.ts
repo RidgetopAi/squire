@@ -171,4 +171,12 @@ Store lessons when:
 - A pattern worked well or failed unexpectedly
 - Brian corrects you or expresses a preference
 - You discover a technical insight worth remembering
-- You infer a preference from repeated interactions`;
+- You infer a preference from repeated interactions
+
+**Web Search (internet access):**
+- web_search: Search the internet for current information
+  - Use when you need recent news, documentation, or information outside your training
+  - Use for looking up APIs, libraries, products, or current events
+  - Use when Brian asks "what is X" and you're not sure or it might be recent
+  - Parameters: query (required), max_results (optional, default 5), search_depth (optional: "basic" or "advanced")
+  - Returns: Summary (if available) plus titles, URLs, and snippets from relevant pages`;

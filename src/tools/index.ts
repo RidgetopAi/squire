@@ -535,3 +535,15 @@ registerTool(emailCheckToolName, emailCheckToolDescription, emailCheckToolParame
 registerTool(emailSendToolName, emailSendToolDescription, emailSendToolParameters, emailSendToolHandler);
 registerTool(emailDeleteToolName, emailDeleteToolDescription, emailDeleteToolParameters, emailDeleteToolHandler);
 registerTool(emailArchiveToolName, emailArchiveToolDescription, emailArchiveToolParameters, emailArchiveToolHandler);
+
+// === WEB SEARCH TOOLS ===
+// Internet search via Tavily API
+
+import {
+  webSearchToolName,
+  webSearchToolDescription,
+  webSearchToolParameters,
+  webSearchToolHandler,
+} from './search.js';
+
+registerTool(webSearchToolName, webSearchToolDescription, webSearchToolParameters, webSearchToolHandler);
