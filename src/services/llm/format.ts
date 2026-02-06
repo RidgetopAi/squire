@@ -1,0 +1,208 @@
+/**
+ * LLM Message Format Conversion
+ *
+ * Single source of truth for converting between canonical (OpenAI-style)
+ * message format and provider-specific formats.
+ *
+ * Previously this logic was duplicated in 4 places. Now it's here.
+ */
+
+import type {
+  LLMMessage,
+  LLMResponse,
+  ToolDefinition,
+  ToolCall,
+  AnthropicResponse,
+  OpenAIResponse,
+} from './types.js';
+
+// === Anthropic Message Types ===
+
+type AnthropicContentItem = {
+  type: string;
+  tool_use_id?: string;
+  content?: string;
+  id?: string;
+  name?: string;
+  input?: unknown;
+  text?: string;
+};
+
+export type AnthropicMessage = {
+  role: 'user' | 'assistant';
+  content: string | AnthropicContentItem[];
+};
+
+export type AnthropicSystemBlock = {
+  type: 'text';
+  text: string;
+  cache_control: { type: 'ephemeral' };
+};
+
+export type AnthropicToolDef = {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+  cache_control?: { type: 'ephemeral' };
+};
+
+// === Conversion Functions ===
+
+/**
+ * Convert canonical messages to Anthropic format.
+ * Extracts system prompt (Anthropic uses top-level system field).
+ */
+export function toAnthropicMessages(messages: LLMMessage[]): {
+  system?: string;
+  messages: AnthropicMessage[];
+} {
+  let system: string | undefined;
+  const anthropicMessages: AnthropicMessage[] = [];
+
+  for (const msg of messages) {
+    if (msg.role === 'system') {
+      system = msg.content;
+    } else if (msg.role === 'user') {
+      anthropicMessages.push({ role: 'user', content: msg.content });
+    } else if (msg.role === 'assistant') {
+      if (msg.tool_calls && msg.tool_calls.length > 0) {
+        // Assistant message with tool calls → content blocks array
+        const content: AnthropicContentItem[] = [];
+        if (msg.content) {
+          content.push({ type: 'text', text: msg.content });
+        }
+        for (const tc of msg.tool_calls) {
+          content.push({
+            type: 'tool_use',
+            id: tc.id,
+            name: tc.function.name,
+            input: JSON.parse(tc.function.arguments),
+          });
+        }
+        anthropicMessages.push({ role: 'assistant', content });
+      } else {
+        anthropicMessages.push({ role: 'assistant', content: msg.content });
+      }
+    } else if (msg.role === 'tool' && msg.tool_call_id) {
+      // Tool results → user message with tool_result content block
+      anthropicMessages.push({
+        role: 'user',
+        content: [{ type: 'tool_result', tool_use_id: msg.tool_call_id, content: msg.content }],
+      });
+    }
+  }
+
+  return { system, messages: anthropicMessages };
+}
+
+/**
+ * Convert canonical tool definitions to Anthropic format.
+ * Adds cache_control to last tool for prompt caching.
+ */
+export function toAnthropicTools(tools: ToolDefinition[]): AnthropicToolDef[] {
+  return tools.map((tool, index) => {
+    const def: AnthropicToolDef = {
+      name: tool.function.name,
+      description: tool.function.description,
+      input_schema: tool.function.parameters as Record<string, unknown>,
+    };
+    // Cache the entire tool set by marking the last tool
+    if (index === tools.length - 1) {
+      def.cache_control = { type: 'ephemeral' };
+    }
+    return def;
+  });
+}
+
+/**
+ * Build Anthropic system block with prompt caching.
+ */
+export function toAnthropicSystem(systemPrompt: string): AnthropicSystemBlock[] {
+  return [
+    {
+      type: 'text',
+      text: systemPrompt,
+      cache_control: { type: 'ephemeral' },
+    },
+  ];
+}
+
+/**
+ * Convert canonical messages to OpenAI-compatible format.
+ * Used by Groq, xAI, Gemini.
+ */
+export function toOpenAIMessages(messages: LLMMessage[]): Array<Record<string, unknown>> {
+  return messages.map((msg) => {
+    if (msg.tool_calls) {
+      return {
+        role: msg.role,
+        content: msg.content || null,
+        tool_calls: msg.tool_calls,
+      };
+    }
+    if (msg.tool_call_id) {
+      return {
+        role: 'tool',
+        content: msg.content,
+        tool_call_id: msg.tool_call_id,
+      };
+    }
+    return { role: msg.role, content: msg.content };
+  });
+}
+
+// === Response Parsing ===
+
+/**
+ * Parse Anthropic API response to canonical format.
+ */
+export function fromAnthropicResponse(data: AnthropicResponse): LLMResponse {
+  let textContent = '';
+  const toolCalls: ToolCall[] = [];
+
+  for (const block of data.content ?? []) {
+    if (block.type === 'text' && block.text) {
+      textContent += block.text;
+    } else if (block.type === 'tool_use' && block.id && block.name) {
+      toolCalls.push({
+        id: block.id,
+        type: 'function',
+        function: {
+          name: block.name,
+          arguments: JSON.stringify(block.input),
+        },
+      });
+    }
+  }
+
+  return {
+    content: textContent,
+    toolCalls,
+    usage: data.usage ? {
+      promptTokens: data.usage.input_tokens,
+      completionTokens: data.usage.output_tokens,
+    } : undefined,
+    model: data.model,
+  };
+}
+
+/**
+ * Parse OpenAI-compatible response to canonical format.
+ */
+export function fromOpenAIResponse(data: OpenAIResponse): LLMResponse {
+  const choice = data.choices?.[0];
+
+  if (!choice) {
+    throw new Error('No response from LLM');
+  }
+
+  return {
+    content: choice.message?.content ?? '',
+    toolCalls: choice.message?.tool_calls ?? [],
+    usage: data.usage ? {
+      promptTokens: data.usage.prompt_tokens,
+      completionTokens: data.usage.completion_tokens,
+    } : undefined,
+    model: data.model,
+  };
+}

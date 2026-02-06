@@ -23,10 +23,10 @@ import {
   getToolDefinitions,
   hasTools,
   executeTools,
-  executeTool,
   type ToolCall,
   type ToolDefinition,
 } from '../../tools/index.js';
+import { streamLLM } from '../../services/llm/index.js';
 import { SQUIRE_SYSTEM_PROMPT_BASE, TOOL_CALLING_INSTRUCTIONS } from '../../constants/prompts.js';
 import type {
   ClientToServerEvents,
@@ -421,10 +421,10 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
     // Add current message
     messages.push({ role: 'user', content: message });
 
-    // Step 4: Stream LLM response with tools
+    // Step 4: Stream LLM response with iterative tool loop
     const tools = hasTools() ? getToolDefinitions() : undefined;
     console.log(`[Socket] Step 4: Starting ${config.llm.provider} stream... (${tools?.length ?? 0} tools available)`);
-    const streamResult = await streamGroqResponse(socket, conversationId, messages, abortController.signal, tools);
+    const streamResult = await streamWithToolLoop(socket, conversationId, messages, abortController.signal, tools);
     console.log(`[Socket] Stream complete: ${streamResult.content.length} chars`);
 
     // Step 5: Await extraction and stream follow-up acknowledgment if needed
@@ -518,754 +518,97 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
   }
 }
 
-// Type for tracking accumulated streaming tool calls
-interface StreamingToolCall {
-  id: string;
-  type: 'function';
-  function: {
-    name: string;
-    arguments: string;
-  };
-}
+// === Streaming with Tool Loop ===
+
+const MAX_TOOL_ITERATIONS = 10;
 
 /**
- * Parse Llama's XML-style function call format: <function=name{...}>...</function>
- * Returns null if parsing fails
+ * Stream LLM response with iterative tool execution loop.
+ *
+ * Uses the unified streamLLM service — all provider-specific SSE parsing,
+ * message formatting, and prompt caching is handled there.
+ *
+ * The tool loop is iterative (not recursive), with a hard cap at
+ * MAX_TOOL_ITERATIONS to prevent infinite loops.
  */
-function parseLlamaFunctionCall(failedGeneration: string): { name: string; arguments: string } | null {
-  try {
-    // Match pattern: <function=toolName{jsonArgs}>
-    // The failed_generation might be truncated, so we need to handle incomplete JSON
-    const match = failedGeneration.match(/<function=(\w+)(\{[\s\S]*)/);
-    if (!match) {
-      console.log(`[Socket] No function call pattern found in: ${failedGeneration.substring(0, 100)}`);
-      return null;
-    }
-
-    const toolName = match[1]!;
-    let argsString = match[2] ?? '{}';
-
-    // Remove trailing </function> or > if present
-    argsString = argsString.replace(/<\/function>.*$/, '').replace(/>\s*$/, '');
-
-    // Try to fix incomplete JSON by closing any open braces/brackets
-    let openBraces = 0;
-    let openBrackets = 0;
-    let inString = false;
-    let escaped = false;
-
-    for (const char of argsString) {
-      if (escaped) {
-        escaped = false;
-        continue;
-      }
-      if (char === '\\') {
-        escaped = true;
-        continue;
-      }
-      if (char === '"') {
-        inString = !inString;
-        continue;
-      }
-      if (!inString) {
-        if (char === '{') openBraces++;
-        else if (char === '}') openBraces--;
-        else if (char === '[') openBrackets++;
-        else if (char === ']') openBrackets--;
-      }
-    }
-
-    // Close any unclosed structures
-    while (openBrackets > 0) {
-      argsString += ']';
-      openBrackets--;
-    }
-    while (openBraces > 0) {
-      argsString += '}';
-      openBraces--;
-    }
-
-    // Validate JSON
-    JSON.parse(argsString);
-
-    console.log(`[Socket] Parsed Llama function: ${toolName} with args: ${argsString.substring(0, 200)}...`);
-    return { name: toolName, arguments: argsString };
-  } catch (error) {
-    console.log(`[Socket] Failed to parse Llama function call: ${error}`);
-    return null;
-  }
-}
-
-/**
- * Execute a parsed tool call and continue the conversation
- */
-async function executeParsedToolAndContinue(
+async function streamWithToolLoop(
   socket: TypedSocket,
   conversationId: string,
   messages: Array<{ role: string; content: string; tool_calls?: ToolCall[]; tool_call_id?: string }>,
-  parsed: { name: string; arguments: string },
   signal: AbortSignal,
   tools?: ToolDefinition[]
 ): Promise<{ content: string; usage?: { promptTokens: number; completionTokens: number } }> {
-  // Create a synthetic tool call
-  const toolCallId = `call_${Date.now()}`;
-  const toolCall: ToolCall = {
-    id: toolCallId,
-    type: 'function',
-    function: {
-      name: parsed.name,
-      arguments: parsed.arguments,
-    },
-  };
+  let fullContent = '';
+  let totalPromptTokens = 0;
+  let totalCompletionTokens = 0;
+  const currentMessages = [...messages];
 
-  // Execute the tool
-  console.log(`[Socket] Executing parsed tool: ${parsed.name}`);
-  const result = await executeTool(toolCall);
-  console.log(`[Socket] Tool result (${result.success ? 'success' : 'failed'}): ${result.result.substring(0, 200)}...`);
-
-  // Emit tool execution info to client
-  socket.emit('chat:chunk', {
-    conversationId,
-    chunk: '', // No visible chunk, tool executed silently
-    done: false,
-  });
-
-  // Add assistant message with tool call and tool result to messages
-  const updatedMessages = [
-    ...messages,
-    {
-      role: 'assistant',
-      content: '',
-      tool_calls: [toolCall],
-    },
-    {
-      role: 'tool',
-      content: result.result,
-      tool_call_id: toolCallId,
-    },
-  ];
-
-  // Continue conversation with tool result (without tools to get natural response)
-  return await streamGroqResponse(socket, conversationId, updatedMessages, signal, tools);
-}
-
-/**
- * Stream response from Anthropic API with tool calling support
- * Uses native Anthropic format (not OpenAI-compatible)
- */
-const MAX_TOOL_ITERATIONS = 10;
-
-async function streamAnthropicResponse(
-  socket: TypedSocket,
-  conversationId: string,
-  messages: Array<{ role: string; content: string; tool_calls?: ToolCall[]; tool_call_id?: string }>,
-  signal: AbortSignal,
-  tools?: ToolDefinition[],
-  toolIteration: number = 0
-): Promise<{ content: string; usage?: { promptTokens: number; completionTokens: number } }> {
-  if (toolIteration >= MAX_TOOL_ITERATIONS) {
-    console.warn(`[Socket] Anthropic tool loop hit max iterations (${MAX_TOOL_ITERATIONS}) for conversation ${conversationId}`);
-    socket.emit('chat:chunk', {
-      conversationId,
-      chunk: '\n\n[Tool execution limit reached. Stopping to prevent infinite loop.]',
-      done: false,
-    });
-    return { content: '[Tool execution limit reached]' };
-  }
-
-  const apiKey = config.llm.anthropicApiKey;
-  const apiEndpoint = `${config.llm.anthropicUrl}/v1/messages`;
-
-  if (!apiKey) {
-    socket.emit('chat:error', {
-      conversationId,
-      error: 'Anthropic API key not configured',
-      code: 'LLM_NOT_CONFIGURED',
-    });
-    return { content: '' };
-  }
-
-  // Separate system message from conversation
-  let systemPrompt: string | undefined;
-  const anthropicMessages: Array<{ role: 'user' | 'assistant'; content: string | Array<{ type: string; tool_use_id?: string; content?: string }> }> = [];
-
-  for (const msg of messages) {
-    if (msg.role === 'system') {
-      systemPrompt = msg.content;
-    } else if (msg.role === 'user') {
-      anthropicMessages.push({ role: 'user', content: msg.content });
-    } else if (msg.role === 'assistant') {
-      if (msg.tool_calls && msg.tool_calls.length > 0) {
-        // Assistant message with tool calls
-        const content: Array<{ type: string; id?: string; name?: string; input?: unknown; text?: string }> = [];
-        if (msg.content) {
-          content.push({ type: 'text', text: msg.content });
-        }
-        for (const tc of msg.tool_calls) {
-          let parsedInput = {};
-          try {
-            parsedInput = tc.function.arguments ? JSON.parse(tc.function.arguments) : {};
-          } catch {
-            console.warn(`[Socket] Failed to parse tool arguments for ${tc.function.name}: ${tc.function.arguments}`);
-          }
-          content.push({
-            type: 'tool_use',
-            id: tc.id,
-            name: tc.function.name,
-            input: parsedInput,
+  for (let iteration = 0; iteration <= MAX_TOOL_ITERATIONS; iteration++) {
+    // Stream one LLM response
+    const response = await streamLLM(
+      currentMessages as Parameters<typeof streamLLM>[0],
+      tools,
+      {
+        onChunk: (chunk) => {
+          socket.emit('chat:chunk', {
+            conversationId,
+            chunk,
+            done: false,
           });
-        }
-        anthropicMessages.push({ role: 'assistant', content: content as never });
-      } else {
-        anthropicMessages.push({ role: 'assistant', content: msg.content });
-      }
-    } else if (msg.role === 'tool' && msg.tool_call_id) {
-      // Tool results go as user message with tool_result content block
-      anthropicMessages.push({
-        role: 'user',
-        content: [{ type: 'tool_result', tool_use_id: msg.tool_call_id, content: msg.content }],
+        },
+      },
+      { signal }
+    );
+
+    fullContent += response.content;
+    totalPromptTokens += response.usage?.promptTokens ?? 0;
+    totalCompletionTokens += response.usage?.completionTokens ?? 0;
+
+    // No tool calls → we're done
+    if (response.toolCalls.length === 0) {
+      break;
+    }
+
+    // Check iteration limit
+    if (iteration >= MAX_TOOL_ITERATIONS) {
+      console.warn(`[Socket] Tool loop hit max iterations (${MAX_TOOL_ITERATIONS}) for conversation ${conversationId}`);
+      socket.emit('chat:chunk', {
+        conversationId,
+        chunk: '\n\n[Tool execution limit reached.]',
+        done: false,
+      });
+      break;
+    }
+
+    // Execute tool calls
+    console.log(`[Socket] Tool iteration ${iteration + 1}: ${response.toolCalls.map((t) => t.function.name).join(', ')}`);
+    const toolResults = await executeTools(response.toolCalls);
+
+    for (const result of toolResults) {
+      console.log(`[Socket] Tool ${result.name}: ${result.success ? 'success' : 'failed'}`);
+    }
+
+    // Add assistant message with tool calls + tool results to conversation
+    currentMessages.push({
+      role: 'assistant',
+      content: response.content,
+      tool_calls: response.toolCalls,
+    });
+
+    for (const result of toolResults) {
+      currentMessages.push({
+        role: 'tool',
+        tool_call_id: result.toolCallId,
+        content: result.result,
       });
     }
+
+    // Loop continues — will stream next LLM response with tool results
   }
 
-  // Build request body
-  const requestBody: Record<string, unknown> = {
-    model: config.llm.model,
-    messages: anthropicMessages,
-    max_tokens: config.llm.maxTokens,
-    temperature: config.llm.temperature,
-    stream: true,
-  };
-
-  if (systemPrompt) {
-    // Use cache_control for prompt caching (90% cost reduction on cached tokens)
-    requestBody.system = [
-      {
-        type: 'text',
-        text: systemPrompt,
-        cache_control: { type: 'ephemeral' },
-      },
-    ];
-  }
-
-  // Add tools if provided (convert to Anthropic format)
-  if (tools && tools.length > 0) {
-    // Add cache_control to last tool so entire tool set gets cached
-    requestBody.tools = tools.map((tool, index) => {
-      const toolDef: Record<string, unknown> = {
-        name: tool.function.name,
-        description: tool.function.description,
-        input_schema: tool.function.parameters,
-      };
-      if (index === tools.length - 1) {
-        toolDef.cache_control = { type: 'ephemeral' };
-      }
-      return toolDef;
-    });
-  }
-
-  const apiTimeoutMs = config.llm.apiTimeoutMs;
-  const timeoutController = new AbortController();
-  const timeoutId = setTimeout(() => {
-    console.log(`[Socket] Anthropic API timeout after ${apiTimeoutMs}ms`);
-    timeoutController.abort();
-  }, apiTimeoutMs);
-
-  signal.addEventListener('abort', () => timeoutController.abort(), { once: true });
-
-  try {
-    const response = await fetch(apiEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'prompt-caching-2024-07-31',
-      },
-      body: JSON.stringify(requestBody),
-      signal: timeoutController.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[Socket] Anthropic API error: ${response.status} - ${errorText}`);
-      throw new Error(`Anthropic API error: ${response.status} - ${errorText}`);
-    }
-
-    // Process SSE stream
-    const reader = response.body?.getReader();
-    if (!reader) {
-      throw new Error('No response body');
-    }
-
-    const decoder = new TextDecoder();
-    let fullContent = '';
-    let buffer = '';
-    let inputTokens = 0;
-    let outputTokens = 0;
-    let currentToolCall: { id: string; name: string; input: string } | null = null;
-    const toolCalls: ToolCall[] = [];
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const data = line.slice(6);
-        if (data === '[DONE]') continue;
-
-        try {
-          const parsed = JSON.parse(data);
-
-          if (parsed.type === 'message_start' && parsed.message?.usage) {
-            inputTokens = parsed.message.usage.input_tokens ?? 0;
-          } else if (parsed.type === 'content_block_start') {
-            if (parsed.content_block?.type === 'tool_use') {
-              currentToolCall = {
-                id: parsed.content_block.id,
-                name: parsed.content_block.name,
-                input: '',
-              };
-            }
-          } else if (parsed.type === 'content_block_delta') {
-            if (parsed.delta?.type === 'text_delta' && parsed.delta.text) {
-              fullContent += parsed.delta.text;
-              socket.emit('chat:chunk', {
-                conversationId,
-                chunk: parsed.delta.text,
-                done: false,
-              });
-            } else if (parsed.delta?.type === 'input_json_delta' && currentToolCall) {
-              currentToolCall.input += parsed.delta.partial_json ?? '';
-            }
-          } else if (parsed.type === 'content_block_stop' && currentToolCall) {
-            toolCalls.push({
-              id: currentToolCall.id,
-              type: 'function',
-              function: {
-                name: currentToolCall.name,
-                arguments: currentToolCall.input,
-              },
-            });
-            currentToolCall = null;
-          } else if (parsed.type === 'message_delta' && parsed.usage) {
-            outputTokens = parsed.usage.output_tokens ?? 0;
-          }
-        } catch {
-          // Ignore parse errors for partial data
-        }
-      }
-    }
-
-    // Handle tool calls if any
-    if (toolCalls.length > 0) {
-      console.log(`[Socket] Anthropic tool calls detected: ${toolCalls.map((t) => t.function.name).join(', ')}`);
-
-      // Execute tools and continue
-      const toolResults = await executeTools(toolCalls);
-
-      // Build updated messages with tool results
-      const updatedMessages = [
-        ...messages,
-        {
-          role: 'assistant',
-          content: fullContent,
-          tool_calls: toolCalls,
-        },
-        ...toolResults.map((tr) => ({
-          role: 'tool',
-          content: tr.result,
-          tool_call_id: tr.toolCallId,
-        })),
-      ];
-
-      // Continue conversation (increment tool iteration counter)
-      return await streamAnthropicResponse(socket, conversationId, updatedMessages, signal, tools, toolIteration + 1);
-    }
-
-    socket.emit('chat:chunk', {
-      conversationId,
-      chunk: '',
-      done: true,
-    });
-
-    return {
-      content: fullContent,
-      usage: { promptTokens: inputTokens, completionTokens: outputTokens },
-    };
-  } catch (error) {
-    clearTimeout(timeoutId);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error(`[Socket] Anthropic streaming error: ${errorMessage}`);
-    socket.emit('chat:error', {
-      conversationId,
-      error: errorMessage,
-      code: 'LLM_ERROR',
-    });
-    return { content: '' };
-  }
-}
-
-/**
- * Stream response from Groq API with tool calling support
- * Returns the full content and usage for persistence
- */
-async function streamGroqResponse(
-  socket: TypedSocket,
-  conversationId: string,
-  messages: Array<{ role: string; content: string; tool_calls?: ToolCall[]; tool_call_id?: string }>,
-  signal: AbortSignal,
-  tools?: ToolDefinition[],
-  toolIteration: number = 0
-): Promise<{ content: string; usage?: { promptTokens: number; completionTokens: number } }> {
-  // Select API key and endpoint based on provider
-  const provider = config.llm.provider;
-  let apiKey: string;
-  let apiEndpoint: string;
-
-  if (provider === 'anthropic') {
-    // Anthropic uses a different API format - handle separately
-    return await streamAnthropicResponse(socket, conversationId, messages, signal, tools, toolIteration);
-  } else if (toolIteration >= MAX_TOOL_ITERATIONS) {
-    console.warn(`[Socket] ${provider} tool loop hit max iterations (${MAX_TOOL_ITERATIONS}) for conversation ${conversationId}`);
-    socket.emit('chat:chunk', {
-      conversationId,
-      chunk: '\n\n[Tool execution limit reached. Stopping to prevent infinite loop.]',
-      done: false,
-    });
-    return { content: '[Tool execution limit reached]' };
-  } else if (provider === 'xai') {
-    apiKey = config.llm.xaiApiKey;
-    apiEndpoint = 'https://api.x.ai/v1/chat/completions';
-  } else if (provider === 'gemini') {
-    apiKey = config.llm.geminiApiKey;
-    apiEndpoint = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
-  } else {
-    // Default to Groq
-    apiKey = config.llm.groqApiKey;
-    apiEndpoint = 'https://api.groq.com/openai/v1/chat/completions';
-  }
-
-  if (!apiKey) {
-    socket.emit('chat:error', {
-      conversationId,
-      error: `LLM service not configured (${provider})`,
-      code: 'LLM_NOT_CONFIGURED',
-    });
-    return { content: '' };
-  }
-
-  // Create a combined abort signal with timeout
-  const apiTimeoutMs = config.llm.apiTimeoutMs;
-  const timeoutController = new AbortController();
-  const timeoutId = setTimeout(() => {
-    console.log(`[Socket] ${provider} API timeout after ${apiTimeoutMs}ms`);
-    timeoutController.abort();
-  }, apiTimeoutMs);
-
-  // Abort if either the external signal or timeout fires
-  signal.addEventListener('abort', () => timeoutController.abort(), { once: true });
-
-  // Build request body
-  const requestBody: Record<string, unknown> = {
-    model: config.llm.model,
-    messages,
-    max_tokens: config.llm.maxTokens,
-    temperature: config.llm.temperature,
-    stream: true,
-  };
-
-  // Add tools if available
-  if (tools && tools.length > 0) {
-    requestBody.tools = tools;
-    requestBody.tool_choice = 'auto';
-  }
-
-  try {
-    const response = await fetch(apiEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(requestBody),
-      signal: timeoutController.signal,
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`${provider} API error: ${response.status} - ${errorText}`);
-    }
-
-    const reader = response.body?.getReader();
-    if (!reader) {
-      throw new Error('No response body');
-    }
-
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let totalTokens = 0;
-    let fullContent = '';
-
-    // Track tool calls as they stream in
-    const accumulatedToolCalls: Map<number, StreamingToolCall> = new Map();
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-
-        if (done) {
-          break;
-        }
-
-        const chunk = decoder.decode(value, { stream: true });
-        buffer += chunk;
-
-        // Debug: log first chunk to see raw response
-        if (totalTokens === 0 && fullContent === '') {
-          console.log(`[Socket] First stream chunk (${chunk.length} chars): ${chunk.substring(0, 500)}`);
-        }
-
-        // Process complete SSE messages
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          // Handle SSE error events
-          if (line.startsWith('event: error')) {
-            console.log(`[Socket] ${provider} SSE error event received`);
-            continue; // Next line will have the error data
-          }
-
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-
-            // Check if this is an error response
-            try {
-              const errorCheck = JSON.parse(data);
-              if (errorCheck.error) {
-                console.log(`[Socket] ${provider} API error: ${errorCheck.error.message}`);
-                // If tool calling failed, try to parse Llama's XML-style function call
-                if (errorCheck.error.code === 'tool_use_failed' && errorCheck.error.failed_generation) {
-                  const parsed = parseLlamaFunctionCall(errorCheck.error.failed_generation);
-                  if (parsed) {
-                    console.log(`[Socket] Parsed Llama XML function call: ${parsed.name}`);
-                    return await executeParsedToolAndContinue(
-                      socket,
-                      conversationId,
-                      messages,
-                      parsed,
-                      signal,
-                      tools
-                    );
-                  }
-                  // If parsing failed, retry without tools
-                  console.log(`[Socket] Tool use failed, could not parse, retrying without tools...`);
-                  return await streamGroqResponse(socket, conversationId, messages, signal, undefined);
-                }
-                socket.emit('chat:error', {
-                  conversationId,
-                  error: errorCheck.error.message,
-                  code: 'GROQ_API_ERROR',
-                });
-                return { content: '', usage: { promptTokens: 0, completionTokens: 0 } };
-              }
-            } catch {
-              // Not an error, continue normal processing
-            }
-
-            if (data === '[DONE]') {
-              console.log(`[Socket] Stream [DONE] received. Tool calls accumulated: ${accumulatedToolCalls.size}`);
-              // Check if we have tool calls to execute
-              if (accumulatedToolCalls.size > 0) {
-                return await handleToolCallsAndContinue(
-                  socket,
-                  conversationId,
-                  messages,
-                  fullContent,
-                  accumulatedToolCalls,
-                  signal,
-                  tools,
-                  totalTokens,
-                  toolIteration
-                );
-              }
-              return { content: fullContent, usage: { promptTokens: 0, completionTokens: totalTokens } };
-            }
-
-            try {
-              const parsed = JSON.parse(data) as {
-                choices: Array<{
-                  delta: {
-                    content?: string;
-                    tool_calls?: Array<{
-                      index: number;
-                      id?: string;
-                      type?: 'function';
-                      function?: {
-                        name?: string;
-                        arguments?: string;
-                      };
-                    }>;
-                  };
-                  finish_reason?: string | null;
-                }>;
-              };
-
-              const delta = parsed.choices[0]?.delta;
-              const finishReason = parsed.choices[0]?.finish_reason;
-
-              // Debug: log tool calls and finish reasons
-              if (delta?.tool_calls || finishReason) {
-                console.log(`[Socket] Stream delta: finish_reason=${finishReason}, tool_calls=${JSON.stringify(delta?.tool_calls)}`);
-              }
-
-              // Handle text content
-              if (delta?.content) {
-                fullContent += delta.content;
-                totalTokens++;
-                socket.emit('chat:chunk', {
-                  conversationId,
-                  chunk: delta.content,
-                  done: false,
-                });
-              }
-
-              // Handle streaming tool calls
-              if (delta?.tool_calls) {
-                for (const tc of delta.tool_calls) {
-                  const existing = accumulatedToolCalls.get(tc.index);
-
-                  if (existing) {
-                    // Append to existing tool call arguments
-                    if (tc.function?.arguments) {
-                      existing.function.arguments += tc.function.arguments;
-                    }
-                  } else if (tc.id && tc.function?.name) {
-                    // New tool call
-                    accumulatedToolCalls.set(tc.index, {
-                      id: tc.id,
-                      type: 'function',
-                      function: {
-                        name: tc.function.name,
-                        arguments: tc.function.arguments || '',
-                      },
-                    });
-                  }
-                }
-              }
-
-              if (finishReason === 'tool_calls') {
-                // Model wants to call tools
-                return await handleToolCallsAndContinue(
-                  socket,
-                  conversationId,
-                  messages,
-                  fullContent,
-                  accumulatedToolCalls,
-                  signal,
-                  tools,
-                  totalTokens,
-                  toolIteration
-                );
-              }
-
-              if (finishReason === 'stop') {
-                return { content: fullContent, usage: { promptTokens: 0, completionTokens: totalTokens } };
-              }
-            } catch {
-              // Skip malformed JSON
-            }
-          }
-        }
-      }
-
-      // If we exit the loop without explicit return, return what we have
-      console.log(`[Socket] Stream loop ended. Content: ${fullContent.length} chars, tokens: ${totalTokens}, tool calls: ${accumulatedToolCalls.size}, buffer remaining: ${buffer.length}`);
-      return { content: fullContent, usage: { promptTokens: 0, completionTokens: totalTokens } };
-    } finally {
-      reader.releaseLock();
-    }
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-/**
- * Execute accumulated tool calls and continue the conversation
- */
-async function handleToolCallsAndContinue(
-  socket: TypedSocket,
-  conversationId: string,
-  messages: Array<{ role: string; content: string; tool_calls?: ToolCall[]; tool_call_id?: string }>,
-  contentSoFar: string,
-  accumulatedToolCalls: Map<number, StreamingToolCall>,
-  signal: AbortSignal,
-  tools?: ToolDefinition[],
-  tokensSoFar: number = 0,
-  toolIteration: number = 0
-): Promise<{ content: string; usage?: { promptTokens: number; completionTokens: number } }> {
-  // Convert accumulated tool calls to array
-  const toolCalls: ToolCall[] = Array.from(accumulatedToolCalls.values()).map((tc) => ({
-    id: tc.id,
-    type: tc.type,
-    function: {
-      name: tc.function.name,
-      arguments: tc.function.arguments,
-    },
-  }));
-
-  console.log(`[Socket] Executing ${toolCalls.length} tool call(s): ${toolCalls.map((tc) => tc.function.name).join(', ')}`);
-
-  // Execute all tool calls
-  const toolResults = await executeTools(toolCalls);
-
-  // Log results
-  for (const result of toolResults) {
-    console.log(`[Socket] Tool ${result.name}: ${result.success ? 'success' : 'failed'} - ${result.result.substring(0, 100)}`);
-  }
-
-  // Build updated messages array
-  const updatedMessages = [
-    ...messages,
-    // Assistant message with tool calls
-    {
-      role: 'assistant',
-      content: contentSoFar || '',
-      tool_calls: toolCalls,
-    },
-    // Tool results
-    ...toolResults.map((result) => ({
-      role: 'tool',
-      tool_call_id: result.toolCallId,
-      content: result.result,
-    })),
-  ];
-
-  // Continue streaming with tool results (increment tool iteration counter)
-  const continuedResult = await streamGroqResponse(
-    socket,
-    conversationId,
-    updatedMessages,
-    signal,
-    tools,
-    toolIteration + 1
-  );
-
-  // Combine content
   return {
-    content: contentSoFar + continuedResult.content,
-    usage: {
-      promptTokens: 0,
-      completionTokens: tokensSoFar + (continuedResult.usage?.completionTokens || 0),
-    },
+    content: fullContent,
+    usage: { promptTokens: totalPromptTokens, completionTokens: totalCompletionTokens },
   };
 }
 
@@ -1372,4 +715,3 @@ export function registerSocketHandlers(io: TypedIO): void {
     });
   });
 }
-
