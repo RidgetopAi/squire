@@ -11,7 +11,7 @@
 
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { existsSync } from 'fs';
+import { existsSync, writeFileSync, unlinkSync } from 'fs';
 import type { ToolHandler } from '../types.js';
 import type { ClaudeCodeArgs, ClaudeCodeResult } from './types.js';
 
@@ -54,14 +54,6 @@ function getSessionId(providedId?: string): string {
   // Always generate fresh UUID to avoid session collisions
   // (Claude Code rejects session IDs that are in use by other processes)
   return crypto.randomUUID();
-}
-
-/**
- * Escape string for shell command
- */
-function escapeShellArg(arg: string): string {
-  // Escape single quotes by ending quote, adding escaped quote, starting quote again
-  return arg.replace(/'/g, "'\\''");
 }
 
 /**
@@ -112,8 +104,12 @@ async function claudeCode(args: ClaudeCodeArgs): Promise<string> {
   const effectiveTimeout = Math.min(timeout || DEFAULTS.timeout, 900000);
   const sessionId = getSessionId(providedSessionId);
 
-  // Build the Claude Code command
-  const escapedPrompt = escapeShellArg(prompt);
+  // Write prompt to temp file to avoid shell escaping issues with quotes/apostrophes.
+  // Node's writeFileSync handles all characters safely — no shell involvement.
+  const tmpPromptFile = `/tmp/squire-prompt-${sessionId}`;
+  writeFileSync(tmpPromptFile, prompt, { mode: 0o644 });
+
+  // Build the Claude Code command (prompt fed via stdin redirection from temp file)
   const claudeCommand = [
     'claude',
     '-p',
@@ -121,7 +117,6 @@ async function claudeCode(args: ClaudeCodeArgs): Promise<string> {
     '--output-format json',
     `--session-id ${sessionId}`,
     `--model ${effectiveModel}`,
-    `'${escapedPrompt}'`,
   ].join(' ');
 
   // Determine if we're on VPS or need to SSH
@@ -131,12 +126,14 @@ async function claudeCode(args: ClaudeCodeArgs): Promise<string> {
   if (onVPS) {
     // Running on VPS - execute directly as ridgetop user
     // Use 'script' to provide a PTY (Claude Code needs TTY for output)
-    const innerCommand = `cd ${effectiveWorkingDir} && ${claudeCommand}`;
-    command = `script -q -c "sudo -u ${DEFAULTS.vpsUser} bash -c '${innerCommand.replace(/'/g, "'\\''")}'" /dev/null`;
+    // No single quotes in innerCommand so no escaping needed
+    const innerCommand = `cd ${effectiveWorkingDir} && ${claudeCommand} < ${tmpPromptFile}`;
+    command = `script -q -c "sudo -u ${DEFAULTS.vpsUser} bash -c '${innerCommand}'" /dev/null`;
     console.log(`[claude_code] Executing LOCALLY on VPS: ${effectiveWorkingDir}`);
   } else {
-    // Running remotely - SSH to VPS (SSH provides PTY)
-    command = `ssh ${DEFAULTS.sshHost} 'sudo -u ${DEFAULTS.vpsUser} bash -c "cd ${effectiveWorkingDir} && ${claudeCommand}"'`;
+    // Running remotely - copy prompt file to VPS first, then execute
+    await execAsync(`scp ${tmpPromptFile} ${DEFAULTS.sshHost}:${tmpPromptFile}`);
+    command = `ssh ${DEFAULTS.sshHost} 'sudo -u ${DEFAULTS.vpsUser} bash -c "cd ${effectiveWorkingDir} && ${claudeCommand} < ${tmpPromptFile} ; rm -f ${tmpPromptFile}"'`;
     console.log(`[claude_code] Executing via SSH to VPS: ${effectiveWorkingDir}`);
   }
 
@@ -201,6 +198,13 @@ async function claudeCode(args: ClaudeCodeArgs): Promise<string> {
     const stderr = execError.stderr || '';
 
     return `Error executing Claude Code: ${errorMessage}\n\n${stderr ? `stderr: ${stderr}\n\n` : ''}Session: ${sessionId}`;
+  } finally {
+    // Clean up temp prompt file
+    try {
+      unlinkSync(tmpPromptFile);
+    } catch {
+      // Ignore cleanup errors
+    }
   }
 }
 
