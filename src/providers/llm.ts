@@ -400,25 +400,48 @@ class AnthropicLLMProvider implements LLMProvider {
 
     // Separate system message from conversation
     let systemPrompt: string | undefined;
-    const conversationMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+    const conversationMessages: Array<{
+      role: 'user' | 'assistant';
+      content: string | Array<{
+        type: string;
+        tool_use_id?: string;
+        content?: string;
+        id?: string;
+        name?: string;
+        input?: unknown;
+        text?: string;
+      }>;
+    }> = [];
 
     for (const msg of messages) {
       if (msg.role === 'system') {
         systemPrompt = msg.content ?? undefined;
-      } else if (msg.role === 'user' || msg.role === 'assistant') {
-        conversationMessages.push({
-          role: msg.role,
-          content: msg.content ?? '',
-        });
+      } else if (msg.role === 'user') {
+        conversationMessages.push({ role: 'user', content: msg.content ?? '' });
+      } else if (msg.role === 'assistant') {
+        if (msg.tool_calls && msg.tool_calls.length > 0) {
+          // Assistant message with tool calls - include tool_use blocks
+          const content: Array<{ type: string; id?: string; name?: string; input?: unknown; text?: string }> = [];
+          if (msg.content) {
+            content.push({ type: 'text', text: msg.content });
+          }
+          for (const tc of msg.tool_calls) {
+            content.push({
+              type: 'tool_use',
+              id: tc.id,
+              name: tc.function.name,
+              input: JSON.parse(tc.function.arguments),
+            });
+          }
+          conversationMessages.push({ role: 'assistant', content });
+        } else {
+          conversationMessages.push({ role: 'assistant', content: msg.content ?? '' });
+        }
       } else if (msg.role === 'tool' && msg.tool_call_id) {
-        // Convert tool results to user message with tool_result content block
+        // Tool results as user message with content blocks array (Anthropic format)
         conversationMessages.push({
           role: 'user',
-          content: JSON.stringify({
-            type: 'tool_result',
-            tool_use_id: msg.tool_call_id,
-            content: msg.content,
-          }),
+          content: [{ type: 'tool_result', tool_use_id: msg.tool_call_id, content: msg.content ?? '' }],
         });
       }
     }

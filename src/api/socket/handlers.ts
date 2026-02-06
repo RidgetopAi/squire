@@ -653,13 +653,26 @@ async function executeParsedToolAndContinue(
  * Stream response from Anthropic API with tool calling support
  * Uses native Anthropic format (not OpenAI-compatible)
  */
+const MAX_TOOL_ITERATIONS = 10;
+
 async function streamAnthropicResponse(
   socket: TypedSocket,
   conversationId: string,
   messages: Array<{ role: string; content: string; tool_calls?: ToolCall[]; tool_call_id?: string }>,
   signal: AbortSignal,
-  tools?: ToolDefinition[]
+  tools?: ToolDefinition[],
+  toolIteration: number = 0
 ): Promise<{ content: string; usage?: { promptTokens: number; completionTokens: number } }> {
+  if (toolIteration >= MAX_TOOL_ITERATIONS) {
+    console.warn(`[Socket] Anthropic tool loop hit max iterations (${MAX_TOOL_ITERATIONS}) for conversation ${conversationId}`);
+    socket.emit('chat:chunk', {
+      conversationId,
+      chunk: '\n\n[Tool execution limit reached. Stopping to prevent infinite loop.]',
+      done: false,
+    });
+    return { content: '[Tool execution limit reached]' };
+  }
+
   const apiKey = config.llm.anthropicApiKey;
   const apiEndpoint = `${config.llm.anthropicUrl}/v1/messages`;
 
@@ -873,8 +886,8 @@ async function streamAnthropicResponse(
         })),
       ];
 
-      // Continue conversation
-      return await streamAnthropicResponse(socket, conversationId, updatedMessages, signal, tools);
+      // Continue conversation (increment tool iteration counter)
+      return await streamAnthropicResponse(socket, conversationId, updatedMessages, signal, tools, toolIteration + 1);
     }
 
     socket.emit('chat:chunk', {
@@ -909,7 +922,8 @@ async function streamGroqResponse(
   conversationId: string,
   messages: Array<{ role: string; content: string; tool_calls?: ToolCall[]; tool_call_id?: string }>,
   signal: AbortSignal,
-  tools?: ToolDefinition[]
+  tools?: ToolDefinition[],
+  toolIteration: number = 0
 ): Promise<{ content: string; usage?: { promptTokens: number; completionTokens: number } }> {
   // Select API key and endpoint based on provider
   const provider = config.llm.provider;
@@ -918,7 +932,15 @@ async function streamGroqResponse(
 
   if (provider === 'anthropic') {
     // Anthropic uses a different API format - handle separately
-    return await streamAnthropicResponse(socket, conversationId, messages, signal, tools);
+    return await streamAnthropicResponse(socket, conversationId, messages, signal, tools, toolIteration);
+  } else if (toolIteration >= MAX_TOOL_ITERATIONS) {
+    console.warn(`[Socket] ${provider} tool loop hit max iterations (${MAX_TOOL_ITERATIONS}) for conversation ${conversationId}`);
+    socket.emit('chat:chunk', {
+      conversationId,
+      chunk: '\n\n[Tool execution limit reached. Stopping to prevent infinite loop.]',
+      done: false,
+    });
+    return { content: '[Tool execution limit reached]' };
   } else if (provider === 'xai') {
     apiKey = config.llm.xaiApiKey;
     apiEndpoint = 'https://api.x.ai/v1/chat/completions';
@@ -1071,7 +1093,8 @@ async function streamGroqResponse(
                   accumulatedToolCalls,
                   signal,
                   tools,
-                  totalTokens
+                  totalTokens,
+                  toolIteration
                 );
               }
               return { content: fullContent, usage: { promptTokens: 0, completionTokens: totalTokens } };
@@ -1149,7 +1172,8 @@ async function streamGroqResponse(
                   accumulatedToolCalls,
                   signal,
                   tools,
-                  totalTokens
+                  totalTokens,
+                  toolIteration
                 );
               }
 
@@ -1185,7 +1209,8 @@ async function handleToolCallsAndContinue(
   accumulatedToolCalls: Map<number, StreamingToolCall>,
   signal: AbortSignal,
   tools?: ToolDefinition[],
-  tokensSoFar: number = 0
+  tokensSoFar: number = 0,
+  toolIteration: number = 0
 ): Promise<{ content: string; usage?: { promptTokens: number; completionTokens: number } }> {
   // Convert accumulated tool calls to array
   const toolCalls: ToolCall[] = Array.from(accumulatedToolCalls.values()).map((tc) => ({
@@ -1224,13 +1249,14 @@ async function handleToolCallsAndContinue(
     })),
   ];
 
-  // Continue streaming with tool results
+  // Continue streaming with tool results (increment tool iteration counter)
   const continuedResult = await streamGroqResponse(
     socket,
     conversationId,
     updatedMessages,
     signal,
-    tools
+    tools,
+    toolIteration + 1
   );
 
   // Combine content
