@@ -104,6 +104,15 @@ export const config = {
     retryAttempts: parseInt(optional('COURIER_RETRY_ATTEMPTS', '3'), 10),
     retryDelayMs: parseInt(optional('COURIER_RETRY_DELAY_MS', '15000'), 10), // 15 sec
   },
+  commune: {
+    enabled: optional('COMMUNE_ENABLED', 'true') === 'true',
+    intervalMs: parseInt(optional('COMMUNE_INTERVAL_MS', '900000'), 10), // 15 min default
+    quietHoursStart: parseInt(optional('COMMUNE_QUIET_START', '22'), 10), // 10pm
+    quietHoursEnd: parseInt(optional('COMMUNE_QUIET_END', '7'), 10), // 7am
+    maxDailyMessages: parseInt(optional('COMMUNE_MAX_DAILY', '5'), 10),
+    minHoursBetweenMessages: parseFloat(optional('COMMUNE_MIN_HOURS_BETWEEN', '2')),
+    defaultChannel: optional('COMMUNE_DEFAULT_CHANNEL', 'telegram') as 'telegram' | 'push' | 'email',
+  },
 } as const;
 
 export type Config = typeof config;

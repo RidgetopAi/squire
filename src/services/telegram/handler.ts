@@ -161,7 +161,7 @@ export async function handleTelegramMessage(message: TelegramMessage): Promise<v
 
     const engine = new AgentEngine({
       conversationId,
-      maxTurns: 25,
+      maxTurns: 50,
       systemPrompt,
       tools: hasTools() ? getToolDefinitions() : [],
       callbacks: {

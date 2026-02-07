@@ -31,6 +31,7 @@ import { migrateFromPersonalitySummary } from '../services/identity.js';
 import { syncAllAccounts } from '../services/google/sync.js';
 import { startTelegramPoller, stopTelegramPoller } from '../services/telegram/index.js';
 import { startCourier, stopCourier } from '../services/courier/index.js';
+import { initCommuneScheduler, shutdownCommuneScheduler } from '../services/commune/index.js';
 
 // Google Calendar sync interval (15 minutes)
 const CALENDAR_SYNC_INTERVAL_MS = 15 * 60 * 1000;
@@ -149,6 +150,12 @@ httpServer.listen(port, async () => {
     startCourier();
     console.log('[Server] Courier scheduler started');
   }
+
+  // Start Commune scheduler (proactive outreach)
+  if (config.commune.enabled) {
+    initCommuneScheduler();
+    console.log('[Server] Commune scheduler started');
+  }
 });
 
 // Graceful shutdown
@@ -157,6 +164,7 @@ const shutdown = () => {
   shutdownScheduler();
   stopTelegramPoller();
   stopCourier();
+  shutdownCommuneScheduler();
   if (calendarSyncTimer) {
     clearInterval(calendarSyncTimer);
     calendarSyncTimer = null;

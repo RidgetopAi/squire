@@ -63,7 +63,7 @@ export interface AgentCallbacks {
 export interface AgentEngineOptions {
   /** Unique identifier for this conversation */
   conversationId: string;
-  /** Maximum number of turns before stopping (default: 25) */
+  /** Maximum number of turns before stopping (default: 50) */
   maxTurns?: number;
   /** Event callbacks */
   callbacks?: AgentCallbacks;
@@ -116,7 +116,7 @@ export class AgentEngine {
    */
   constructor(options: AgentEngineOptions) {
     this.conversationId = options.conversationId;
-    this.maxTurns = options.maxTurns ?? 25;
+    this.maxTurns = options.maxTurns ?? 50;
     this.callbacks = options.callbacks ?? {};
     this.abortController = new AbortController();
 
