@@ -79,7 +79,7 @@ const icons = {
 
 // Source configuration
 const sourceOptions: { source: MemorySource; icon: React.ReactNode; label: string; color: string }[] = [
-  { source: 'conversation', icon: icons.conversation, label: 'Chat', color: 'primary' },
+  { source: 'chat', icon: icons.conversation, label: 'Chat', color: 'primary' },
   { source: 'observation', icon: icons.observation, label: 'Observe', color: 'purple' },
   { source: 'document', icon: icons.document, label: 'Doc', color: 'info' },
   { source: 'import', icon: icons.import, label: 'Import', color: 'gold' },

@@ -17,6 +17,7 @@ export interface Memory {
 }
 
 export type MemorySource =
+  | 'chat'
   | 'conversation'
   | 'observation'
   | 'document'

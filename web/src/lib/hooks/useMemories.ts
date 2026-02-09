@@ -81,7 +81,8 @@ export function useInfiniteMemories(options: { pageSize?: number; source?: strin
       fetchMemoriesPage({ limit: pageSize, offset: pageParam as number, source }),
     getNextPageParam: (lastPage) => lastPage.nextOffset,
     initialPageParam: 0,
-    staleTime: 1000 * 60 * 2, // 2 minutes
-    refetchOnWindowFocus: false,
+    staleTime: 1000 * 60 * 1, // 1 minute
+    refetchOnWindowFocus: true,
+    refetchInterval: 1000 * 60, // refresh every 60s to keep relative times accurate
   });
 }

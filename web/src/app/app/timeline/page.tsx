@@ -64,6 +64,7 @@ const icons = {
 
 // Source icon and color mapping
 const sourceConfig: Record<MemorySource, { icon: React.ReactNode; color: string; label: string }> = {
+  chat: { icon: icons.conversation, color: 'primary', label: 'Chat' },
   conversation: { icon: icons.conversation, color: 'primary', label: 'Conversation' },
   observation: { icon: icons.observation, color: 'purple', label: 'Observation' },
   document: { icon: icons.document, color: 'info', label: 'Document' },

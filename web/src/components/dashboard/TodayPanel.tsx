@@ -11,6 +11,11 @@ const sourceMeta: Record<MemorySource, {
   color: string;
   bgColor: string;
 }> = {
+  chat: {
+    icon: '💬',
+    color: 'text-primary',
+    bgColor: 'bg-primary/10',
+  },
   conversation: {
     icon: '💬',
     color: 'text-primary',
