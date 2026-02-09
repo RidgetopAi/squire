@@ -72,6 +72,19 @@ function formatFullDateTime(dateStr: string): string {
   });
 }
 
+function formatDueTime(dateStr: string): string {
+  const date = new Date(dateStr);
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const year = String(date.getFullYear()).slice(2);
+  let hours = date.getHours();
+  const minutes = date.getMinutes();
+  const ampm = hours >= 12 ? 'pm' : 'am';
+  hours = hours % 12 || 12;
+  const timeStr = minutes === 0 ? `${hours}${ampm}` : `${hours}:${String(minutes).padStart(2, '0')}${ampm}`;
+  return `${timeStr} ${month}/${day}/${year}`;
+}
+
 function ReminderCard({
   reminder,
   onSnooze,
@@ -87,24 +100,18 @@ function ReminderCard({
   const isPast = new Date(reminder.scheduled_for) < new Date();
   const canAct = reminder.status === 'pending' || reminder.status === 'sent';
 
-  // Check if body is long enough to warrant expansion
-  const hasLongBody = reminder.body && reminder.body.length > 100;
-  const isExpandable = hasLongBody || reminder.commitment_id;
-
   const handleCardClick = (e: React.MouseEvent) => {
     // Don't toggle if clicking on action buttons
     if ((e.target as HTMLElement).closest('button')) return;
-    if (isExpandable) {
-      setExpanded(!expanded);
-    }
+    setExpanded(!expanded);
   };
 
   return (
     <div
       onClick={handleCardClick}
-      className={`p-4 rounded-lg border transition-all duration-200 ${
+      className={`p-4 rounded-lg border transition-all duration-200 cursor-pointer ${
         isPast && canAct ? 'border-yellow-500/50 bg-yellow-500/5' : 'border-white/10 bg-white/5'
-      } ${isExpandable ? 'cursor-pointer hover:bg-white/10' : ''} ${expanded ? 'bg-white/10' : ''}`}
+      } ${expanded ? 'bg-white/10' : 'hover:bg-white/10'}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
@@ -113,11 +120,9 @@ function ReminderCard({
               {statusIcons[reminder.status]} {reminder.status}
             </span>
             <span className="text-xs text-gray-500">{reminder.channel}</span>
-            {isExpandable && (
-              <span className="text-xs text-gray-600">
-                {expanded ? '▼' : '▶'}
-              </span>
-            )}
+            <span className="text-xs text-gray-600">
+              {expanded ? '▼' : '▶'}
+            </span>
           </div>
           <h3 className={`font-medium text-white ${expanded ? '' : 'truncate'}`}>
             {reminder.title || 'Commitment Reminder'}
@@ -129,7 +134,14 @@ function ReminderCard({
           )}
           <div className="flex items-center justify-between mt-2">
             <p className={`text-xs ${isPast && canAct ? 'text-yellow-400' : 'text-gray-500'}`}>
-              {expanded ? formatFullDateTime(reminder.scheduled_for) : formatScheduledTime(reminder.scheduled_for)}
+              {expanded
+                ? formatFullDateTime(reminder.scheduled_for)
+                : (<>
+                    <span className="text-gray-400">due:{formatDueTime(reminder.scheduled_for)}</span>
+                    <span className="mx-1.5 text-gray-600">·</span>
+                    {formatScheduledTime(reminder.scheduled_for)}
+                  </>)
+              }
             </p>
             <p className="text-xs text-gray-600" title="Extracted at">
               {new Date(reminder.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}{' '}
