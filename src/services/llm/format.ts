@@ -72,11 +72,17 @@ export function toAnthropicMessages(messages: LLMMessage[]): {
           content.push({ type: 'text', text: msg.content });
         }
         for (const tc of msg.tool_calls) {
+          let input: unknown = {};
+          try {
+            input = tc.function.arguments ? JSON.parse(tc.function.arguments) : {};
+          } catch {
+            console.warn(`[LLM Format] Malformed tool call arguments for ${tc.function.name}, using empty object`);
+          }
           content.push({
             type: 'tool_use',
             id: tc.id,
             name: tc.function.name,
-            input: JSON.parse(tc.function.arguments),
+            input,
           });
         }
         anthropicMessages.push({ role: 'assistant', content });

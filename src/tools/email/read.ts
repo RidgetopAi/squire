@@ -1,9 +1,24 @@
 import type { ToolHandler, ToolSpec } from '../types.js';
 import { listSyncEnabledAccounts } from '../../services/google/auth.js';
 import { getEmail } from '../../services/google/gmail.js';
+import { getCachedEmail, cacheEmailBody } from '../../services/email-cache.js';
 
 async function emailReadToolHandler(args: { emailId: string }): Promise<string> {
   try {
+    // Check local cache first
+    const cached = await getCachedEmail(args.emailId);
+
+    if (cached?.body) {
+      // Full body already cached — return it without hitting Gmail
+      const to = Array.isArray(cached.to_addresses) ? cached.to_addresses.join(', ') : '';
+      const cc = Array.isArray(cached.cc_addresses) && cached.cc_addresses.length > 0
+        ? `Cc: ${cached.cc_addresses.join(', ')}\n` : '';
+      const date = new Date(cached.email_date).toLocaleString();
+
+      return `From: ${cached.from_address}\nTo: ${to}\n${cc}Date: ${date}\nSubject: ${cached.subject}\n\n${cached.body}`;
+    }
+
+    // Body not cached — fetch from Gmail API (works on read emails too)
     const accounts = await listSyncEnabledAccounts();
     if (accounts.length === 0) {
       return 'No Google account connected.';
@@ -11,14 +26,15 @@ async function emailReadToolHandler(args: { emailId: string }): Promise<string> 
 
     const email = await getEmail(accounts[0]!.id, args.emailId);
 
-    const formatted = `From: ${email.from}
-To: ${email.to.join(', ')}
-${email.cc?.length ? `Cc: ${email.cc.join(', ')}\n` : ''}Date: ${email.date.toLocaleString()}
-Subject: ${email.subject}
+    // Cache the body for next time
+    try {
+      await cacheEmailBody(args.emailId, email);
+    } catch (cacheError) {
+      console.warn('[EmailRead] Failed to cache body:', cacheError);
+    }
 
-${email.body}`;
-
-    return formatted;
+    const cc = email.cc?.length ? `Cc: ${email.cc.join(', ')}\n` : '';
+    return `From: ${email.from}\nTo: ${email.to.join(', ')}\n${cc}Date: ${email.date.toLocaleString()}\nSubject: ${email.subject}\n\n${email.body}`;
   } catch (error) {
     return `Error: ${error instanceof Error ? error.message : 'Unknown error'}`;
   }
@@ -27,13 +43,13 @@ ${email.body}`;
 export const tools: ToolSpec[] = [
   {
     name: 'email_read',
-    description: 'Read the full content of a specific email by its ID. Use email_list first to get email IDs.',
+    description: 'Read the full content of a specific email by its Gmail ID. Checks local cache first, fetches from Gmail if body not yet cached. Works on both read and unread emails.',
     parameters: {
       type: 'object',
       properties: {
         emailId: {
           type: 'string',
-          description: 'The email ID to read (from email_list results)',
+          description: 'The Gmail message ID (from email_list or email_search results)',
         },
       },
       required: ['emailId'],

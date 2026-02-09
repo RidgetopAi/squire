@@ -2,6 +2,7 @@ import { listSyncEnabledAccounts } from '../../google/auth.js';
 import { listUnread, markManyAsRead } from '../../google/gmail.js';
 import { summarizeEmails } from '../summarizer.js';
 import { notifyEmailSummary, notifyNoEmails } from '../notifier.js';
+import { cacheEmails } from '../../email-cache.js';
 import type { CourierTask, TaskResult } from './index.js';
 
 export const emailCheckTask: CourierTask = {
@@ -33,6 +34,10 @@ export const emailCheckTask: CourierTask = {
       // Summarize via Grok
       const summaries = await summarizeEmails(emails);
 
+      // Cache emails locally (before marking read so we never lose them)
+      const cached = await cacheEmails(account.id, emails, summaries);
+      console.log(`[EmailCheck] Cached ${cached}/${emails.length} emails locally`);
+
       // Push notifications
       await notifyEmailSummary(summaries);
 
@@ -43,8 +48,8 @@ export const emailCheckTask: CourierTask = {
 
       return {
         success: true,
-        message: `Notified about ${emails.length} emails, marked ${markedCount} as read`,
-        data: { count: emails.length, markedAsRead: markedCount }
+        message: `Notified about ${emails.length} emails, cached ${cached}, marked ${markedCount} as read`,
+        data: { count: emails.length, cached, markedAsRead: markedCount }
       };
     } catch (error) {
       console.error('[EmailCheck] Error:', error);

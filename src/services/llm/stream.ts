@@ -175,6 +175,20 @@ async function streamAnthropic(
       reader.releaseLock();
     }
 
+    // Flush any incomplete tool call (stream disconnected mid-tool-call)
+    if (currentToolCall) {
+      console.warn(`[LLM Stream] Flushing incomplete Anthropic tool call: ${currentToolCall.name}`);
+      toolCalls.push({
+        id: currentToolCall.id,
+        type: 'function',
+        function: {
+          name: currentToolCall.name,
+          arguments: currentToolCall.input || '{}',
+        },
+      });
+      currentToolCall = null;
+    }
+
     return {
       content: fullContent,
       toolCalls,
@@ -352,8 +366,18 @@ async function streamOpenAICompatible(
       reader.releaseLock();
     }
 
-    // Convert accumulated tool calls to array
-    const toolCalls: ToolCall[] = Array.from(accumulatedToolCalls.values());
+    // Convert accumulated tool calls to array, validating arguments
+    const toolCalls: ToolCall[] = Array.from(accumulatedToolCalls.values()).map((tc) => {
+      // Ensure arguments is valid JSON — if not, default to empty object
+      const args = tc.function.arguments || '{}';
+      try {
+        JSON.parse(args);
+      } catch {
+        console.warn(`[LLM Stream] Malformed tool call arguments for ${tc.function.name}: ${args.substring(0, 100)}`);
+        tc.function.arguments = '{}';
+      }
+      return tc;
+    });
 
     return {
       content: fullContent,

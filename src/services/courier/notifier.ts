@@ -88,7 +88,7 @@ export async function notifyEmailSummary(emails: EmailSummary[]): Promise<void> 
     // Escape markdown-breaking characters in user content
     const safeSubject = e.subject.replace(/[*_`\[\]]/g, '');
     const safeSummary = e.summary.replace(/[*_`\[\]]/g, '');
-    return `*${i + 1}. ${sender}*\n${safeSubject}\n${safeSummary}`;
+    return `*${i + 1}. ${sender}*\n${safeSubject}\n${safeSummary}\n_ID: ${e.id}_`;
   }).join('\n\n');
 
   const footer = '\n\n─────────────────\n_Say "check email" for full details_';
@@ -101,6 +101,7 @@ export async function notifyEmailSummary(emails: EmailSummary[]): Promise<void> 
   broadcastEmailSummary({
     count: emails.length,
     emails: emails.map(e => ({
+      id: e.id,
       from: e.from,
       subject: e.subject,
       summary: e.summary,

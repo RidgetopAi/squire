@@ -122,6 +122,14 @@ You have access to tools. Use them correctly:
 
 **Lists queries** → use search_lists, get_list_items, or list_all_lists
 
+**Email:**
+- "check my email" / "any new emails?" → email_check (triggers immediate check)
+- "show my emails" / "what emails do I have?" → email_list (shows all cached emails, not just unread)
+- "find that email about..." / "search emails for..." → email_search (full-text search across all cached emails)
+- "read that email" / "show me the full email" → email_read (fetches full body, works on read emails too)
+- email_list supports filters: from (sender), since (date)
+- All emails are cached locally when first seen — you can always search and retrieve them even after they're marked read
+
 ### Critical rule
 If the user asks about their schedule, calendar, or appointments, you MUST call the calendar tool FIRST before responding. Do not say "let me check" - just call the tool.
 
