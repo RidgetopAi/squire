@@ -6,9 +6,15 @@
 
 // === CLIENT → SERVER EVENTS ===
 
+export interface ImageContent {
+  data: string;
+  mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+}
+
 export interface ChatMessagePayload {
   conversationId: string;
   message: string;
+  images?: ImageContent[];
   history?: Array<{ role: 'user' | 'assistant'; content: string }>;
   includeContext?: boolean;
   contextProfile?: string;

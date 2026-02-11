@@ -11,11 +11,23 @@ import type { ToolCall } from '../../tools/types.js';
 export type { ToolCall, ToolDefinition } from '../../tools/types.js';
 
 /**
+ * Image content for vision-enabled messages
+ */
+export interface ImageContent {
+  /** Base64-encoded image data */
+  data: string;
+  /** MIME type (e.g., 'image/jpeg', 'image/png', 'image/gif', 'image/webp') */
+  mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+}
+
+/**
  * Canonical message format (OpenAI-style, used internally everywhere)
  */
 export interface LLMMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
+  /** Optional images attached to this message (for vision) */
+  images?: ImageContent[];
   tool_calls?: ToolCall[];
   tool_call_id?: string;
 }

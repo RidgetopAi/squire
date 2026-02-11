@@ -25,6 +25,7 @@ export type {
   StreamCallbacks,
   ToolDefinition,
   ToolCall,
+  ImageContent,
 } from './types.js';
 
 // Format utilities (for consumers that need custom formatting)

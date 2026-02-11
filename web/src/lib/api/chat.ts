@@ -7,8 +7,14 @@ import type { ChatMessage } from '@/lib/types';
 
 // === Request/Response Types ===
 
+export interface ImageContent {
+  data: string;
+  mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+}
+
 export interface ChatApiRequest {
   message: string;
+  images?: ImageContent[];
   history?: ChatMessage[];
   includeContext?: boolean;
   contextQuery?: string;

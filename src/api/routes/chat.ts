@@ -7,7 +7,7 @@
 
 import { Router, Request, Response } from 'express';
 import { chat, chatSimple, type ChatMessage, type ChatRequest } from '../../services/chat.js';
-import { checkLLMHealth, getLLMInfo } from '../../providers/llm.js';
+import { checkLLMHealth, getLLMInfo, type ImageContent } from '../../providers/llm.js';
 import {
   createConversation,
   getConversation,
@@ -24,6 +24,7 @@ const router = Router();
 
 interface ChatApiRequest {
   message: string;
+  images?: ImageContent[];
   history?: ChatMessage[];
   includeContext?: boolean;
   contextQuery?: string;
@@ -60,6 +61,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     // Build chat request
     const chatRequest: ChatRequest = {
       message: body.message.trim(),
+      images: body.images,
       conversationHistory: body.history ?? [],
       includeContext: body.includeContext !== false, // Default true
       contextQuery: body.contextQuery,

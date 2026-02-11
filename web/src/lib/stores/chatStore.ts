@@ -4,6 +4,7 @@ import {
   sendChatMessage as sendChatMessageHttp,
   prepareHistoryForApi,
   type ChatContextInfo,
+  type ImageContent,
 } from '@/lib/api/chat';
 import { fetchContext } from '@/lib/api/context';
 import {
@@ -87,7 +88,7 @@ interface ChatState {
   handleStreamError: (error: string) => void;
 
   // High-level action for sending messages
-  sendMessage: (content: string, options?: SendMessageOptions) => Promise<void>;
+  sendMessage: (content: string, images?: { data: string; mediaType: ImageContent['mediaType'] }[], options?: SendMessageOptions) => Promise<void>;
 
   // Persistence actions
   loadRecentConversation: () => Promise<void>;
@@ -293,7 +294,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   // Send a message (handles user message + assistant response)
-  sendMessage: async (content: string, options: SendMessageOptions = {}) => {
+  sendMessage: async (content: string, images?: { data: string; mediaType: ImageContent['mediaType'] }[], options: SendMessageOptions = {}) => {
     const {
       addMessage,
       setLoading,
@@ -303,6 +304,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
     } = get();
 
     const { includeContext = true, contextProfile } = options;
+    
+    // Convert images to API format
+    const apiImages: ImageContent[] | undefined = images?.map((img) => ({
+      data: img.data,
+      mediaType: img.mediaType,
+    }));
 
     // Determine if we should use streaming (default: use WebSocket if connected)
     const { connected } = getConnectionStatus();
@@ -384,6 +391,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         socket.emit('chat:message', {
           conversationId: get().conversationId,
           message: content,
+          images: apiImages,
           history,
           includeContext,
           contextProfile,
@@ -398,6 +406,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
         const response = await sendChatMessageHttp({
           message: content,
+          images: apiImages,
           history,
           includeContext,
           contextProfile,

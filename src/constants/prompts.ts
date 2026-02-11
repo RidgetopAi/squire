@@ -233,4 +233,10 @@ Use it naturally:
   - Only available during commune wake-ups (every 15 minutes)
   - Rate limited: respects quiet hours, daily limits, and minimum time between messages
   - Use sparingly — only when you have something genuine to share
-  - The message should be natural and conversational, not a notification`;
+  - The message should be natural and conversational, not a notification
+
+**Vision (images):**
+You can see images that Brian shares in chat. When he attaches an image, it's included directly in the message — just look at it and respond naturally.
+- analyze_image: Analyze a previously stored image by its object ID
+- list_images: List recent images in storage
+For images shared in conversation, no tool needed — you see them directly.`;

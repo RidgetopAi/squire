@@ -26,6 +26,11 @@ type AnthropicContentItem = {
   name?: string;
   input?: unknown;
   text?: string;
+  source?: {
+    type: 'base64';
+    media_type: string;
+    data: string;
+  };
 };
 
 export type AnthropicMessage = {
@@ -63,7 +68,28 @@ export function toAnthropicMessages(messages: LLMMessage[]): {
     if (msg.role === 'system') {
       system = msg.content;
     } else if (msg.role === 'user') {
-      anthropicMessages.push({ role: 'user', content: msg.content });
+      // Handle user messages with optional images
+      if (msg.images && msg.images.length > 0) {
+        const content: AnthropicContentItem[] = [];
+        // Add images first
+        for (const img of msg.images) {
+          content.push({
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: img.mediaType,
+              data: img.data,
+            },
+          });
+        }
+        // Then add text content
+        if (msg.content) {
+          content.push({ type: 'text', text: msg.content });
+        }
+        anthropicMessages.push({ role: 'user', content });
+      } else {
+        anthropicMessages.push({ role: 'user', content: msg.content });
+      }
     } else if (msg.role === 'assistant') {
       if (msg.tool_calls && msg.tool_calls.length > 0) {
         // Assistant message with tool calls → content blocks array
@@ -152,6 +178,24 @@ export function toOpenAIMessages(messages: LLMMessage[]): Array<Record<string, u
         content: msg.content,
         tool_call_id: msg.tool_call_id,
       };
+    }
+    // Handle user messages with images (OpenAI vision format)
+    if (msg.role === 'user' && msg.images && msg.images.length > 0) {
+      const content: Array<Record<string, unknown>> = [];
+      // Add images first
+      for (const img of msg.images) {
+        content.push({
+          type: 'image_url',
+          image_url: {
+            url: `data:${img.mediaType};base64,${img.data}`,
+          },
+        });
+      }
+      // Then add text
+      if (msg.content) {
+        content.push({ type: 'text', text: msg.content });
+      }
+      return { role: msg.role, content };
     }
     return { role: msg.role, content: msg.content };
   });

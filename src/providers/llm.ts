@@ -10,11 +10,12 @@
  */
 
 import { config } from '../config/index.js';
-import { callLLM, type LLMMessage as UnifiedMessage, type LLMResponse } from '../services/llm/index.js';
+import { callLLM, type LLMMessage as UnifiedMessage, type LLMResponse, type ImageContent } from '../services/llm/index.js';
 import type { ToolDefinition, ToolCall } from '../tools/types.js';
 
 // Re-export tool types for convenience
 export type { ToolDefinition, ToolCall } from '../tools/types.js';
+export type { ImageContent } from '../services/llm/index.js';
 
 // === TYPES ===
 
@@ -24,6 +25,7 @@ export type { ToolDefinition, ToolCall } from '../tools/types.js';
 export interface LLMMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string | null;
+  images?: ImageContent[];
   tool_calls?: ToolCall[];
   tool_call_id?: string;
 }
@@ -68,6 +70,7 @@ export async function complete(
   const unifiedMessages: UnifiedMessage[] = messages.map((m) => ({
     role: m.role,
     content: m.content ?? '',
+    images: m.images,
     tool_calls: m.tool_calls,
     tool_call_id: m.tool_call_id,
   }));

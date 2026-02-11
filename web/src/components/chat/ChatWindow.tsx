@@ -2,7 +2,7 @@
 
 import { useCallback } from 'react';
 import { MessageList } from './MessageList';
-import { ChatInputBar } from './ChatInputBar';
+import { ChatInputBar, type ImageAttachment } from './ChatInputBar';
 import { ContextualMemoryOverlayStack } from './ContextualMemoryOverlayStack';
 import { useChatStore, useIsLoadingContext } from '@/lib/stores';
 
@@ -13,8 +13,8 @@ export function ChatWindow() {
   const sendMessage = useChatStore((state) => state.sendMessage);
 
   const handleSend = useCallback(
-    async (content: string) => {
-      await sendMessage(content);
+    async (content: string, images?: ImageAttachment[]) => {
+      await sendMessage(content, images);
     },
     [sendMessage]
   );

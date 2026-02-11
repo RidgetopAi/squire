@@ -7,6 +7,7 @@
  */
 
 import { complete, type LLMMessage, type LLMCompletionResult } from '../providers/llm.js';
+import type { ImageContent } from './llm/types.js';
 import { generateContext, type ContextPackage } from './context.js';
 import { config } from '../config/index.js';
 import { getToolDefinitions, executeTools, hasTools } from '../tools/index.js';
@@ -17,10 +18,12 @@ import { SQUIRE_SYSTEM_PROMPT_BASE, TOOL_CALLING_INSTRUCTIONS } from '../constan
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
+  images?: ImageContent[];
 }
 
 export interface ChatRequest {
   message: string;
+  images?: ImageContent[];
   conversationHistory?: ChatMessage[];
   includeContext?: boolean;
   contextQuery?: string;
@@ -79,7 +82,8 @@ function getCurrentDateTimeString(): string {
 function buildMessages(
   userMessage: string,
   conversationHistory: ChatMessage[],
-  contextMarkdown?: string
+  contextMarkdown?: string,
+  images?: ImageContent[]
 ): LLMMessage[] {
   const messages: LLMMessage[] = [];
 
@@ -100,11 +104,11 @@ function buildMessages(
   // Add conversation history (last N messages to fit context)
   const recentHistory = conversationHistory.slice(-10); // Keep last 10 exchanges
   for (const msg of recentHistory) {
-    messages.push({ role: msg.role, content: msg.content });
+    messages.push({ role: msg.role, content: msg.content, images: msg.images });
   }
 
-  // Add current user message
-  messages.push({ role: 'user', content: userMessage });
+  // Add current user message with optional images
+  messages.push({ role: 'user', content: userMessage, images });
 
   return messages;
 }
@@ -117,6 +121,7 @@ function buildMessages(
 export async function chat(request: ChatRequest): Promise<ChatResponse> {
   const {
     message,
+    images,
     conversationHistory = [],
     includeContext = true,
     contextQuery,
@@ -143,7 +148,7 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
   }
 
   // Build messages for LLM
-  const messages = buildMessages(message, conversationHistory, contextMarkdown);
+  const messages = buildMessages(message, conversationHistory, contextMarkdown, images);
 
   // Get available tools
   const tools = hasTools() ? getToolDefinitions() : undefined;

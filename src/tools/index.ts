@@ -220,6 +220,7 @@ import { tools as emailTools } from './email/index.js';
 import { tools as searchTools } from './search.js';
 import { tools as scratchpadTools } from './scratchpad.js';
 import { tools as communeTools } from './commune.js';
+import { tools as imageTools } from './images.js';
 
 const allToolSpecs: ToolSpec[] = [
   ...timeTools,
@@ -236,6 +237,7 @@ const allToolSpecs: ToolSpec[] = [
   ...searchTools,
   ...scratchpadTools,
   ...communeTools,
+  ...imageTools,
 ];
 
 for (const spec of allToolSpecs) {

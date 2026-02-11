@@ -37,6 +37,7 @@ import type {
   ChatCancelPayload,
   ConversationJoinPayload,
   ConversationLeavePayload,
+  ImageContent,
 } from './types.js';
 
 type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents, object, SocketData>;
@@ -255,7 +256,7 @@ async function handleChatMessage(
   io: TypedIO,
   payload: ChatMessagePayload
 ): Promise<void> {
-  const { conversationId, message, history = [], includeContext = true, contextProfile } = payload;
+  const { conversationId, message, images, history = [], includeContext = true, contextProfile } = payload;
 
   console.log(`[Socket] chat:message from ${socket.id} - conversation: ${conversationId}`);
 
@@ -404,7 +405,7 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
     }
 
     // Step 3: Build messages
-    const messages: Array<{ role: string; content: string }> = [];
+    const messages: Array<{ role: string; content: string; images?: ImageContent[]; tool_calls?: ToolCall[]; tool_call_id?: string }> = [];
 
     // System prompt with user identity, time grounding, tool instructions, memory, and context
     let systemContent = await buildSystemPrompt();
@@ -430,8 +431,8 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
       messages.push({ role: msg.role, content: msg.content });
     }
 
-    // Add current message
-    messages.push({ role: 'user', content: message });
+    // Add current message with optional images
+    messages.push({ role: 'user', content: message, images });
 
     // Step 4: Stream LLM response with iterative tool loop
     const tools = hasTools() ? getToolDefinitions() : undefined;
@@ -547,7 +548,7 @@ const MAX_TOOL_ITERATIONS = 50;
 async function streamWithToolLoop(
   socket: TypedSocket,
   conversationId: string,
-  messages: Array<{ role: string; content: string; tool_calls?: ToolCall[]; tool_call_id?: string }>,
+  messages: Array<{ role: string; content: string; images?: ImageContent[]; tool_calls?: ToolCall[]; tool_call_id?: string }>,
   signal: AbortSignal,
   tools?: ToolDefinition[]
 ): Promise<{ content: string; usage?: { promptTokens: number; completionTokens: number } }> {
