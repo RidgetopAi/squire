@@ -481,6 +481,7 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
     }
 
     // Emit chat:done after follow-up
+    console.log(`[Socket] Emitting chat:done for conversation: ${conversationId}`);
     socket.emit('chat:done', {
       conversationId,
       usage: streamResult.usage ? {

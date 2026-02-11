@@ -245,8 +245,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   // Finish streaming
   finishStreaming: (_usage) => {
+    const { pendingUserMessageId, isStreaming, isLoading } = get();
+    console.log('[ChatStore] finishStreaming called', { isStreaming, isLoading, pendingUserMessageId });
+    
     // Clear the pending message backup - server has confirmed receipt
-    const { pendingUserMessageId } = get();
     if (pendingUserMessageId) {
       clearPendingMessage(pendingUserMessageId);
     }
@@ -257,6 +259,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       isLoading: false,
       pendingUserMessageId: null,
     });
+    
+    console.log('[ChatStore] finishStreaming complete - state reset');
   },
 
   // Handle streaming error
@@ -556,8 +560,16 @@ export function initWebSocketListeners(): () => void {
 
   // Handle stream completion
   function handleChatDone(payload: ChatDonePayload) {
-    const { conversationId } = store();
+    const { conversationId, isStreaming, streamingMessageId } = store();
+    console.log('[ChatStore] chat:done received', {
+      payloadConversationId: payload.conversationId,
+      storeConversationId: conversationId,
+      match: payload.conversationId === conversationId,
+      isStreaming,
+      streamingMessageId,
+    });
     if (payload.conversationId === conversationId) {
+      console.log('[ChatStore] Calling finishStreaming');
       store().finishStreaming(payload.usage);
     }
   }
