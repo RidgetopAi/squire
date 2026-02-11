@@ -533,7 +533,7 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
 
 // === Streaming with Tool Loop ===
 
-const MAX_TOOL_ITERATIONS = 10;
+const MAX_TOOL_ITERATIONS = 50;
 
 /**
  * Stream LLM response with iterative tool execution loop.

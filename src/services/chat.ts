@@ -152,7 +152,7 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
   let result: LLMCompletionResult = await complete(messages, { tools });
 
   // Tool calling loop - handle tool calls until we get a final response
-  const maxToolIterations = 5; // Prevent infinite loops
+  const maxToolIterations = 50; // Prevent infinite loops
   let iterations = 0;
 
   while (result.finishReason === 'tool_calls' && result.toolCalls?.length && iterations < maxToolIterations) {
