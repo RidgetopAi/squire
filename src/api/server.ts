@@ -46,6 +46,7 @@ const io = new SocketIOServer(httpServer, {
     origin: config.server.corsOrigin || 'http://localhost:3000',
     methods: ['GET', 'POST'],
   },
+  maxHttpBufferSize: 10 * 1024 * 1024, // 10MB for image uploads
 });
 
 // Register Socket.IO event handlers
