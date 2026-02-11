@@ -436,8 +436,14 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
 
     // Step 4: Stream LLM response with iterative tool loop
     const tools = hasTools() ? getToolDefinitions() : undefined;
-    console.log(`[Socket] Step 4: Starting ${config.llm.provider} stream... (${tools?.length ?? 0} tools available)`);
-    const streamResult = await streamWithToolLoop(socket, conversationId, messages, abortController.signal, tools);
+    
+    // Force Anthropic for vision - xAI/Grok doesn't support images
+    const hasImages = images && images.length > 0;
+    const providerOverride = hasImages ? { provider: 'anthropic', model: 'claude-sonnet-4-20250514' } : undefined;
+    const providerName = providerOverride?.provider ?? config.llm.provider;
+    
+    console.log(`[Socket] Step 4: Starting ${providerName} stream... (${tools?.length ?? 0} tools available${hasImages ? ', with images' : ''})`);
+    const streamResult = await streamWithToolLoop(socket, conversationId, messages, abortController.signal, tools, providerOverride);
     console.log(`[Socket] Stream complete: ${streamResult.content.length} chars`);
 
     // Step 5: Await extraction and stream follow-up acknowledgment if needed
@@ -550,7 +556,8 @@ async function streamWithToolLoop(
   conversationId: string,
   messages: Array<{ role: string; content: string; images?: ImageContent[]; tool_calls?: ToolCall[]; tool_call_id?: string }>,
   signal: AbortSignal,
-  tools?: ToolDefinition[]
+  tools?: ToolDefinition[],
+  providerOverride?: { provider: string; model: string }
 ): Promise<{ content: string; usage?: { promptTokens: number; completionTokens: number } }> {
   let fullContent = '';
   let totalPromptTokens = 0;
@@ -571,7 +578,7 @@ async function streamWithToolLoop(
           });
         },
       },
-      { signal }
+      { signal, ...providerOverride }
     );
 
     fullContent += response.content;
