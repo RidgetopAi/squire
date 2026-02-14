@@ -14,10 +14,12 @@ export function TagInput({ onSave, onCancel }: TagInputProps) {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const existingTags = useSavedCardsStore((s) => s.tags);
+  const fetchTags = useSavedCardsStore((s) => s.fetchTags);
 
   useEffect(() => {
     inputRef.current?.focus();
-  }, []);
+    fetchTags();
+  }, [fetchTags]);
 
   const addTag = (tag: string) => {
     const normalized = tag.toLowerCase().trim();
