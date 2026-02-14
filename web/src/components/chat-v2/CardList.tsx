@@ -14,40 +14,16 @@ export function CardList({ pairs, onBookmark, bookmarkedIds }: CardListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevPairCountRef = useRef(pairs.length);
 
-  // Auto-scroll to bottom when new pairs are added or streaming updates
+  // Newest-first: scroll to top when new pairs arrive
   useEffect(() => {
-    const container = scrollRef.current;
-    if (!container) return;
-
-    const isNearBottom =
-      container.scrollHeight - container.scrollTop - container.clientHeight < 150;
-
-    // Scroll if new pair added or if user was already near bottom
-    if (pairs.length > prevPairCountRef.current || isNearBottom) {
-      container.scrollTo({
-        top: container.scrollHeight,
-        behavior: pairs.length > prevPairCountRef.current ? 'smooth' : 'auto',
-      });
+    if (pairs.length > prevPairCountRef.current) {
+      scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
     }
-
     prevPairCountRef.current = pairs.length;
-  }, [pairs]);
+  }, [pairs.length]);
 
-  // Also scroll on streaming content changes
-  useEffect(() => {
-    const lastPair = pairs[pairs.length - 1];
-    if (!lastPair?.isStreaming) return;
-
-    const container = scrollRef.current;
-    if (!container) return;
-
-    const isNearBottom =
-      container.scrollHeight - container.scrollTop - container.clientHeight < 150;
-
-    if (isNearBottom) {
-      container.scrollTop = container.scrollHeight;
-    }
-  }, [pairs[pairs.length - 1]?.assistantMessage?.content]);
+  // Reversed pairs: newest first
+  const reversedPairs = [...pairs].reverse();
 
   if (pairs.length === 0) {
     return (
@@ -71,7 +47,7 @@ export function CardList({ pairs, onBookmark, bookmarkedIds }: CardListProps) {
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto">
       <div className="max-w-3xl mx-auto py-4 px-4 space-y-3">
-        {pairs.map((pair, index) => (
+        {reversedPairs.map((pair, index) => (
           <ConversationCard
             key={pair.id}
             pair={pair}
