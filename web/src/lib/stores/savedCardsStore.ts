@@ -1,11 +1,12 @@
 import { create } from 'zustand';
 import { apiGet, apiPost, apiDelete } from '@/lib/api/client';
-import type { ConversationPair } from '@/lib/types';
+import type { ConversationPair, ReportData } from '@/lib/types';
 
 export interface SavedCard {
   id: string;
   userMessage: string;
   assistantContent: string;
+  reportData?: ReportData;
   tags: string[];
   similarity?: number;
   createdAt: string;
@@ -26,10 +27,13 @@ interface SavedCardsState {
 
   // Track which pair IDs are saved (for bookmark icon state)
   savedPairIds: Set<string>;
+  // Map pair ID → saved card ID (for unsaving from chat view)
+  pairToSavedId: Map<string, string>;
 
   // Actions
   saveCard: (pair: ConversationPair, tags: string[]) => Promise<void>;
-  unsaveCard: (id: string) => Promise<void>;
+  unsaveCard: (id: string, pairId?: string) => Promise<void>;
+  unsaveByPairId: (pairId: string) => Promise<void>;
   fetchSavedCards: (filters?: { tag?: string; q?: string }) => Promise<void>;
   fetchTags: () => Promise<void>;
   setFilterMode: (on: boolean) => void;
@@ -46,19 +50,26 @@ export const useSavedCardsStore = create<SavedCardsState>((set, get) => ({
   isFilterMode: false,
   isLoading: false,
   savedPairIds: new Set(),
+  pairToSavedId: new Map(),
 
   saveCard: async (pair, tags) => {
     try {
       const result = await apiPost<SavedCard>('/api/saved-cards', {
         userMessage: pair.userMessage.content,
         assistantContent: pair.assistantMessage?.content || '',
+        reportData: pair.assistantMessage?.reportData || undefined,
         tags,
       });
 
-      set((state) => ({
-        savedCards: [result, ...state.savedCards],
-        savedPairIds: new Set([...state.savedPairIds, pair.id]),
-      }));
+      set((state) => {
+        const newPairToSavedId = new Map(state.pairToSavedId);
+        newPairToSavedId.set(pair.id, result.id);
+        return {
+          savedCards: [result, ...state.savedCards],
+          savedPairIds: new Set([...state.savedPairIds, pair.id]),
+          pairToSavedId: newPairToSavedId,
+        };
+      });
 
       // Refresh tags
       get().fetchTags();
@@ -68,17 +79,33 @@ export const useSavedCardsStore = create<SavedCardsState>((set, get) => ({
     }
   },
 
-  unsaveCard: async (id) => {
+  unsaveCard: async (id, pairId?) => {
     try {
       await apiDelete(`/api/saved-cards/${id}`);
 
-      set((state) => ({
-        savedCards: state.savedCards.filter((c) => c.id !== id),
-      }));
+      set((state) => {
+        const newPairIds = new Set(state.savedPairIds);
+        if (pairId) newPairIds.delete(pairId);
+        return {
+          savedCards: state.savedCards.filter((c) => c.id !== id),
+          savedPairIds: newPairIds,
+        };
+      });
     } catch (error) {
       console.error('[SavedCards] Failed to unsave:', error);
       throw error;
     }
+  },
+
+  unsaveByPairId: async (pairId) => {
+    const savedId = get().pairToSavedId.get(pairId);
+    if (!savedId) return;
+    await get().unsaveCard(savedId, pairId);
+    set((state) => {
+      const newMap = new Map(state.pairToSavedId);
+      newMap.delete(pairId);
+      return { pairToSavedId: newMap };
+    });
   },
 
   fetchSavedCards: async (filters) => {

@@ -19,17 +19,22 @@ const router = Router();
  */
 router.post('/', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { userMessage, assistantContent, tags = [] } = req.body;
+    const { userMessage, assistantContent, reportData, tags = [] } = req.body;
 
-    if (!assistantContent) {
-      res.status(400).json({ error: 'assistantContent is required' });
+    if (!assistantContent && !reportData) {
+      res.status(400).json({ error: 'assistantContent or reportData is required' });
       return;
     }
 
+    // For reports, use report content for search; otherwise use assistant text
+    const contentForSearch = reportData
+      ? `${reportData.title}\n${reportData.summary}\n${reportData.content}`
+      : assistantContent;
+
     // Generate embedding from the combined content for semantic search
     const searchText = userMessage
-      ? `${userMessage}\n\n${assistantContent}`
-      : assistantContent;
+      ? `${userMessage}\n\n${contentForSearch}`
+      : contentForSearch;
     let embedding: number[] | null = null;
     try {
       embedding = await generateEmbedding(searchText);
@@ -57,7 +62,11 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
         assistantContent.slice(0, 80).replace(/\n/g, ' '),
         Buffer.byteLength(assistantContent, 'utf8'),
         assistantContent,
-        JSON.stringify({ type: 'saved_card', userMessage: userMessage || '' }),
+        JSON.stringify({
+          type: 'saved_card',
+          userMessage: userMessage || '',
+          ...(reportData ? { reportData } : {}),
+        }),
         embeddingStr,
       ]
     );
@@ -81,7 +90,8 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     res.status(201).json({
       id,
       userMessage: userMessage || '',
-      assistantContent,
+      assistantContent: assistantContent || '',
+      reportData: reportData || undefined,
       tags: normalizedTags,
       createdAt: created_at,
     });
@@ -241,6 +251,7 @@ function mapRowToCard(row: Record<string, unknown>) {
     id: row.id as string,
     userMessage: (metadata?.userMessage as string) || '',
     assistantContent: row.extracted_text as string,
+    reportData: metadata?.reportData as Record<string, unknown> | undefined,
     tags: (row.tags as string[]) || [],
     similarity: row.similarity ? parseFloat(row.similarity as string) : undefined,
     createdAt: row.created_at as string,

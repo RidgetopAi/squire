@@ -24,7 +24,7 @@ export function ChatWindowV2() {
   const pairs = useConversationPairs(messages, streamingMessageId);
 
   // Saved cards state
-  const { isFilterMode, savedCards, savedPairIds, saveCard, unsaveCard } = useSavedCardsStore();
+  const { isFilterMode, savedCards, savedPairIds, saveCard, unsaveCard, unsaveByPairId } = useSavedCardsStore();
   const [bookmarkingPair, setBookmarkingPair] = useState<ConversationPair | null>(null);
 
   const handleSend = useCallback(
@@ -36,11 +36,12 @@ export function ChatWindowV2() {
 
   const handleBookmark = useCallback((pair: ConversationPair) => {
     if (savedPairIds.has(pair.id)) {
-      // Already saved — could unsave, but for now just toggle tag input
+      // Already saved — unsave it
+      unsaveByPairId(pair.id);
       return;
     }
     setBookmarkingPair(pair);
-  }, [savedPairIds]);
+  }, [savedPairIds, unsaveByPairId]);
 
   const handleSaveWithTags = useCallback(async (tags: string[]) => {
     if (!bookmarkingPair) return;
