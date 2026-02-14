@@ -511,6 +511,7 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
         contextProfile,
         promptTokens: streamResult.usage?.promptTokens,
         completionTokens: streamResult.usage?.completionTokens,
+        metadata: streamResult.reportData ? { reportData: streamResult.reportData } : null,
       });
 
       // Broadcast assistant message to all devices in this conversation room

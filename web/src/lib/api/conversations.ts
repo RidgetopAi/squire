@@ -32,6 +32,7 @@ export interface MessageResponse {
   sequence_number: number;
   created_at: string;
   extraction_status: 'pending' | 'skipped' | 'extracted';
+  metadata: Record<string, unknown> | null;
 }
 
 interface ApiResponse<T> {

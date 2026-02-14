@@ -32,6 +32,7 @@ export interface ChatMessageDB {
   created_at: Date;
   extraction_status: 'pending' | 'skipped' | 'extracted';
   extracted_at: Date | null;
+  metadata: Record<string, unknown> | null;
 }
 
 export interface CreateConversationInput {
@@ -48,6 +49,7 @@ export interface AddMessageInput {
   contextProfile?: string;
   promptTokens?: number;
   completionTokens?: number;
+  metadata?: Record<string, unknown> | null;
 }
 
 // =============================================
@@ -178,6 +180,7 @@ export async function addMessage(input: AddMessageInput): Promise<ChatMessageDB>
     contextProfile,
     promptTokens,
     completionTokens,
+    metadata,
   } = input;
 
   const client = await pool.connect();
@@ -198,8 +201,8 @@ export async function addMessage(input: AddMessageInput): Promise<ChatMessageDB>
       `INSERT INTO chat_messages (
         conversation_id, role, content, context_memory_ids,
         disclosure_id, context_profile, prompt_tokens, completion_tokens,
-        sequence_number
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        sequence_number, metadata
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *`,
       [
         conversationId,
@@ -211,6 +214,7 @@ export async function addMessage(input: AddMessageInput): Promise<ChatMessageDB>
         promptTokens ?? null,
         completionTokens ?? null,
         sequenceNumber,
+        metadata ? JSON.stringify(metadata) : null,
       ]
     );
 

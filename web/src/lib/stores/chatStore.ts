@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ChatMessage, ContextPackage, ScoredMemory, EntitySummary } from '@/lib/types';
+import type { ChatMessage, ContextPackage, ScoredMemory, EntitySummary, ReportData } from '@/lib/types';
 import {
   sendChatMessage as sendChatMessageHttp,
   prepareHistoryForApi,
@@ -478,6 +478,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           content: m.content,
           timestamp: m.created_at,
           memoryIds: m.context_memory_ids,
+          reportData: (m.metadata as Record<string, unknown> | null)?.reportData as ReportData | undefined,
         }));
 
         const conversationId = conversation.client_id || conversation.id;
