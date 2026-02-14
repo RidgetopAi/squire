@@ -40,6 +40,8 @@ export function resolveProvider(options?: CallOptions): ProviderConfig {
       return { provider, model, apiKey: config.llm.xaiApiKey, baseUrl: config.llm.xaiUrl };
     case 'gemini':
       return { provider, model, apiKey: config.llm.geminiApiKey, baseUrl: config.llm.geminiUrl };
+    case 'ollama':
+      return { provider, model, apiKey: 'ollama', baseUrl: `${config.llm.ollamaUrl}/v1` };
     default:
       throw new Error(`Unsupported LLM provider: ${provider}`);
   }

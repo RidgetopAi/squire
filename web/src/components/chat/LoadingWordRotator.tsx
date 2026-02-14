@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 /**
  * ✨ EDIT THIS LIST to add/remove/change loading phrases ✨
@@ -18,18 +18,39 @@ const PHRASE_DURATION = 2400;
 /** Stagger delay between each letter starting its shimmer (ms) */
 const LETTER_STAGGER = 45;
 
+const SHIMMER_CSS = `
+@keyframes squire-shimmer-sweep {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+`;
+
 export function LoadingWordRotator() {
   const [index, setIndex] = useState(() => Math.floor(Math.random() * LOADING_PHRASES.length));
   const [visible, setVisible] = useState(true);
+  const styleInjected = useRef(false);
 
+  // Inject keyframe CSS once
   useEffect(() => {
-    // Fade-out → swap → fade-in cycle
+    if (styleInjected.current) return;
+    styleInjected.current = true;
+    const style = document.createElement('style');
+    style.textContent = SHIMMER_CSS;
+    document.head.appendChild(style);
+    return () => {
+      document.head.removeChild(style);
+      styleInjected.current = false;
+    };
+  }, []);
+
+  // Rotate phrases
+  useEffect(() => {
     const interval = setInterval(() => {
-      setVisible(false); // start fade out
+      setVisible(false);
       setTimeout(() => {
         setIndex((prev) => (prev + 1) % LOADING_PHRASES.length);
-        setVisible(true); // fade in new word
-      }, 350); // matches CSS transition duration
+        setVisible(true);
+      }, 350);
     }, PHRASE_DURATION);
 
     return () => clearInterval(interval);
@@ -37,45 +58,27 @@ export function LoadingWordRotator() {
 
   const phrase = LOADING_PHRASES[index];
 
-  // Memoize the shimmer CSS so it's only injected once
-  const shimmerStyle = useMemo(
-    () => (
-      <style jsx global>{`
-        @keyframes shimmer-sweep {
-          0% {
-            background-position: -200% center;
-          }
-          100% {
-            background-position: 200% center;
-          }
-        }
-
-        .shimmer-letter {
-          display: inline-block;
-          background: linear-gradient(
-            90deg,
-            var(--foreground-muted) 0%,
-            var(--foreground-muted) 35%,
-            var(--primary) 48%,
-            var(--accent-mustard) 52%,
-            var(--foreground-muted) 65%,
-            var(--foreground-muted) 100%
-          );
-          background-size: 200% 100%;
-          -webkit-background-clip: text;
-          background-clip: text;
-          -webkit-text-fill-color: transparent;
-          animation: shimmer-sweep 2s ease-in-out infinite;
-        }
-      `}</style>
-    ),
-    []
-  );
+  const letterStyle = (i: number): React.CSSProperties => ({
+    display: 'inline-block',
+    background: `linear-gradient(
+      90deg,
+      var(--foreground-muted) 0%,
+      var(--foreground-muted) 35%,
+      var(--primary) 48%,
+      var(--accent-mustard) 52%,
+      var(--foreground-muted) 65%,
+      var(--foreground-muted) 100%
+    )`,
+    backgroundSize: '200% 100%',
+    WebkitBackgroundClip: 'text',
+    backgroundClip: 'text',
+    WebkitTextFillColor: 'transparent',
+    animation: `squire-shimmer-sweep 2s ease-in-out infinite`,
+    animationDelay: `${i * LETTER_STAGGER}ms`,
+  });
 
   return (
     <div className="flex items-center gap-2 select-none" aria-live="polite" aria-label="Loading">
-      {shimmerStyle}
-
       {/* Small pulsing dot */}
       <span
         className="inline-block w-1.5 h-1.5 rounded-full bg-primary animate-pulse"
@@ -84,17 +87,15 @@ export function LoadingWordRotator() {
 
       {/* Rotating phrase with per-letter shimmer */}
       <span
-        className={`
-          text-sm font-medium tracking-wide transition-all duration-300 ease-in-out
-          ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}
-        `}
+        className="text-sm font-medium tracking-wide"
+        style={{
+          transition: 'opacity 300ms ease-in-out, transform 300ms ease-in-out',
+          opacity: visible ? 1 : 0,
+          transform: visible ? 'translateY(0)' : 'translateY(-4px)',
+        }}
       >
         {phrase.split('').map((char, i) => (
-          <span
-            key={`${index}-${i}`}
-            className="shimmer-letter"
-            style={{ animationDelay: `${i * LETTER_STAGGER}ms` }}
-          >
+          <span key={`${index}-${i}`} style={letterStyle(i)}>
             {char === ' ' ? '\u00A0' : char}
           </span>
         ))}

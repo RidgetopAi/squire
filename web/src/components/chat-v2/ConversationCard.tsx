@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { ConversationPair } from '@/lib/types';
 import { ReportReader } from './ReportReader';
 
@@ -105,8 +106,13 @@ export function ConversationCard({ pair, index, onBookmark, isBookmarked = false
               [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mt-3 [&_h2]:mb-2
               [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-2 [&_h3]:mb-1
               [&_blockquote]:border-l-2 [&_blockquote]:border-cream/30 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-foreground-muted
+              [&_table]:w-full [&_table]:text-sm [&_table]:my-3
+              [&_thead]:border-b [&_thead]:border-foreground-muted/20
+              [&_th]:text-left [&_th]:text-foreground-muted [&_th]:font-medium [&_th]:text-xs [&_th]:uppercase [&_th]:tracking-wider [&_th]:px-3 [&_th]:py-2
+              [&_td]:px-3 [&_td]:py-2 [&_td]:border-b [&_td]:border-[var(--card-border)] [&_td]:text-foreground
+              [&_tr:last-child_td]:border-b-0
             ">
-              <ReactMarkdown>{assistantMessage.content}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{assistantMessage.content}</ReactMarkdown>
             </div>
           </div>
         ) : isStreaming ? (

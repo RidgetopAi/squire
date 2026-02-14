@@ -104,6 +104,12 @@ export const config = {
     retryAttempts: parseInt(optional('COURIER_RETRY_ATTEMPTS', '3'), 10),
     retryDelayMs: parseInt(optional('COURIER_RETRY_DELAY_MS', '15000'), 10), // 15 sec
   },
+  expressionEvaluator: {
+    enabled: optional('EXPRESSION_EVALUATOR_ENABLED', 'true') === 'true',
+    provider: optional('EXPRESSION_EVALUATOR_PROVIDER', 'ollama') as 'ollama' | 'groq' | 'xai' | 'gemini' | 'anthropic',
+    model: optional('EXPRESSION_EVALUATOR_MODEL', 'qwen2.5:3b'),
+    batchSize: parseInt(optional('EXPRESSION_EVALUATOR_BATCH_SIZE', '10'), 10),
+  },
   commune: {
     enabled: optional('COMMUNE_ENABLED', 'true') === 'true',
     intervalMs: parseInt(optional('COMMUNE_INTERVAL_MS', '900000'), 10), // 15 min default

@@ -311,6 +311,13 @@ async function handleChatMessage(
       return { commitmentCreated: null, reminderCreated: null };
     });
 
+    // Start system prompt + memory context early (overlap with context generation)
+    const systemPromptPromise = buildSystemPrompt();
+    const memoryContextPromise = buildMemoryContext(message).catch((error) => {
+      console.error('[Socket] Memory context retrieval failed:', error);
+      return '';
+    });
+
     // Step 2: Check for Story Intent and generate context
     let contextMarkdown: string | undefined;
     let storyResult: StoryResult | undefined;
@@ -404,21 +411,19 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
       }
     }
 
-    // Step 3: Build messages
+    // Step 3: Build messages — await promises started before context generation
     const messages: Array<{ role: string; content: string; images?: ImageContent[]; tool_calls?: ToolCall[]; tool_call_id?: string }> = [];
 
-    // System prompt with user identity, time grounding, tool instructions, memory, and context
-    let systemContent = await buildSystemPrompt();
+    const [systemPromptBase, memoryContext] = await Promise.all([
+      systemPromptPromise,
+      memoryContextPromise,
+    ]);
+
+    let systemContent = systemPromptBase;
     systemContent += getCurrentTimeContext();
 
-    // Inject lessons and preferences from memory
-    try {
-      const memoryContext = await buildMemoryContext(message);
-      if (memoryContext) {
-        systemContent += `\n\n---\n\n${memoryContext}`;
-      }
-    } catch (error) {
-      console.error('[Socket] Memory context retrieval failed:', error);
+    if (memoryContext) {
+      systemContent += `\n\n---\n\n${memoryContext}`;
     }
 
     if (contextMarkdown) {

@@ -3,6 +3,7 @@
 import { useRef, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { ReportData } from '@/lib/types';
 
 interface ReportReaderProps {
@@ -110,9 +111,13 @@ export function ReportReader({ report, isOpen, onClose }: ReportReaderProps) {
                 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:mt-4 [&_h3]:mb-2
                 [&_blockquote]:border-l-2 [&_blockquote]:border-cream/30 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-foreground-muted
                 [&_hr]:border-[var(--card-border)] [&_hr]:my-6
-                [&_table]:w-full [&_th]:text-left [&_th]:pb-2 [&_th]:border-b [&_th]:border-[var(--card-border)] [&_td]:py-1.5 [&_td]:border-b [&_td]:border-[var(--card-border)]
+                [&_table]:w-full [&_table]:text-sm [&_table]:my-4
+                [&_thead]:border-b [&_thead]:border-foreground-muted/20
+                [&_th]:text-left [&_th]:text-foreground-muted [&_th]:font-medium [&_th]:text-xs [&_th]:uppercase [&_th]:tracking-wider [&_th]:px-3 [&_th]:py-2
+                [&_td]:px-3 [&_td]:py-2.5 [&_td]:border-b [&_td]:border-[var(--card-border)] [&_td]:text-foreground
+                [&_tr:last-child_td]:border-b-0
               ">
-                <ReactMarkdown>{report.content}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{report.content}</ReactMarkdown>
               </div>
             </div>
           </div>

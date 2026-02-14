@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { ReportReader } from './ReportReader';
 import type { SavedCard as SavedCardType } from '@/lib/stores/savedCardsStore';
 
@@ -53,8 +54,13 @@ export function SavedCard({ card, onUnsave }: SavedCardProps) {
               [&_pre]:bg-background-tertiary [&_pre]:p-3 [&_pre]:overflow-x-auto [&_pre]:text-xs
               [&_a]:text-primary [&_a]:underline
               [&_strong]:text-foreground [&_strong]:font-semibold
+              [&_table]:w-full [&_table]:text-sm [&_table]:my-3
+              [&_thead]:border-b [&_thead]:border-foreground-muted/20
+              [&_th]:text-left [&_th]:text-foreground-muted [&_th]:font-medium [&_th]:text-xs [&_th]:uppercase [&_th]:tracking-wider [&_th]:px-3 [&_th]:py-2
+              [&_td]:px-3 [&_td]:py-2 [&_td]:border-b [&_td]:border-[var(--card-border)] [&_td]:text-foreground
+              [&_tr:last-child_td]:border-b-0
             ">
-              <ReactMarkdown>{card.assistantContent}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{card.assistantContent}</ReactMarkdown>
             </div>
           </div>
         )}

@@ -18,6 +18,7 @@ import {
 } from './research.js';
 import { extractMemoriesFromChat } from './chatExtraction.js';
 import { updateAllSummaries } from './summaries.js';
+import { evaluateUnevaluatedMemories } from './expressionEvaluator.js';
 
 /**
  * Consolidation Configuration
@@ -90,6 +91,10 @@ export interface ConsolidationResult {
   questionsExpired: number;
   summariesUpdated: number;
   summaryMemoriesProcessed: number;
+  // Expression evaluation (Step 0b)
+  expressionEvaluated: number;
+  expressionPassed: number;
+  expressionBlocked: number;
   durationMs: number;
 }
 
@@ -362,6 +367,9 @@ async function consolidateSession(session: Session): Promise<ConsolidationResult
     // 0. Extract memories from chat conversations
     const chatResult = await extractMemoriesFromChat();
 
+    // 0b. Evaluate expression safety for new/unevaluated memories
+    const expressionResult = await evaluateUnevaluatedMemories();
+
     // 1. Process memory strength (decay and strengthen)
     const strengthResult = await processMemoryStrength();
 
@@ -427,6 +435,9 @@ async function consolidateSession(session: Session): Promise<ConsolidationResult
       questionsExpired: researchResult.questionsExpired,
       summariesUpdated: summaryResult.updated.length,
       summaryMemoriesProcessed: summaryResult.memoriesProcessed,
+      expressionEvaluated: expressionResult.evaluated,
+      expressionPassed: expressionResult.passed,
+      expressionBlocked: expressionResult.blocked,
       durationMs: Date.now() - startTime,
     };
   } catch (error) {
@@ -445,6 +456,10 @@ export async function consolidateAll(): Promise<ConsolidationResult> {
   // 0. Extract memories from chat conversations (NEW)
   console.log('[Consolidation] Step 0: Extracting memories from chat...');
   const chatResult = await extractMemoriesFromChat();
+
+  // 0b. Evaluate expression safety for new/unevaluated memories (local Ollama model)
+  console.log('[Consolidation] Step 0b: Evaluating expression safety...');
+  const expressionResult = await evaluateUnevaluatedMemories();
 
   // 1. Process memory strength (decay and strengthen)
   console.log('[Consolidation] Step 1: Processing memory strength...');
@@ -509,6 +524,9 @@ export async function consolidateAll(): Promise<ConsolidationResult> {
     questionsExpired: researchResult.questionsExpired,
     summariesUpdated: summaryResult.updated.length,
     summaryMemoriesProcessed: summaryResult.memoriesProcessed,
+    expressionEvaluated: expressionResult.evaluated,
+    expressionPassed: expressionResult.passed,
+    expressionBlocked: expressionResult.blocked,
     durationMs: Date.now() - startTime,
   };
 }

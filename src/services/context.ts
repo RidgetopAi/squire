@@ -16,7 +16,8 @@ import { getNonEmptySummaries, type LivingSummary } from './summaries.js';
 import { searchNotes, getPinnedNotes } from './notes.js';
 import { searchLists } from './lists.js';
 import { searchForContext } from './documents/search.js';
-import { filterMemoriesOptimized } from './expressionFilter.js';
+// expressionFilter.ts is no longer called at runtime — safety is pre-computed
+// by expressionEvaluator.ts (local Ollama model) during consolidation.
 
 // === TYPES ===
 
@@ -638,6 +639,7 @@ export async function generateContext(
         )
         AND (conversation_mode IS NULL OR conversation_mode != 'meta_ai')
         AND (tier IS NULL OR tier = 'solid')
+        AND (expression_safe IS NULL OR expression_safe = TRUE)
       ORDER BY similarity DESC, salience_score DESC
       LIMIT 100
     `;
@@ -653,6 +655,7 @@ export async function generateContext(
         AND created_at >= $3
         AND (conversation_mode IS NULL OR conversation_mode != 'meta_ai')
         AND (tier IS NULL OR tier = 'solid')
+        AND (expression_safe IS NULL OR expression_safe = TRUE)
       ORDER BY salience_score DESC, created_at DESC
       LIMIT 100
     `;
@@ -722,27 +725,53 @@ export async function generateContext(
     budgetCaps
   );
 
-  // Phase 5: Expression-Time Safety Filter
-  // Last line of defense - filter out memories that would feel unnatural to mention
-  const filterResult = await filterMemoriesOptimized(
-    budgetedMemories.map((m) => ({ id: m.id, content: m.content })),
-    query // Use query as conversation context hint
-  );
-
-  // Keep only memories that passed the filter
-  const filteredMemories = budgetedMemories.filter((m) =>
-    filterResult.passedIds.includes(m.id)
-  );
+  // Expression safety is now pre-computed by expressionEvaluator (local Ollama model)
+  // and filtered at SQL level: AND (expression_safe IS NULL OR expression_safe = TRUE)
+  const filteredMemories = budgetedMemories;
 
   // Calculate total tokens (from filtered memories)
   const totalTokens = filteredMemories.reduce((sum, m) => sum + m.token_estimate, 0);
-
-  // Get entities mentioned in disclosed memories
   const memoryIds = filteredMemories.map((m) => m.id);
-  const entities = await getEntitiesForMemories(memoryIds);
 
-  // Get living summaries (non-empty ones)
-  const livingSummaries = await getNonEmptySummaries();
+  // Parallel fetch: all independent data sources at once
+  const [
+    entities,
+    livingSummaries,
+    pinnedNotes,
+    relevantNotes,
+    relevantLists,
+    docResults,
+    disclosureId,
+  ] = await Promise.all([
+    getEntitiesForMemories(memoryIds),
+    getNonEmptySummaries(),
+    getPinnedNotes(),
+    query
+      ? searchNotes(query, { limit: 5, threshold: config.search.notesThreshold }).catch((error) => {
+          console.error('[Context] Error fetching notes:', error);
+          return [] as Awaited<ReturnType<typeof searchNotes>>;
+        })
+      : Promise.resolve([] as Awaited<ReturnType<typeof searchNotes>>),
+    query
+      ? searchLists(query, 5).catch((error) => {
+          console.error('[Context] Error fetching lists:', error);
+          return [] as Awaited<ReturnType<typeof searchLists>>;
+        })
+      : Promise.resolve([] as Awaited<ReturnType<typeof searchLists>>),
+    (includeDocuments && query)
+      ? searchForContext(query, {
+          maxTokens: maxDocumentTokens,
+          threshold: config.search.contextThreshold,
+          limit: 10,
+        }).catch((error) => {
+          console.error('[Context] Error fetching documents:', error);
+          return { chunks: [] as { sourceId: string; documentName: string; content: string; pageNumber?: number; sectionTitle?: string; similarity: number; tokenCount: number }[] };
+        })
+      : Promise.resolve({ chunks: [] as { sourceId: string; documentName: string; content: string; pageNumber?: number; sectionTitle?: string; similarity: number; tokenCount: number }[] }),
+    logDisclosure(profile.name, query, memoryIds, totalTokens, profile.format, weights, conversationId),
+  ]);
+
+  // Map living summaries
   const summaries: SummarySnapshot[] = livingSummaries.map((s: LivingSummary) => ({
     category: s.category,
     content: s.content,
@@ -750,90 +779,48 @@ export async function generateContext(
     memory_count: s.memory_count,
   }));
 
-  // Get relevant notes and lists
-  let notes: NoteSnapshot[] = [];
-  let lists: ListSnapshot[] = [];
-
-  // Always include pinned notes
-  const pinnedNotes = await getPinnedNotes();
-  for (const note of pinnedNotes) {
-    notes.push({
-      id: note.id,
-      title: note.title,
-      content: note.content,
-      category: note.category,
-      entity_name: null, // Could be enriched with entity lookup
-    });
-  }
-
-  // If query provided, also search for relevant notes/lists
-  if (query) {
-    try {
-      const relevantNotes = await searchNotes(query, { limit: 5, threshold: config.search.notesThreshold });
-      for (const note of relevantNotes) {
-        // Avoid duplicates from pinned notes
-        if (!notes.some(n => n.id === note.id)) {
-          notes.push({
-            id: note.id,
-            title: note.title,
-            content: note.content,
-            category: note.category,
-            entity_name: null,
-            similarity: note.similarity,
-          });
-        }
-      }
-
-      const relevantLists = await searchLists(query, 5);
-      for (const list of relevantLists) {
-        lists.push({
-          id: list.id,
-          name: list.name,
-          description: list.description,
-          list_type: list.list_type,
-          entity_name: null,
-          similarity: list.similarity,
-        });
-      }
-    } catch (error) {
-      console.error('[Context] Error fetching notes/lists:', error);
-    }
-  }
-
-  // Get relevant document chunks
-  let documents: DocumentSnapshot[] = [];
-  if (includeDocuments && query) {
-    try {
-      const docResults = await searchForContext(query, {
-        maxTokens: maxDocumentTokens,
-        threshold: config.search.contextThreshold,
-        limit: 10,
+  // Merge pinned + relevant notes (deduplicated)
+  const notes: NoteSnapshot[] = pinnedNotes.map((note) => ({
+    id: note.id,
+    title: note.title,
+    content: note.content,
+    category: note.category,
+    entity_name: null,
+  }));
+  for (const note of relevantNotes) {
+    if (!notes.some(n => n.id === note.id)) {
+      notes.push({
+        id: note.id,
+        title: note.title,
+        content: note.content,
+        category: note.category,
+        entity_name: null,
+        similarity: note.similarity,
       });
-      documents = docResults.chunks.map((chunk) => ({
-        id: chunk.sourceId.split(':')[0] ?? chunk.sourceId,
-        chunkId: chunk.sourceId,
-        documentName: chunk.documentName,
-        content: chunk.content,
-        pageNumber: chunk.pageNumber,
-        sectionTitle: chunk.sectionTitle,
-        similarity: chunk.similarity,
-        tokenCount: chunk.tokenCount,
-      }));
-    } catch (error) {
-      console.error('[Context] Error fetching documents:', error);
     }
   }
 
-  // Log disclosure
-  const disclosureId = await logDisclosure(
-    profile.name,
-    query,
-    memoryIds,
-    totalTokens,
-    profile.format,
-    weights,
-    conversationId
-  );
+  // Map lists
+  const lists: ListSnapshot[] = relevantLists.map((list) => ({
+    id: list.id,
+    name: list.name,
+    description: list.description,
+    list_type: list.list_type,
+    entity_name: null,
+    similarity: list.similarity,
+  }));
+
+  // Map documents
+  const documents: DocumentSnapshot[] = docResults.chunks.map((chunk) => ({
+    id: chunk.sourceId.split(':')[0] ?? chunk.sourceId,
+    chunkId: chunk.sourceId,
+    documentName: chunk.documentName,
+    content: chunk.content,
+    pageNumber: chunk.pageNumber,
+    sectionTitle: chunk.sectionTitle,
+    similarity: chunk.similarity,
+    tokenCount: chunk.tokenCount,
+  }));
 
   // Format output
   let markdown = formatMarkdown(filteredMemories, entities, summaries, profile, query);
