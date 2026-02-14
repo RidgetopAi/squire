@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback, TouchEvent } from 'react';
 import { MessageBubble } from './MessageBubble';
+import { LoadingWordRotator } from './LoadingWordRotator';
 import { fetchRecentConversation } from '@/lib/api/conversations';
 import { useChatStore } from '@/lib/stores/chatStore';
 import type { ChatMessage } from '@/lib/types';
@@ -176,15 +177,11 @@ export function MessageList({ messages, isLoading = false }: MessageListProps) {
           />
         ))}
 
-        {/* Typing indicator */}
+        {/* Typing indicator — animated word rotator */}
         {isLoading && (
           <div className="flex justify-start mt-4">
             <div className="glass px-4 py-3 rounded-2xl rounded-bl-md">
-              <div className="flex gap-1.5">
-                <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-              </div>
+              <LoadingWordRotator />
             </div>
           </div>
         )}
