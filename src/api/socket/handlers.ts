@@ -488,7 +488,7 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
     }
 
     // Emit chat:done after follow-up
-    console.log(`[Socket] Emitting chat:done for conversation: ${conversationId}`);
+    console.log(`[Socket] Emitting chat:done for conversation: ${conversationId}${streamResult.reportData ? ' (with report)' : ''}`);
     socket.emit('chat:done', {
       conversationId,
       usage: streamResult.usage ? {
@@ -496,6 +496,7 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
         completionTokens: streamResult.usage.completionTokens,
         totalTokens: streamResult.usage.promptTokens + streamResult.usage.completionTokens,
       } : undefined,
+      reportData: streamResult.reportData,
     });
     chatDoneEmitted = true;
 
@@ -558,10 +559,11 @@ async function streamWithToolLoop(
   signal: AbortSignal,
   tools?: ToolDefinition[],
   providerOverride?: { provider: string; model: string }
-): Promise<{ content: string; usage?: { promptTokens: number; completionTokens: number } }> {
+): Promise<{ content: string; usage?: { promptTokens: number; completionTokens: number }; reportData?: { title: string; summary: string; content: string; generatedAt: string } }> {
   let fullContent = '';
   let totalPromptTokens = 0;
   let totalCompletionTokens = 0;
+  let reportData: { title: string; summary: string; content: string; generatedAt: string } | undefined;
   const currentMessages = [...messages];
 
   for (let iteration = 0; iteration <= MAX_TOOL_ITERATIONS; iteration++) {
@@ -607,6 +609,24 @@ async function streamWithToolLoop(
 
     for (const result of toolResults) {
       console.log(`[Socket] Tool ${result.name}: ${result.success ? 'success' : 'failed'}`);
+
+      // Check for present_report tool result
+      if (result.name === 'present_report' && result.success) {
+        try {
+          const parsed = JSON.parse(result.result);
+          if (parsed.type === 'report') {
+            reportData = {
+              title: parsed.title,
+              summary: parsed.summary,
+              content: parsed.content,
+              generatedAt: parsed.generatedAt,
+            };
+            console.log(`[Socket] Report data captured: "${reportData.title}"`);
+          }
+        } catch {
+          console.warn('[Socket] Failed to parse present_report result');
+        }
+      }
     }
 
     // Add assistant message with tool calls + tool results to conversation
@@ -630,6 +650,7 @@ async function streamWithToolLoop(
   return {
     content: fullContent,
     usage: { promptTokens: totalPromptTokens, completionTokens: totalCompletionTokens },
+    reportData,
   };
 }
 

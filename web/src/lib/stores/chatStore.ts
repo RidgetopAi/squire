@@ -84,7 +84,7 @@ interface ChatState {
 
   // Streaming actions
   appendToStreamingMessage: (chunk: string) => void;
-  finishStreaming: (usage?: ChatDonePayload['usage']) => void;
+  finishStreaming: (usage?: ChatDonePayload['usage'], reportData?: ChatDonePayload['reportData']) => void;
   handleStreamError: (error: string) => void;
 
   // High-level action for sending messages
@@ -245,13 +245,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   // Finish streaming
-  finishStreaming: (_usage) => {
-    const { pendingUserMessageId, isStreaming, isLoading } = get();
+  finishStreaming: (_usage, reportData) => {
+    const { pendingUserMessageId, streamingMessageId, isStreaming, isLoading } = get();
     console.log('[ChatStore] finishStreaming called', { isStreaming, isLoading, pendingUserMessageId });
-    
+
     // Clear the pending message backup - server has confirmed receipt
     if (pendingUserMessageId) {
       clearPendingMessage(pendingUserMessageId);
+    }
+
+    // Attach report data to the streaming message if present
+    if (reportData && streamingMessageId) {
+      set((state) => ({
+        messages: state.messages.map((msg) =>
+          msg.id === streamingMessageId
+            ? { ...msg, reportData }
+            : msg
+        ),
+      }));
     }
 
     set({
@@ -260,7 +271,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       isLoading: false,
       pendingUserMessageId: null,
     });
-    
+
     console.log('[ChatStore] finishStreaming complete - state reset');
   },
 
@@ -576,10 +587,11 @@ export function initWebSocketListeners(): () => void {
       match: payload.conversationId === conversationId,
       isStreaming,
       streamingMessageId,
+      hasReport: !!payload.reportData,
     });
     if (payload.conversationId === conversationId) {
       console.log('[ChatStore] Calling finishStreaming');
-      store().finishStreaming(payload.usage);
+      store().finishStreaming(payload.usage, payload.reportData);
     }
   }
 

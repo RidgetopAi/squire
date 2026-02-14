@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { HeaderBar } from './HeaderBar';
-import { SideNav } from './SideNav';
+import { BottomNav } from './BottomNav';
 import { ToastProvider, useToast } from '@/components/shared/Toast';
 import { useWebSocket } from '@/lib/hooks';
 import { useChatNavigationGuard } from '@/lib/hooks/useNavigationGuard';
@@ -36,7 +35,6 @@ function SocketToastListener() {
 
 // Component that provides navigation protection and message recovery
 function NavigationGuardProvider() {
-  // Activate the chat navigation guard for the entire app
   useChatNavigationGuard();
   return null;
 }
@@ -48,7 +46,6 @@ function MessageRecoveryProvider() {
   const [showRecoveryBanner, setShowRecoveryBanner] = useState(false);
 
   useEffect(() => {
-    // Check for orphaned messages on mount (client-side only)
     const checkOrphanedMessages = async () => {
       const { useChatStore } = await import('@/lib/stores/chatStore');
       const orphaned = useChatStore.getState().recoverOrphanedMessages();
@@ -64,7 +61,6 @@ function MessageRecoveryProvider() {
       }
     };
 
-    // Small delay to ensure client hydration
     const timeout = setTimeout(checkOrphanedMessages, 500);
     return () => clearTimeout(timeout);
   }, [showToast]);
@@ -86,12 +82,12 @@ function MessageRecoveryProvider() {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 max-w-md animate-fade-in">
-      <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 shadow-lg backdrop-blur-sm">
+    <div className="fixed bottom-16 right-4 z-50 max-w-md animate-fade-in">
+      <div className="bg-accent-mustard/10 border border-accent-mustard/30 rounded-lg p-4 shadow-lg backdrop-blur-sm">
         <div className="flex items-start gap-3">
-          <div className="shrink-0 w-8 h-8 rounded-full bg-yellow-500/20 flex items-center justify-center">
+          <div className="shrink-0 w-8 h-8 rounded-full bg-accent-mustard/20 flex items-center justify-center">
             <svg
-              className="w-4 h-4 text-yellow-400"
+              className="w-4 h-4 text-accent-mustard"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -105,7 +101,7 @@ function MessageRecoveryProvider() {
             </svg>
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="font-medium text-yellow-400 text-sm">
+            <h3 className="font-medium text-accent-mustard text-sm">
               Recovered Message{recoveredMessages.length > 1 ? 's' : ''}
             </h3>
             <p className="text-foreground-muted text-xs mt-1">
@@ -156,61 +152,19 @@ function MessageRecoveryProvider() {
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
-  const [isSideNavOpen, setIsSideNavOpen] = useState(false);
-  const [isSideNavCollapsed, setIsSideNavCollapsed] = useState(false);
-
-  // Close mobile nav on resize to desktop
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth >= 1024) {
-        setIsSideNavOpen(false);
-      }
-    };
-
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  // Prevent body scroll when mobile nav is open
-  useEffect(() => {
-    if (isSideNavOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [isSideNavOpen]);
-
   return (
     <ToastProvider>
       <SocketToastListener />
       <NavigationGuardProvider />
       <MessageRecoveryProvider />
-      <div className="h-screen flex flex-col bg-background overflow-hidden pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
-        {/* Header */}
-        <HeaderBar
-          onMenuToggle={() => setIsSideNavOpen(!isSideNavOpen)}
-          isSideNavOpen={isSideNavOpen}
-        />
+      <div className="h-screen flex flex-col bg-background overflow-hidden pt-[env(safe-area-inset-top)]">
+        {/* Page content */}
+        <main className="flex-1 overflow-auto pb-[calc(3.5rem+env(safe-area-inset-bottom))]">
+          {children}
+        </main>
 
-        {/* Main content area with sidebar */}
-        <div className="flex-1 flex overflow-hidden">
-          {/* Sidebar */}
-          <SideNav
-            isOpen={isSideNavOpen}
-            onClose={() => setIsSideNavOpen(false)}
-            isCollapsed={isSideNavCollapsed}
-            onToggleCollapse={() => setIsSideNavCollapsed(!isSideNavCollapsed)}
-          />
-
-          {/* Page content */}
-          <main className="flex-1 overflow-auto">
-            {children}
-          </main>
-        </div>
+        {/* Bottom navigation */}
+        <BottomNav />
       </div>
     </ToastProvider>
   );

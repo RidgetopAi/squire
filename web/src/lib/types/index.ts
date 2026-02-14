@@ -206,6 +206,23 @@ export interface ChatMessage {
   timestamp: string;
   context?: ContextPackage;
   memoryIds?: string[];
+  reportData?: ReportData;
+}
+
+// Report Data (from present_report tool)
+export interface ReportData {
+  title: string;
+  summary: string;
+  content: string; // markdown
+  generatedAt: string;
+}
+
+// Conversation pair (user message + assistant response)
+export interface ConversationPair {
+  id: string;
+  userMessage: ChatMessage;
+  assistantMessage: ChatMessage | null;
+  isStreaming: boolean;
 }
 
 export interface Conversation {

@@ -77,6 +77,12 @@ export interface ChatDonePayload {
     totalTokens: number;
   };
   model?: string;
+  reportData?: {
+    title: string;
+    summary: string;
+    content: string;
+    generatedAt: string;
+  };
 }
 
 export interface MemoryCreatedPayload {
