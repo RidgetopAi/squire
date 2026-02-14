@@ -87,7 +87,7 @@ export function LoadingWordRotator() {
 
       {/* Rotating phrase with per-letter shimmer */}
       <span
-        className="text-sm font-medium tracking-wide"
+        className="text-base font-bold tracking-wide"
         style={{
           transition: 'opacity 300ms ease-in-out, transform 300ms ease-in-out',
           opacity: visible ? 1 : 0,
