@@ -25,15 +25,15 @@ interface SavedCardsState {
   isFilterMode: boolean;
   isLoading: boolean;
 
-  // Track which pair IDs are saved (for bookmark icon state)
-  savedPairIds: Set<string>;
-  // Map pair ID → saved card ID (for unsaving from chat view)
-  pairToSavedId: Map<string, string>;
+  // Single source of truth: pairId → savedCardId
+  // Used for bookmark icon state AND for unsaving from chat view
+  bookmarks: Map<string, string>;
 
   // Actions
   saveCard: (pair: ConversationPair, tags: string[]) => Promise<void>;
-  unsaveCard: (id: string, pairId?: string) => Promise<void>;
-  unsaveByPairId: (pairId: string) => Promise<void>;
+  unsaveCard: (savedCardId: string) => Promise<void>;
+  toggleBookmark: (pair: ConversationPair) => void;
+  isBookmarked: (pairId: string) => boolean;
   fetchSavedCards: (filters?: { tag?: string; q?: string }) => Promise<void>;
   fetchTags: () => Promise<void>;
   setFilterMode: (on: boolean) => void;
@@ -49,8 +49,7 @@ export const useSavedCardsStore = create<SavedCardsState>((set, get) => ({
   searchQuery: '',
   isFilterMode: false,
   isLoading: false,
-  savedPairIds: new Set(),
-  pairToSavedId: new Map(),
+  bookmarks: new Map(),
 
   saveCard: async (pair, tags) => {
     try {
@@ -62,12 +61,11 @@ export const useSavedCardsStore = create<SavedCardsState>((set, get) => ({
       });
 
       set((state) => {
-        const newPairToSavedId = new Map(state.pairToSavedId);
-        newPairToSavedId.set(pair.id, result.id);
+        const newBookmarks = new Map(state.bookmarks);
+        newBookmarks.set(pair.id, result.id);
         return {
           savedCards: [result, ...state.savedCards],
-          savedPairIds: new Set([...state.savedPairIds, pair.id]),
-          pairToSavedId: newPairToSavedId,
+          bookmarks: newBookmarks,
         };
       });
 
@@ -79,16 +77,22 @@ export const useSavedCardsStore = create<SavedCardsState>((set, get) => ({
     }
   },
 
-  unsaveCard: async (id, pairId?) => {
+  unsaveCard: async (savedCardId) => {
     try {
-      await apiDelete(`/api/saved-cards/${id}`);
+      await apiDelete(`/api/saved-cards/${savedCardId}`);
 
       set((state) => {
-        const newPairIds = new Set(state.savedPairIds);
-        if (pairId) newPairIds.delete(pairId);
+        // Remove from bookmarks map (find by savedCardId value)
+        const newBookmarks = new Map(state.bookmarks);
+        for (const [pairId, cardId] of newBookmarks) {
+          if (cardId === savedCardId) {
+            newBookmarks.delete(pairId);
+            break;
+          }
+        }
         return {
-          savedCards: state.savedCards.filter((c) => c.id !== id),
-          savedPairIds: newPairIds,
+          savedCards: state.savedCards.filter((c) => c.id !== savedCardId),
+          bookmarks: newBookmarks,
         };
       });
     } catch (error) {
@@ -97,15 +101,19 @@ export const useSavedCardsStore = create<SavedCardsState>((set, get) => ({
     }
   },
 
-  unsaveByPairId: async (pairId) => {
-    const savedId = get().pairToSavedId.get(pairId);
-    if (!savedId) return;
-    await get().unsaveCard(savedId, pairId);
-    set((state) => {
-      const newMap = new Map(state.pairToSavedId);
-      newMap.delete(pairId);
-      return { pairToSavedId: newMap };
-    });
+  toggleBookmark: (pair) => {
+    const { bookmarks } = get();
+    const savedCardId = bookmarks.get(pair.id);
+    if (savedCardId) {
+      // Already saved — unsave it
+      get().unsaveCard(savedCardId);
+    }
+    // If not saved, the caller should open the tag input
+    // (handled in ChatWindowV2)
+  },
+
+  isBookmarked: (pairId) => {
+    return get().bookmarks.has(pairId);
   },
 
   fetchSavedCards: async (filters) => {

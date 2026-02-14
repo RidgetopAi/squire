@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { InputCard, type ImageAttachment } from './InputCard';
 import { CardList } from './CardList';
@@ -24,8 +24,11 @@ export function ChatWindowV2() {
   const pairs = useConversationPairs(messages, streamingMessageId);
 
   // Saved cards state
-  const { isFilterMode, savedCards, savedPairIds, saveCard, unsaveCard, unsaveByPairId } = useSavedCardsStore();
+  const { isFilterMode, savedCards, bookmarks, saveCard, unsaveCard } = useSavedCardsStore();
   const [bookmarkingPair, setBookmarkingPair] = useState<ConversationPair | null>(null);
+
+  // Derive bookmarked IDs set from the bookmarks map for CardList
+  const bookmarkedIds = useMemo(() => new Set(bookmarks.keys()), [bookmarks]);
 
   const handleSend = useCallback(
     async (content: string, images?: ImageAttachment[]) => {
@@ -35,13 +38,14 @@ export function ChatWindowV2() {
   );
 
   const handleBookmark = useCallback((pair: ConversationPair) => {
-    if (savedPairIds.has(pair.id)) {
+    const savedCardId = bookmarks.get(pair.id);
+    if (savedCardId) {
       // Already saved — unsave it
-      unsaveByPairId(pair.id);
+      unsaveCard(savedCardId);
       return;
     }
     setBookmarkingPair(pair);
-  }, [savedPairIds, unsaveByPairId]);
+  }, [bookmarks, unsaveCard]);
 
   const handleSaveWithTags = useCallback(async (tags: string[]) => {
     if (!bookmarkingPair) return;
@@ -93,7 +97,8 @@ export function ChatWindowV2() {
             <div className="bg-[var(--card-bg)] border border-[var(--card-border)] card-glow">
               <div className="px-5 pt-3 pb-2">
                 <p className="text-xs text-foreground-muted/60 line-clamp-2">
-                  {bookmarkingPair.assistantMessage?.content?.slice(0, 120)}...
+                  {bookmarkingPair.assistantMessage?.reportData?.title ||
+                   bookmarkingPair.assistantMessage?.content?.slice(0, 120)}...
                 </p>
               </div>
               <TagInput
@@ -131,7 +136,7 @@ export function ChatWindowV2() {
         <CardList
           pairs={pairs}
           onBookmark={handleBookmark}
-          bookmarkedIds={savedPairIds}
+          bookmarkedIds={bookmarkedIds}
         />
       )}
 
