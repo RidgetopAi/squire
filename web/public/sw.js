@@ -1,7 +1,7 @@
 // Squire Service Worker for Push Notifications
-// Version: 1.0.0
+// Version: 2.0.0
 
-const CACHE_NAME = 'squire-v1';
+const CACHE_NAME = 'squire-v2';
 
 // ========================================
 // Installation
