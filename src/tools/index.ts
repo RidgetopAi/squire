@@ -222,6 +222,7 @@ import { tools as scratchpadTools } from './scratchpad.js';
 import { tools as communeTools } from './commune.js';
 import { tools as imageTools } from './images.js';
 import { tools as reportTools } from './report.js';
+import { tools as pageTools } from './page.js';
 
 const allToolSpecs: ToolSpec[] = [
   ...timeTools,
@@ -240,6 +241,7 @@ const allToolSpecs: ToolSpec[] = [
   ...communeTools,
   ...imageTools,
   ...reportTools,
+  ...pageTools,
 ];
 
 for (const spec of allToolSpecs) {
