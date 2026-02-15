@@ -42,9 +42,78 @@ export function ReportReader({ report, isOpen, onClose }: ReportReaderProps) {
     }
   }, [isOpen, onClose]);
 
-  const handleExportStub = (type: string) => {
-    // Stub: show coming soon feedback
-    console.log(`[ReportReader] Export ${type} - coming soon`);
+  const [copyFeedback, setCopyFeedback] = useState(false);
+
+  const handleCopy = async () => {
+    const markdown = `# ${report.title}\n\n${report.summary}\n\n---\n\n${report.content}`;
+    try {
+      await navigator.clipboard.writeText(markdown);
+      setCopyFeedback(true);
+      setTimeout(() => setCopyFeedback(false), 2000);
+    } catch {
+      // Fallback for older browsers
+      const textarea = document.createElement('textarea');
+      textarea.value = markdown;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      setCopyFeedback(true);
+      setTimeout(() => setCopyFeedback(false), 2000);
+    }
+  };
+
+  const handlePDF = () => {
+    // Open a print-friendly window with the report content and trigger print-to-PDF
+    const html = `<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>${report.title}</title>
+<style>
+  body { font-family: Georgia, serif; max-width: 700px; margin: 40px auto; padding: 0 20px; color: #1a1a1a; line-height: 1.7; }
+  h1 { font-size: 24px; margin-bottom: 8px; }
+  .summary { color: #555; font-style: italic; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid #ddd; }
+  h2 { font-size: 18px; margin-top: 32px; }
+  h3 { font-size: 15px; margin-top: 24px; }
+  code { background: #f4f4f4; padding: 2px 6px; font-size: 13px; border-radius: 3px; }
+  pre { background: #f4f4f4; padding: 16px; overflow-x: auto; font-size: 13px; border-radius: 4px; }
+  pre code { background: none; padding: 0; }
+  blockquote { border-left: 3px solid #ccc; padding-left: 16px; color: #555; font-style: italic; }
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #ddd; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #777; }
+  @media print { body { margin: 20px; } }
+</style>
+</head><body>
+<h1>${report.title}</h1>
+<p class="summary">${report.summary}</p>
+<div id="content"></div>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"><\/script>
+<script>document.getElementById('content').innerHTML = marked.parse(${JSON.stringify(report.content)});<\/script>
+</body></html>`;
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, '_blank');
+    if (win) {
+      win.onload = () => {
+        setTimeout(() => { win.print(); URL.revokeObjectURL(url); }, 500);
+      };
+    }
+  };
+
+  const handleMarkdown = () => {
+    const markdown = `# ${report.title}\n\n> ${report.summary}\n\n---\n\n${report.content}`;
+    const blob = new Blob([markdown], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${report.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+$/, '')}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -125,22 +194,22 @@ export function ReportReader({ report, isOpen, onClose }: ReportReaderProps) {
           {/* Footer with export stubs */}
           <div className="flex items-center justify-center gap-3 px-6 py-3 border-t border-[var(--card-border)]">
             <button
-              onClick={() => handleExportStub('copy')}
+              onClick={handleCopy}
               className="text-xs text-foreground-muted hover:text-foreground transition-colors px-3 py-1.5 border border-[var(--card-border)] hover:border-foreground-muted/30"
             >
-              Copy
+              {copyFeedback ? 'Copied!' : 'Copy'}
             </button>
             <button
-              onClick={() => handleExportStub('pdf')}
+              onClick={handlePDF}
               className="text-xs text-foreground-muted hover:text-foreground transition-colors px-3 py-1.5 border border-[var(--card-border)] hover:border-foreground-muted/30"
             >
               PDF
             </button>
             <button
-              onClick={() => handleExportStub('share')}
+              onClick={handleMarkdown}
               className="text-xs text-foreground-muted hover:text-foreground transition-colors px-3 py-1.5 border border-[var(--card-border)] hover:border-foreground-muted/30"
             >
-              Share
+              Markdown
             </button>
           </div>
         </motion.div>
