@@ -124,7 +124,7 @@ export function ReportReader({ report, isOpen, onClose }: ReportReaderProps) {
           animate={{ y: 0 }}
           exit={{ y: '100%' }}
           transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-          className="fixed inset-0 z-[60] bg-[var(--background)] flex flex-col"
+          className="fixed inset-0 z-[60] bg-[var(--background)] flex flex-col pt-[env(safe-area-inset-top)]"
         >
           {/* Progress bar */}
           <div className="h-0.5 bg-background-tertiary">
