@@ -96,6 +96,12 @@ export const config = {
       model: optional('ROUTING_FAST_MODEL', 'grok-4-1-fast-reasoning'),
     },
   },
+  goalWorker: {
+    enabled: optional('GOAL_WORKER_ENABLED', 'true') === 'true',
+    intervalMs: parseInt(optional('GOAL_WORKER_INTERVAL_MS', '3600000'), 10), // 1 hour
+    maxTurns: parseInt(optional('GOAL_WORKER_MAX_TURNS', '15'), 10),
+    maxExecutionMs: parseInt(optional('GOAL_WORKER_MAX_EXECUTION_MS', '300000'), 10), // 5 min
+  },
   courier: {
     enabled: optional('COURIER_ENABLED', 'true') === 'true',
     intervalMs: parseInt(optional('COURIER_INTERVAL_MS', '1800000'), 10), // 30 min

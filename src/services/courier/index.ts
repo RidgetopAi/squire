@@ -8,3 +8,6 @@ import { registerTask } from './tasks/index.js';
 
 // Auto-register email check task
 registerTask('email-check', emailCheckTask);
+
+import { goalWorkerTask } from './tasks/goalWorker.js';
+registerTask('goal-worker', goalWorkerTask);

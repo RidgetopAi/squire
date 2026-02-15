@@ -223,6 +223,7 @@ import { tools as communeTools } from './commune.js';
 import { tools as imageTools } from './images.js';
 import { tools as reportTools } from './report.js';
 import { tools as pageTools } from './page.js';
+import { tools as goalTools } from './goals.js';
 
 const allToolSpecs: ToolSpec[] = [
   ...timeTools,
@@ -242,6 +243,7 @@ const allToolSpecs: ToolSpec[] = [
   ...imageTools,
   ...reportTools,
   ...pageTools,
+  ...goalTools,
 ];
 
 for (const spec of allToolSpecs) {
