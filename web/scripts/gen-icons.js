@@ -1,119 +1,60 @@
 const fs = require('fs');
-
-// Try to use canvas if available, otherwise create minimal valid PNGs
-let createCanvas;
-try {
-  createCanvas = require('canvas').createCanvas;
-} catch (e) {
-  console.log('canvas not available, creating minimal PNGs');
-  createCanvas = null;
-}
-
-function createMinimalPng(size) {
-  // Minimal valid PNG - solid cyan square
-  // This is a very basic PNG without compression
-  const png = require('pngjs').PNG;
-  const image = new png({ width: size, height: size });
-
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const idx = (size * y + x) << 2;
-      // Cyan color #06b6d4
-      image.data[idx] = 6;      // R
-      image.data[idx + 1] = 182; // G
-      image.data[idx + 2] = 212; // B
-      image.data[idx + 3] = 255; // A
-    }
-  }
-
-  return png.sync.write(image);
-}
-
-function createIconWithCanvas(size, filename) {
-  const canvas = createCanvas(size, size);
-  const ctx = canvas.getContext('2d');
-
-  // Background - dark
-  ctx.fillStyle = '#111827';
-  ctx.fillRect(0, 0, size, size);
-
-  // Cyan circle
-  ctx.beginPath();
-  ctx.arc(size/2, size/2, size * 0.35, 0, Math.PI * 2);
-  ctx.fillStyle = '#06b6d4';
-  ctx.fill();
-
-  // Letter S
-  ctx.font = `bold ${size * 0.4}px sans-serif`;
-  ctx.fillStyle = '#111827';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('S', size/2, size/2 + size * 0.02);
-
-  const buffer = canvas.toBuffer('image/png');
-  fs.writeFileSync(filename, buffer);
-  console.log(`Created ${filename} (${size}x${size})`);
-}
-
-function createIconWithPngjs(size, filename) {
-  const { PNG } = require('pngjs');
-  const image = new PNG({ width: size, height: size });
-
-  const centerX = size / 2;
-  const centerY = size / 2;
-  const radius = size * 0.35;
-
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const idx = (size * y + x) << 2;
-
-      // Check if inside circle
-      const dist = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
-
-      if (dist <= radius) {
-        // Cyan #06b6d4
-        image.data[idx] = 6;
-        image.data[idx + 1] = 182;
-        image.data[idx + 2] = 212;
-        image.data[idx + 3] = 255;
-      } else {
-        // Dark background #111827
-        image.data[idx] = 17;
-        image.data[idx + 1] = 24;
-        image.data[idx + 2] = 39;
-        image.data[idx + 3] = 255;
-      }
-    }
-  }
-
-  const buffer = PNG.sync.write(image);
-  fs.writeFileSync(filename, buffer);
-  console.log(`Created ${filename} (${size}x${size})`);
-}
-
-// Install pngjs if needed and generate icons
 const { execSync } = require('child_process');
+const path = require('path');
 
-try {
-  require('pngjs');
-} catch (e) {
-  console.log('Installing pngjs...');
-  execSync('npm install pngjs --save-dev', { stdio: 'inherit' });
+const publicDir = path.join(__dirname, '..', 'public');
+const svgPath = path.join(publicDir, 'squire-icon.svg');
+
+// Check if rsvg-convert (librsvg) is available for high-quality SVG→PNG
+function hasRsvg() {
+  try {
+    execSync('which rsvg-convert', { stdio: 'ignore' });
+    return true;
+  } catch { return false; }
+}
+
+// Check if Inkscape is available
+function hasInkscape() {
+  try {
+    execSync('which inkscape', { stdio: 'ignore' });
+    return true;
+  } catch { return false; }
 }
 
 const sizes = [
-  { size: 192, name: 'public/icon-192.png' },
-  { size: 512, name: 'public/icon-512.png' },
-  { size: 72, name: 'public/badge-72.png' },
-  { size: 180, name: 'public/apple-touch-icon.png' },
+  { size: 192, name: 'icon-192.png' },
+  { size: 512, name: 'icon-512.png' },
+  { size: 72,  name: 'badge-72.png' },
+  { size: 180, name: 'apple-touch-icon.png' },
 ];
 
-for (const { size, name } of sizes) {
-  if (createCanvas) {
-    createIconWithCanvas(size, name);
-  } else {
-    createIconWithPngjs(size, name);
-  }
+if (!fs.existsSync(svgPath)) {
+  console.error('Error: squire-icon.svg not found in public/');
+  process.exit(1);
 }
 
-console.log('Done!');
+if (hasRsvg()) {
+  console.log('Using rsvg-convert for PNG generation...');
+  for (const { size, name } of sizes) {
+    const outPath = path.join(publicDir, name);
+    execSync(`rsvg-convert -w ${size} -h ${size} "${svgPath}" -o "${outPath}"`);
+    console.log(`Created ${name} (${size}x${size})`);
+  }
+} else if (hasInkscape()) {
+  console.log('Using Inkscape for PNG generation...');
+  for (const { size, name } of sizes) {
+    const outPath = path.join(publicDir, name);
+    execSync(`inkscape "${svgPath}" --export-type=png --export-filename="${outPath}" -w ${size} -h ${size}`);
+    console.log(`Created ${name} (${size}x${size})`);
+  }
+} else {
+  console.log('Neither rsvg-convert nor inkscape found.');
+  console.log('Install librsvg2-bin: sudo apt install librsvg2-bin');
+  console.log('Then re-run: node scripts/gen-icons.js');
+  console.log('');
+  console.log('SVG icon is at: public/squire-icon.svg');
+  console.log('You can also open it in a browser and use the manifest with SVG directly.');
+  process.exit(1);
+}
+
+console.log('Done! All icons generated from squire-icon.svg');

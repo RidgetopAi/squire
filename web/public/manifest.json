@@ -4,8 +4,8 @@
   "description": "Your AI memory companion",
   "start_url": "/app/chat",
   "display": "standalone",
-  "background_color": "#111827",
-  "theme_color": "#06b6d4",
+  "background_color": "#1a1816",
+  "theme_color": "#c4694a",
   "orientation": "portrait-primary",
   "icons": [
     {
