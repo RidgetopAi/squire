@@ -52,6 +52,20 @@ export const goalWorkerTask: CourierTask = {
       // 2. Mark as being worked on
       await markGoalWorkedOn(goal.id);
 
+      // 2.5. Ensure Mandrel is on the right project
+      try {
+        const res = await fetch('http://localhost:8080/mcp/tools/project_switch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ arguments: { project: 'squire-agent' } }),
+        });
+        if (res.ok) {
+          console.log('[GoalWorker] Mandrel project set to squire-agent');
+        }
+      } catch (e) {
+        console.warn('[GoalWorker] Could not switch Mandrel project:', e);
+      }
+
       // 3. Build the goal-focused prompt
       const previousNotes = goal.notes.length > 0
         ? '\n\nPrevious progress notes:\n' + goal.notes.map(n => `- [${n.timestamp}] ${n.content}`).join('\n')
@@ -71,6 +85,10 @@ ${previousNotes}
 3. Be practical - do real work, not just planning
 4. When done, use squire_goal_note to log what you accomplished
 5. If the goal is complete, use squire_goal_update to mark it completed with an outcome
+
+## Mandrel Project
+- Mandrel has been set to 'squire-agent' by default
+- If this goal relates to a different project (e.g. thucydides), switch with project_switch first
 
 ## Guardrails
 - You have up to 15 tool calls
