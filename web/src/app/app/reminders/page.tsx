@@ -23,12 +23,12 @@ interface Reminder {
 }
 
 const statusColors: Record<ReminderStatus, string> = {
-  pending: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  sent: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  acknowledged: 'bg-green-500/20 text-green-400 border-green-500/30',
-  snoozed: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-  canceled: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
-  failed: 'bg-red-500/20 text-red-400 border-red-500/30',
+  pending: 'bg-accent-mustard/20 text-accent-mustard border-accent-mustard/30',
+  sent: 'bg-primary/20 text-primary border-primary/30',
+  acknowledged: 'bg-accent-olive/20 text-accent-olive border-accent-olive/30',
+  snoozed: 'bg-accent-burgundy/20 text-accent-burgundy border-accent-burgundy/30',
+  canceled: 'bg-taupe/20 text-taupe border-taupe/30',
+  failed: 'bg-error/20 text-error border-error/30',
 };
 
 const statusIcons: Record<ReminderStatus, string> = {
@@ -110,8 +110,8 @@ function ReminderCard({
     <div
       onClick={handleCardClick}
       className={`p-4 rounded-lg border transition-all duration-200 cursor-pointer ${
-        isPast && canAct ? 'border-yellow-500/50 bg-yellow-500/5' : 'border-white/10 bg-white/5'
-      } ${expanded ? 'bg-white/10' : 'hover:bg-white/10'}`}
+        isPast && canAct ? 'border-accent-mustard/50 bg-accent-mustard/5' : 'border-[var(--card-border)] bg-[var(--card-bg)]'
+      } ${expanded ? 'bg-background-tertiary' : 'hover:bg-background-tertiary'}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
@@ -119,31 +119,31 @@ function ReminderCard({
             <span className={`px-2 py-0.5 text-xs rounded border ${statusColors[reminder.status]}`}>
               {statusIcons[reminder.status]} {reminder.status}
             </span>
-            <span className="text-xs text-gray-500">{reminder.channel}</span>
-            <span className="text-xs text-gray-600">
+            <span className="text-xs text-foreground-muted">{reminder.channel}</span>
+            <span className="text-xs text-foreground-muted/60">
               {expanded ? '▼' : '▶'}
             </span>
           </div>
-          <h3 className={`font-medium text-white ${expanded ? '' : 'truncate'}`}>
+          <h3 className={`font-medium text-foreground ${expanded ? '' : 'truncate'}`}>
             {reminder.title || 'Commitment Reminder'}
           </h3>
           {reminder.body && (
-            <p className={`text-sm text-gray-400 mt-1 ${expanded ? 'whitespace-pre-wrap' : 'line-clamp-2'}`}>
+            <p className={`text-sm text-foreground-muted mt-1 ${expanded ? 'whitespace-pre-wrap' : 'line-clamp-2'}`}>
               {reminder.body}
             </p>
           )}
           <div className="flex items-center justify-between mt-2">
-            <p className={`text-xs ${isPast && canAct ? 'text-yellow-400' : 'text-gray-500'}`}>
+            <p className={`text-xs ${isPast && canAct ? 'text-accent-mustard' : 'text-foreground-muted'}`}>
               {expanded
                 ? formatFullDateTime(reminder.scheduled_for)
                 : (<>
-                    <span className="text-gray-400">due:{formatDueTime(reminder.scheduled_for)}</span>
-                    <span className="mx-1.5 text-gray-600">·</span>
+                    <span className="text-foreground-muted">due:{formatDueTime(reminder.scheduled_for)}</span>
+                    <span className="mx-1.5 text-foreground-muted/60">·</span>
                     {formatScheduledTime(reminder.scheduled_for)}
                   </>)
               }
             </p>
-            <p className="text-xs text-gray-600" title="Extracted at">
+            <p className="text-xs text-foreground-muted/60" title="Extracted at">
               {new Date(reminder.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}{' '}
               {new Date(reminder.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
             </p>
@@ -151,15 +151,15 @@ function ReminderCard({
 
           {/* Expanded details */}
           {expanded && (
-            <div className="mt-4 pt-4 border-t border-white/10 space-y-2">
+            <div className="mt-4 pt-4 border-t border-[var(--card-border)] space-y-2">
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div>
-                  <span className="text-gray-500">Timezone:</span>{' '}
-                  <span className="text-gray-300">{reminder.timezone}</span>
+                  <span className="text-foreground-muted">Timezone:</span>{' '}
+                  <span className="text-cream">{reminder.timezone}</span>
                 </div>
                 <div>
-                  <span className="text-gray-500">Created:</span>{' '}
-                  <span className="text-gray-300">
+                  <span className="text-foreground-muted">Created:</span>{' '}
+                  <span className="text-cream">
                     {new Date(reminder.created_at).toLocaleDateString('en-US', {
                       month: 'short',
                       day: 'numeric',
@@ -170,8 +170,8 @@ function ReminderCard({
                 </div>
                 {reminder.sent_at && (
                   <div>
-                    <span className="text-gray-500">Sent:</span>{' '}
-                    <span className="text-gray-300">
+                    <span className="text-foreground-muted">Sent:</span>{' '}
+                    <span className="text-cream">
                       {new Date(reminder.sent_at).toLocaleDateString('en-US', {
                         month: 'short',
                         day: 'numeric',
@@ -183,8 +183,8 @@ function ReminderCard({
                 )}
                 {reminder.acknowledged_at && (
                   <div>
-                    <span className="text-gray-500">Acknowledged:</span>{' '}
-                    <span className="text-gray-300">
+                    <span className="text-foreground-muted">Acknowledged:</span>{' '}
+                    <span className="text-cream">
                       {new Date(reminder.acknowledged_at).toLocaleDateString('en-US', {
                         month: 'short',
                         day: 'numeric',
@@ -196,8 +196,8 @@ function ReminderCard({
                 )}
                 {reminder.snoozed_until && (
                   <div>
-                    <span className="text-gray-500">Snoozed until:</span>{' '}
-                    <span className="text-purple-400">
+                    <span className="text-foreground-muted">Snoozed until:</span>{' '}
+                    <span className="text-accent-burgundy">
                       {new Date(reminder.snoozed_until).toLocaleDateString('en-US', {
                         month: 'short',
                         day: 'numeric',
@@ -209,8 +209,8 @@ function ReminderCard({
                 )}
                 {reminder.commitment_id && (
                   <div className="col-span-2">
-                    <span className="text-gray-500">Linked to commitment:</span>{' '}
-                    <span className="text-blue-400 text-xs font-mono">{reminder.commitment_id.slice(0, 8)}...</span>
+                    <span className="text-foreground-muted">Linked to commitment:</span>{' '}
+                    <span className="text-primary text-xs font-mono">{reminder.commitment_id.slice(0, 8)}...</span>
                   </div>
                 )}
               </div>
@@ -218,7 +218,7 @@ function ReminderCard({
               {/* Extended snooze options when expanded */}
               {canAct && (
                 <div className="pt-2">
-                  <span className="text-xs text-gray-500 block mb-2">Snooze for:</span>
+                  <span className="text-xs text-foreground-muted block mb-2">Snooze for:</span>
                   <div className="flex flex-wrap gap-2">
                     {[5, 15, 30, 60, 120, 1440].map((mins) => (
                       <button
@@ -227,7 +227,7 @@ function ReminderCard({
                           e.stopPropagation();
                           onSnooze(reminder.id, mins);
                         }}
-                        className="px-2 py-1 text-xs rounded bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 border border-purple-500/30 transition-colors"
+                        className="px-2 py-1 text-xs rounded bg-accent-burgundy/10 text-accent-burgundy hover:bg-accent-burgundy/20 border border-accent-burgundy/30 transition-colors"
                       >
                         {mins < 60 ? `${mins}m` : mins < 1440 ? `${mins / 60}h` : '1d'}
                       </button>
@@ -245,7 +245,7 @@ function ReminderCard({
                 e.stopPropagation();
                 onAcknowledge(reminder.id);
               }}
-              className="p-2 rounded hover:bg-green-500/20 text-green-400 transition-colors"
+              className="p-2 rounded hover:bg-accent-olive/20 text-accent-olive transition-colors"
               title="Acknowledge"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -257,7 +257,7 @@ function ReminderCard({
                 e.stopPropagation();
                 onSnooze(reminder.id, 15);
               }}
-              className="p-2 rounded hover:bg-purple-500/20 text-purple-400 transition-colors"
+              className="p-2 rounded hover:bg-accent-burgundy/20 text-accent-burgundy transition-colors"
               title="Snooze 15 min"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -269,7 +269,7 @@ function ReminderCard({
                 e.stopPropagation();
                 onCancel(reminder.id);
               }}
-              className="p-2 rounded hover:bg-red-500/20 text-red-400 transition-colors"
+              className="p-2 rounded hover:bg-error/20 text-error transition-colors"
               title="Cancel"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -403,17 +403,17 @@ export default function RemindersPage() {
   const totalCount = stats.pending + stats.snoozed + stats.acknowledged + stats.sent;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-6">
+    <div className="min-h-screen bg-background p-6">
       <div className="max-w-3xl mx-auto">
         {/* Header */}
         <div className="mb-6 flex items-start justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-white mb-2">Reminders</h1>
-            <p className="text-gray-400">Your scheduled reminders and notifications</p>
+            <h1 className="text-2xl font-bold text-foreground mb-2">Reminders</h1>
+            <p className="text-foreground-muted">Your scheduled reminders and notifications</p>
           </div>
           <button
             onClick={() => setShowAddModal(true)}
-            className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2"
+            className="px-4 py-2 bg-primary hover:bg-primary-hover text-foreground rounded-lg transition-colors text-sm font-medium flex items-center gap-2"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -431,45 +431,45 @@ export default function RemindersPage() {
             onClick={() => handleStatusClick('pending')}
             className={`p-3 rounded-lg border transition-all text-left ${
               statusFilter === 'pending'
-                ? 'bg-blue-500/30 border-blue-400 ring-2 ring-blue-400/50'
-                : 'bg-blue-500/10 border-blue-500/20 hover:bg-blue-500/20'
+                ? 'bg-accent-mustard/30 border-accent-mustard ring-2 ring-accent-mustard/50'
+                : 'bg-accent-mustard/10 border-accent-mustard/20 hover:bg-accent-mustard/20'
             }`}
           >
-            <div className="text-2xl font-bold text-blue-400">{stats.pending}</div>
-            <div className="text-xs text-gray-400">Pending</div>
+            <div className="text-2xl font-bold text-accent-mustard">{stats.pending}</div>
+            <div className="text-xs text-foreground-muted">Pending</div>
           </button>
           <button
             onClick={() => handleStatusClick('snoozed')}
             className={`p-3 rounded-lg border transition-all text-left ${
               statusFilter === 'snoozed'
-                ? 'bg-purple-500/30 border-purple-400 ring-2 ring-purple-400/50'
-                : 'bg-purple-500/10 border-purple-500/20 hover:bg-purple-500/20'
+                ? 'bg-accent-burgundy/30 border-accent-burgundy ring-2 ring-accent-burgundy/50'
+                : 'bg-accent-burgundy/10 border-accent-burgundy/20 hover:bg-accent-burgundy/20'
             }`}
           >
-            <div className="text-2xl font-bold text-purple-400">{stats.snoozed}</div>
-            <div className="text-xs text-gray-400">Snoozed</div>
+            <div className="text-2xl font-bold text-accent-burgundy">{stats.snoozed}</div>
+            <div className="text-xs text-foreground-muted">Snoozed</div>
           </button>
           <button
             onClick={() => handleStatusClick('acknowledged')}
             className={`p-3 rounded-lg border transition-all text-left ${
               statusFilter === 'acknowledged'
-                ? 'bg-green-500/30 border-green-400 ring-2 ring-green-400/50'
-                : 'bg-green-500/10 border-green-500/20 hover:bg-green-500/20'
+                ? 'bg-accent-olive/30 border-accent-olive ring-2 ring-accent-olive/50'
+                : 'bg-accent-olive/10 border-accent-olive/20 hover:bg-accent-olive/20'
             }`}
           >
-            <div className="text-2xl font-bold text-green-400">{stats.acknowledged}</div>
-            <div className="text-xs text-gray-400">Done</div>
+            <div className="text-2xl font-bold text-accent-olive">{stats.acknowledged}</div>
+            <div className="text-xs text-foreground-muted">Done</div>
           </button>
           <button
             onClick={() => handleStatusClick('sent')}
             className={`p-3 rounded-lg border transition-all text-left ${
               statusFilter === 'sent'
-                ? 'bg-yellow-500/30 border-yellow-400 ring-2 ring-yellow-400/50'
-                : 'bg-yellow-500/10 border-yellow-500/20 hover:bg-yellow-500/20'
+                ? 'bg-primary/30 border-primary ring-2 ring-primary/50'
+                : 'bg-primary/10 border-primary/20 hover:bg-primary/20'
             }`}
           >
-            <div className="text-2xl font-bold text-yellow-400">{stats.sent}</div>
-            <div className="text-xs text-gray-400">Sent</div>
+            <div className="text-2xl font-bold text-primary">{stats.sent}</div>
+            <div className="text-xs text-foreground-muted">Sent</div>
           </button>
         </div>
 
@@ -478,7 +478,7 @@ export default function RemindersPage() {
           <div className="mb-4">
             <button
               onClick={() => setStatusFilter(null)}
-              className="text-sm text-gray-400 hover:text-white transition-colors"
+              className="text-sm text-foreground-muted hover:text-foreground transition-colors"
             >
               Show all ({totalCount})
             </button>
@@ -487,11 +487,11 @@ export default function RemindersPage() {
 
         {/* List */}
         {loading ? (
-          <div className="text-center py-12 text-gray-400">Loading...</div>
+          <div className="text-center py-12 text-foreground-muted">Loading...</div>
         ) : reminders.length === 0 ? (
           <div className="text-center py-12">
-            <div className="text-gray-500 mb-2">No reminders found</div>
-            <p className="text-sm text-gray-600">
+            <div className="text-foreground-muted mb-2">No reminders found</div>
+            <p className="text-sm text-foreground-muted/60">
               Say &quot;remind me in X minutes to...&quot; in chat to create reminders
             </p>
           </div>
@@ -512,12 +512,12 @@ export default function RemindersPage() {
         {/* Add Reminder Modal */}
         {showAddModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-gray-800 rounded-xl border border-white/10 w-full max-w-md">
-              <div className="p-4 border-b border-white/10 flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-white">Add Reminder</h2>
+            <div className="bg-[var(--card-bg)] rounded-xl border border-[var(--card-border)] w-full max-w-md">
+              <div className="p-4 border-b border-[var(--card-border)] flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-foreground">Add Reminder</h2>
                 <button
                   onClick={() => setShowAddModal(false)}
-                  className="p-1 hover:bg-white/10 rounded text-gray-400 hover:text-white"
+                  className="p-1 hover:bg-background-tertiary rounded text-foreground-muted hover:text-foreground"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -526,51 +526,51 @@ export default function RemindersPage() {
               </div>
               <form onSubmit={handleCreateReminder} className="p-4 space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Title *</label>
+                  <label className="block text-sm font-medium text-cream mb-1">Title *</label>
                   <input
                     type="text"
                     value={newReminder.title}
                     onChange={(e) => setNewReminder({ ...newReminder, title: e.target.value })}
                     placeholder="What do you need to remember?"
-                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                    className="w-full px-3 py-2 bg-[var(--input-bg)] border border-[var(--card-border)] rounded-lg text-foreground placeholder-foreground-muted/50 focus:outline-none focus:border-primary"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">When *</label>
+                  <label className="block text-sm font-medium text-cream mb-1">When *</label>
                   <input
                     type="datetime-local"
                     value={newReminder.scheduledFor}
                     onChange={(e) => setNewReminder({ ...newReminder, scheduledFor: e.target.value })}
-                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                    className="w-full px-3 py-2 bg-[var(--input-bg)] border border-[var(--card-border)] rounded-lg text-foreground focus:outline-none focus:border-primary"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Notes (optional)</label>
+                  <label className="block text-sm font-medium text-cream mb-1">Notes (optional)</label>
                   <textarea
                     value={newReminder.body}
                     onChange={(e) => setNewReminder({ ...newReminder, body: e.target.value })}
                     placeholder="Additional details..."
                     rows={3}
-                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-none"
+                    className="w-full px-3 py-2 bg-[var(--input-bg)] border border-[var(--card-border)] rounded-lg text-foreground placeholder-foreground-muted/50 focus:outline-none focus:border-primary resize-none"
                   />
                 </div>
                 <div className="flex gap-3 pt-2">
                   <button
                     type="button"
                     onClick={() => setShowAddModal(false)}
-                    className="flex-1 px-4 py-2 bg-white/5 hover:bg-white/10 text-gray-300 rounded-lg transition-colors"
+                    className="flex-1 px-4 py-2 bg-background-tertiary hover:bg-foreground-muted/10 text-cream rounded-lg transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={creating || !newReminder.title.trim() || !newReminder.scheduledFor}
-                    className="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-500/50 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+                    className="flex-1 px-4 py-2 bg-primary hover:bg-primary-hover disabled:bg-primary/50 disabled:cursor-not-allowed text-foreground rounded-lg transition-colors flex items-center justify-center gap-2"
                   >
                     {creating && (
-                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span className="w-4 h-4 border-2 border-foreground/30 border-t-foreground rounded-full animate-spin" />
                     )}
                     {creating ? 'Creating...' : 'Create Reminder'}
                   </button>

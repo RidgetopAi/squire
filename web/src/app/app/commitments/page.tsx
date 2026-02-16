@@ -6,11 +6,11 @@ import { Commitment, CommitmentStatus } from '@/lib/types';
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 const statusColors: Record<CommitmentStatus, string> = {
-  open: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  in_progress: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  completed: 'bg-green-500/20 text-green-400 border-green-500/30',
-  canceled: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
-  snoozed: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+  open: 'bg-accent-mustard/20 text-accent-mustard border-accent-mustard/30',
+  in_progress: 'bg-primary/20 text-primary border-primary/30',
+  completed: 'bg-accent-olive/20 text-accent-olive border-accent-olive/30',
+  canceled: 'bg-taupe/20 text-taupe border-taupe/30',
+  snoozed: 'bg-accent-burgundy/20 text-accent-burgundy border-accent-burgundy/30',
 };
 
 const statusIcons: Record<CommitmentStatus, string> = {
@@ -48,7 +48,7 @@ function CommitmentCard({
     commitment.status !== 'completed' && commitment.status !== 'canceled';
 
   return (
-    <div className={`p-4 rounded-lg border ${isOverdue ? 'border-red-500/50 bg-red-500/5' : 'border-white/10 bg-white/5'} hover:bg-white/10 transition-colors`}>
+    <div className={`p-4 rounded-lg border ${isOverdue ? 'border-error/50 bg-error/5' : 'border-[var(--card-border)] bg-[var(--card-bg)]'} hover:bg-background-tertiary transition-colors`}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
@@ -56,18 +56,18 @@ function CommitmentCard({
               {statusIcons[commitment.status]} {commitment.status.replace('_', ' ')}
             </span>
             {commitment.source_type === 'chat' && (
-              <span className="text-xs text-gray-500">from chat</span>
+              <span className="text-xs text-foreground-muted">from chat</span>
             )}
           </div>
-          <h3 className="font-medium text-white truncate">{commitment.title}</h3>
+          <h3 className="font-medium text-foreground truncate">{commitment.title}</h3>
           {commitment.description && (
-            <p className="text-sm text-gray-400 mt-1 line-clamp-2">{commitment.description}</p>
+            <p className="text-sm text-foreground-muted mt-1 line-clamp-2">{commitment.description}</p>
           )}
           <div className="flex items-center justify-between mt-2">
-            <p className={`text-xs ${isOverdue ? 'text-red-400' : 'text-gray-500'}`}>
+            <p className={`text-xs ${isOverdue ? 'text-error' : 'text-foreground-muted'}`}>
               {formatDate(commitment.due_at)}
             </p>
-            <p className="text-xs text-gray-600" title="Extracted at">
+            <p className="text-xs text-foreground-muted/60" title="Extracted at">
               {new Date(commitment.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}{' '}
               {new Date(commitment.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
             </p>
@@ -77,7 +77,7 @@ function CommitmentCard({
           <div className="flex gap-1">
             <button
               onClick={() => onResolve(commitment.id, 'completed')}
-              className="p-2 rounded hover:bg-green-500/20 text-green-400 transition-colors"
+              className="p-2 rounded hover:bg-accent-olive/20 text-accent-olive transition-colors"
               title="Mark complete"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -86,7 +86,7 @@ function CommitmentCard({
             </button>
             <button
               onClick={() => onSnooze(commitment.id)}
-              className="p-2 rounded hover:bg-purple-500/20 text-purple-400 transition-colors"
+              className="p-2 rounded hover:bg-accent-burgundy/20 text-accent-burgundy transition-colors"
               title="Snooze 1 day"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -182,12 +182,12 @@ export default function CommitmentsPage() {
   const totalCount = stats.open + stats.in_progress + stats.completed + stats.snoozed;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-6">
+    <div className="min-h-screen bg-background p-6">
       <div className="max-w-3xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-white mb-2">Commitments</h1>
-          <p className="text-gray-400">Track your goals, tasks, and promises</p>
+          <h1 className="text-2xl font-bold text-foreground mb-2">Commitments</h1>
+          <p className="text-foreground-muted">Track your goals, tasks, and promises</p>
         </div>
 
         {/* Stats - Clickable Filters */}
@@ -196,45 +196,45 @@ export default function CommitmentsPage() {
             onClick={() => handleStatusClick('open')}
             className={`p-3 rounded-lg border transition-all text-left ${
               statusFilter === 'open'
-                ? 'bg-blue-500/30 border-blue-400 ring-2 ring-blue-400/50'
-                : 'bg-blue-500/10 border-blue-500/20 hover:bg-blue-500/20'
+                ? 'bg-accent-mustard/30 border-accent-mustard ring-2 ring-accent-mustard/50'
+                : 'bg-accent-mustard/10 border-accent-mustard/20 hover:bg-accent-mustard/20'
             }`}
           >
-            <div className="text-2xl font-bold text-blue-400">{stats.open}</div>
-            <div className="text-xs text-gray-400">Open</div>
+            <div className="text-2xl font-bold text-accent-mustard">{stats.open}</div>
+            <div className="text-xs text-foreground-muted">Open</div>
           </button>
           <button
             onClick={() => handleStatusClick('in_progress')}
             className={`p-3 rounded-lg border transition-all text-left ${
               statusFilter === 'in_progress'
-                ? 'bg-yellow-500/30 border-yellow-400 ring-2 ring-yellow-400/50'
-                : 'bg-yellow-500/10 border-yellow-500/20 hover:bg-yellow-500/20'
+                ? 'bg-primary/30 border-primary ring-2 ring-primary/50'
+                : 'bg-primary/10 border-primary/20 hover:bg-primary/20'
             }`}
           >
-            <div className="text-2xl font-bold text-yellow-400">{stats.in_progress}</div>
-            <div className="text-xs text-gray-400">In Progress</div>
+            <div className="text-2xl font-bold text-primary">{stats.in_progress}</div>
+            <div className="text-xs text-foreground-muted">In Progress</div>
           </button>
           <button
             onClick={() => handleStatusClick('completed')}
             className={`p-3 rounded-lg border transition-all text-left ${
               statusFilter === 'completed'
-                ? 'bg-green-500/30 border-green-400 ring-2 ring-green-400/50'
-                : 'bg-green-500/10 border-green-500/20 hover:bg-green-500/20'
+                ? 'bg-accent-olive/30 border-accent-olive ring-2 ring-accent-olive/50'
+                : 'bg-accent-olive/10 border-accent-olive/20 hover:bg-accent-olive/20'
             }`}
           >
-            <div className="text-2xl font-bold text-green-400">{stats.completed}</div>
-            <div className="text-xs text-gray-400">Completed</div>
+            <div className="text-2xl font-bold text-accent-olive">{stats.completed}</div>
+            <div className="text-xs text-foreground-muted">Completed</div>
           </button>
           <button
             onClick={() => handleStatusClick('snoozed')}
             className={`p-3 rounded-lg border transition-all text-left ${
               statusFilter === 'snoozed'
-                ? 'bg-purple-500/30 border-purple-400 ring-2 ring-purple-400/50'
-                : 'bg-purple-500/10 border-purple-500/20 hover:bg-purple-500/20'
+                ? 'bg-accent-burgundy/30 border-accent-burgundy ring-2 ring-accent-burgundy/50'
+                : 'bg-accent-burgundy/10 border-accent-burgundy/20 hover:bg-accent-burgundy/20'
             }`}
           >
-            <div className="text-2xl font-bold text-purple-400">{stats.snoozed}</div>
-            <div className="text-xs text-gray-400">Snoozed</div>
+            <div className="text-2xl font-bold text-accent-burgundy">{stats.snoozed}</div>
+            <div className="text-xs text-foreground-muted">Snoozed</div>
           </button>
         </div>
 
@@ -243,7 +243,7 @@ export default function CommitmentsPage() {
           <div className="mb-4">
             <button
               onClick={() => setStatusFilter(null)}
-              className="text-sm text-gray-400 hover:text-white transition-colors"
+              className="text-sm text-foreground-muted hover:text-foreground transition-colors"
             >
               Show all ({totalCount})
             </button>
@@ -252,11 +252,11 @@ export default function CommitmentsPage() {
 
         {/* List */}
         {loading ? (
-          <div className="text-center py-12 text-gray-400">Loading...</div>
+          <div className="text-center py-12 text-foreground-muted">Loading...</div>
         ) : commitments.length === 0 ? (
           <div className="text-center py-12">
-            <div className="text-gray-500 mb-2">No commitments found</div>
-            <p className="text-sm text-gray-600">
+            <div className="text-foreground-muted mb-2">No commitments found</div>
+            <p className="text-sm text-foreground-muted/60">
               Commitments are created automatically when you mention goals or tasks in chat
             </p>
           </div>
