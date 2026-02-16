@@ -29,6 +29,9 @@ import {
 import { streamLLM } from '../../services/llm/index.js';
 import { buildMemoryContext } from '../../services/memory/index.js';
 import { SQUIRE_SYSTEM_PROMPT_BASE, TOOL_CALLING_INSTRUCTIONS } from '../../constants/prompts.js';
+import { getObjectById } from '../../services/objects.js';
+import { getSummary } from '../../services/summaries.js';
+import { searchForContext } from '../../services/documents/search.js';
 import type {
   ClientToServerEvents,
   ServerToClientEvents,
@@ -248,6 +251,178 @@ function getCurrentTimeContext(): string {
   return `\n\nCurrent date and time: ${formatted}`;
 }
 
+// === DOCUMENT DISCUSSION MODE ===
+
+const DOC_TEXT_THRESHOLD = 40_000; // ~10k tokens — above this, use chunk search
+
+/**
+ * Handle document discussion messages.
+ * Uses lean user context (personality + relationships only) and injects
+ * the document content directly into the system prompt.
+ */
+async function handleDocumentDiscussion(
+  socket: TypedSocket,
+  io: TypedIO,
+  payload: ChatMessagePayload
+): Promise<void> {
+  const { conversationId, message, history = [], documentId } = payload;
+
+  console.log(`[Socket] Document discussion mode - doc: ${documentId}, conversation: ${conversationId}`);
+
+  let chatDoneEmitted = false;
+  const abortController = new AbortController();
+  activeStreams.set(conversationId, abortController);
+
+  try {
+    // Step 0: Ensure conversation + persist user message
+    const conversation = await getOrCreateConversation(conversationId);
+    const userMessage = await addMessage({
+      conversationId: conversation.id,
+      role: 'user',
+      content: message,
+    });
+    broadcastMessageSynced(io, conversationId, {
+      id: userMessage.id,
+      role: 'user',
+      content: message,
+      timestamp: userMessage.created_at.toISOString(),
+    }, socket.id);
+
+    // Step 1: Fetch document and lean user context in parallel
+    const [document, personalitySummary, relationshipsSummary, systemPromptBase] = await Promise.all([
+      getObjectById(documentId!),
+      getSummary('personality'),
+      getSummary('relationships'),
+      buildSystemPrompt(),
+    ]);
+
+    if (!document || !document.extracted_text) {
+      socket.emit('chat:error', {
+        conversationId,
+        error: 'Document not found or has no extracted text.',
+        code: 'DOC_NOT_FOUND',
+      });
+      return;
+    }
+
+    // Step 2: Build document content (full text for short docs, chunks for long)
+    let documentContent: string;
+    if (document.extracted_text.length <= DOC_TEXT_THRESHOLD) {
+      documentContent = document.extracted_text;
+    } else {
+      // Long document — search for relevant chunks
+      console.log(`[Socket] Long document (${document.extracted_text.length} chars) — using chunk search`);
+      const chunkResult = await searchForContext(message, {
+        documentId: documentId!,
+        maxTokens: 8000,
+        limit: 10,
+        threshold: 0.2,
+      });
+      if (chunkResult.chunks.length > 0) {
+        documentContent = chunkResult.chunks
+          .map((c, i) => {
+            const loc = c.pageNumber ? `p.${c.pageNumber}` : `chunk ${i + 1}`;
+            const section = c.sectionTitle ? ` — ${c.sectionTitle}` : '';
+            return `[Section ${i + 1}: ${loc}${section}]\n${c.content}`;
+          })
+          .join('\n\n');
+        documentContent = `This document is large. Showing the ${chunkResult.chunks.length} most relevant sections to your question.\n\n${documentContent}`;
+      } else {
+        // Fallback: first portion of extracted text
+        documentContent = document.extracted_text.substring(0, DOC_TEXT_THRESHOLD);
+        documentContent += '\n\n[Document truncated — ask about specific sections for more detail]';
+      }
+    }
+
+    // Step 3: Build lean system prompt
+    const sizeKb = document.size_bytes ? `${(document.size_bytes / 1024).toFixed(0)} KB` : 'unknown size';
+    let systemContent = systemPromptBase;
+    systemContent += getCurrentTimeContext();
+
+    // Minimal user context — personality + relationships only (~4K)
+    const userContextParts: string[] = [];
+    if (personalitySummary?.content) {
+      userContextParts.push(`**Personality**: ${personalitySummary.content}`);
+    }
+    if (relationshipsSummary?.content) {
+      userContextParts.push(`**Relationships**: ${relationshipsSummary.content}`);
+    }
+    if (userContextParts.length > 0) {
+      systemContent += `\n\n## About the Person You're Talking To\n\n${userContextParts.join('\n\n')}`;
+    }
+
+    // Document content injection
+    systemContent += `\n\n## Document Under Discussion
+
+The user has selected this document for focused discussion. Answer based on its contents.
+
+**Document**: ${document.name} (${document.mime_type}, ${sizeKb})
+
+--- DOCUMENT CONTENT ---
+
+${documentContent}
+
+--- END DOCUMENT ---
+
+- Answer based on what is in the document
+- Cite specific sections or passages when relevant
+- If information is not in the document, say so clearly`;
+
+    // Step 4: Build messages array
+    const messages: Array<{ role: string; content: string; images?: ImageContent[]; tool_calls?: ToolCall[]; tool_call_id?: string }> = [];
+    messages.push({ role: 'system', content: systemContent });
+
+    for (const msg of history.slice(-10)) {
+      messages.push({ role: msg.role, content: msg.content });
+    }
+    messages.push({ role: 'user', content: message });
+
+    // Step 5: Stream LLM response
+    const tools = hasTools() ? getToolDefinitions() : undefined;
+    console.log(`[Socket] Document discussion: streaming response (${tools?.length ?? 0} tools available)`);
+    const streamResult = await streamWithToolLoop(socket, conversationId, messages, abortController.signal, tools);
+
+    // Step 6: Emit done + persist
+    socket.emit('chat:done', {
+      conversationId,
+      usage: streamResult.usage ? {
+        promptTokens: streamResult.usage.promptTokens,
+        completionTokens: streamResult.usage.completionTokens,
+        totalTokens: streamResult.usage.promptTokens + streamResult.usage.completionTokens,
+      } : undefined,
+    });
+    chatDoneEmitted = true;
+
+    if (streamResult.content) {
+      const assistantMessage = await addMessage({
+        conversationId: conversation.id,
+        role: 'assistant',
+        content: streamResult.content,
+        promptTokens: streamResult.usage?.promptTokens,
+        completionTokens: streamResult.usage?.completionTokens,
+      });
+      broadcastMessageSynced(io, conversationId, {
+        id: assistantMessage.id,
+        role: 'assistant',
+        content: streamResult.content,
+        timestamp: assistantMessage.created_at.toISOString(),
+      }, socket.id);
+    }
+  } catch (error) {
+    console.error('[Socket] Document discussion error:', error);
+    socket.emit('chat:error', {
+      conversationId,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      code: 'DOC_CHAT_ERROR',
+    });
+  } finally {
+    if (!chatDoneEmitted) {
+      socket.emit('chat:done', { conversationId });
+    }
+    activeStreams.delete(conversationId);
+  }
+}
+
 /**
  * Handle chat:message event - stream LLM response
  */
@@ -256,9 +431,14 @@ async function handleChatMessage(
   io: TypedIO,
   payload: ChatMessagePayload
 ): Promise<void> {
-  const { conversationId, message, images, history = [], includeContext = true, contextProfile } = payload;
+  const { conversationId, message, images, history = [], includeContext = true, contextProfile, documentId } = payload;
 
   console.log(`[Socket] chat:message from ${socket.id} - conversation: ${conversationId}`);
+
+  // Document discussion mode — separate handler, lean context
+  if (documentId) {
+    return handleDocumentDiscussion(socket, io, payload);
+  }
 
   // Track if we've emitted chat:done to avoid duplicates
   let chatDoneEmitted = false;

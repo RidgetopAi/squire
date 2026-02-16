@@ -18,6 +18,7 @@ export interface ChatMessagePayload {
   history?: Array<{ role: 'user' | 'assistant'; content: string }>;
   includeContext?: boolean;
   contextProfile?: string;
+  documentId?: string; // Triggers document discussion mode
 }
 
 export interface ChatCancelPayload {

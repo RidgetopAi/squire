@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, KeyboardEvent, useCallback, ChangeEvent } from 'react';
 import { STTButton } from '../chat/STTButton';
 import { LoadingWordRotator } from '../chat/LoadingWordRotator';
+import { DocumentPickerButton } from './DocumentPickerButton';
 
 export interface ImageAttachment {
   data: string;
@@ -15,12 +16,14 @@ interface InputCardProps {
   onSend: (message: string, images?: ImageAttachment[]) => void;
   isLoading?: boolean;
   placeholder?: string;
+  onDocumentClick?: () => void;
 }
 
 export function InputCard({
   onSend,
   isLoading = false,
   placeholder = 'Ask me anything...',
+  onDocumentClick,
 }: InputCardProps) {
   const [input, setInput] = useState('');
   const [attachedImages, setAttachedImages] = useState<ImageAttachment[]>([]);
@@ -205,6 +208,14 @@ export function InputCard({
               onTranscript={handleSpeechTranscript}
               disabled={isLoading}
             />
+
+            {/* Document discussion */}
+            {onDocumentClick && (
+              <DocumentPickerButton
+                onClick={onDocumentClick}
+                disabled={isLoading}
+              />
+            )}
           </div>
 
           {/* Animated word rotator (replaces spinner) */}

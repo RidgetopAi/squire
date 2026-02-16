@@ -7,11 +7,14 @@ import { CardList } from './CardList';
 import { FilterBar } from './FilterBar';
 import { TagInput } from './TagInput';
 import { SavedCard } from './SavedCard';
+import { DocumentPicker } from './DocumentPicker';
+import { DocumentDiscussionView } from './DocumentDiscussionView';
 import { ContextualMemoryOverlayStack } from '../chat/ContextualMemoryOverlayStack';
 import { useConversationPairs } from '@/lib/hooks/useConversationPairs';
 import { useChatStore, useIsLoadingContext } from '@/lib/stores';
 import { useSavedCardsStore } from '@/lib/stores/savedCardsStore';
 import type { ConversationPair } from '@/lib/types';
+import type { StoredDocument } from '@/lib/api/documents';
 
 export function ChatWindowV2() {
   const messages = useChatStore((state) => state.messages);
@@ -26,6 +29,11 @@ export function ChatWindowV2() {
   // Saved cards state
   const { isFilterMode, savedCards, bookmarks, saveCard, unsaveCard } = useSavedCardsStore();
   const [bookmarkingPair, setBookmarkingPair] = useState<ConversationPair | null>(null);
+
+  // Document discussion state
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [selectedDocument, setSelectedDocument] = useState<StoredDocument | null>(null);
+  const [isDiscussionOpen, setIsDiscussionOpen] = useState(false);
 
   // Derive bookmarked IDs set from the bookmarks map for CardList
   const bookmarkedIds = useMemo(() => new Set(bookmarks.keys()), [bookmarks]);
@@ -61,6 +69,17 @@ export function ChatWindowV2() {
     setBookmarkingPair(null);
   }, []);
 
+  const handleDocumentSelect = useCallback((doc: StoredDocument) => {
+    setSelectedDocument(doc);
+    setIsPickerOpen(false);
+    setIsDiscussionOpen(true);
+  }, []);
+
+  const handleDiscussionClose = useCallback(() => {
+    setIsDiscussionOpen(false);
+    setSelectedDocument(null);
+  }, []);
+
   const handleUnsave = useCallback(async (id: string) => {
     try {
       await unsaveCard(id);
@@ -85,6 +104,7 @@ export function ChatWindowV2() {
       <InputCard
         onSend={handleSend}
         isLoading={isLoading || isStreaming}
+        onDocumentClick={() => setIsPickerOpen(true)}
       />
 
       {/* Filter bar */}
@@ -142,6 +162,20 @@ export function ChatWindowV2() {
 
       {/* Memory context overlay */}
       <ContextualMemoryOverlayStack />
+
+      {/* Document discussion overlays */}
+      <DocumentPicker
+        isOpen={isPickerOpen}
+        onClose={() => setIsPickerOpen(false)}
+        onSelect={handleDocumentSelect}
+      />
+      {selectedDocument && (
+        <DocumentDiscussionView
+          document={selectedDocument}
+          isOpen={isDiscussionOpen}
+          onClose={handleDiscussionClose}
+        />
+      )}
     </div>
   );
 }
