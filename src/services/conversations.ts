@@ -277,21 +277,34 @@ export async function getMessages(
 }
 
 /**
- * Get the most recent conversation with its messages
- * Used for loading chat history on page load
+ * Get the primary conversation with its messages
+ * Used for loading chat history on page load.
+ * Looks for the 'primary' conversation first (the main chat),
+ * then falls back to the most recent non-document-discussion conversation.
  */
 export async function getRecentConversationWithMessages(): Promise<{
   conversation: Conversation;
   messages: ChatMessageDB[];
 } | null> {
-  const conversations = await listConversations({ limit: 1 });
-  const conversation = conversations[0];
+  // First, look for the primary conversation (main chat)
+  const primary = await getConversationByClientId('primary');
+  if (primary && primary.status !== 'deleted') {
+    const messages = await getMessages(primary.id, { limit: 10000 });
+    return { conversation: primary, messages };
+  }
+
+  // Fallback: most recent conversation, excluding document discussions
+  const result = await pool.query(
+    `SELECT * FROM conversations
+     WHERE status = 'active'
+       AND (client_id IS NULL OR client_id NOT LIKE 'doc-discuss-%')
+     ORDER BY COALESCE(last_message_at, created_at) DESC
+     LIMIT 1`
+  );
+  const conversation = result.rows[0] as Conversation | undefined;
   if (!conversation) return null;
 
-  // Load ALL messages for the current conversation (no limit)
-  // We need the complete history for the chat UI
   const messages = await getMessages(conversation.id, { limit: 10000 });
-
   return { conversation, messages };
 }
 
