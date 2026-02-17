@@ -108,17 +108,39 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
     return unsubscribe;
   }, [onInsightCreated, queryClient]);
 
-  // Track previous connection state to detect reconnections
+  // Track connection state for reconnection detection
   const wasConnected = useRef(false);
+  const hasEverConnected = useRef(false);
 
-  // Rejoin conversation room on reconnection
+  // Rejoin conversation room on reconnection + reset stuck streaming state
   useEffect(() => {
     if (isConnected && !wasConnected.current) {
-      // Just connected (initial or reconnect)
-      const conversationId = useChatStore.getState().conversationId;
+      const isReconnect = hasEverConnected.current;
+      hasEverConnected.current = true;
+
+      const state = useChatStore.getState();
+      const conversationId = state.conversationId;
+
+      // Rejoin conversation room
       if (conversationId) {
         console.log('[WebSocketProvider] Rejoining room after connect:', conversationId);
         joinConversationRoom(conversationId);
+      }
+
+      // On RECONNECT (not initial connect), reset stuck streaming state.
+      // If we were streaming when the socket dropped, the server already
+      // emitted chat:done to the old socket — we'll never receive it.
+      if (isReconnect && (state.isStreaming || state.isLoading)) {
+        // Brief delay to allow chat:done to arrive on the new socket
+        // (server now broadcasts to room, so it may still arrive)
+        const timeout = setTimeout(() => {
+          const current = useChatStore.getState();
+          if (current.isStreaming || current.isLoading) {
+            console.log('[WebSocketProvider] Clearing stuck streaming state after reconnect');
+            current.finishStreaming();
+          }
+        }, 3000);
+        return () => clearTimeout(timeout);
       }
     }
     wasConnected.current = isConnected;

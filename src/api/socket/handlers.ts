@@ -145,7 +145,7 @@ async function checkCandidateResponse(
     chunk: responseText,
     done: false,
   });
-  socket.emit('chat:done', { conversationId });
+  io.to(`conversation:${conversationId}`).emit('chat:done', { conversationId });
 
   // Persist the assistant message
   const { addMessage: addChatMessage } = await import('../../services/conversations.js');
@@ -383,7 +383,7 @@ ${documentContent}
     const streamResult = await streamWithToolLoop(socket, conversationId, messages, abortController.signal, tools);
 
     // Step 6: Emit done + persist
-    socket.emit('chat:done', {
+    io.to(`conversation:${conversationId}`).emit('chat:done', {
       conversationId,
       usage: streamResult.usage ? {
         promptTokens: streamResult.usage.promptTokens,
@@ -417,7 +417,7 @@ ${documentContent}
     });
   } finally {
     if (!chatDoneEmitted) {
-      socket.emit('chat:done', { conversationId });
+      io.to(`conversation:${conversationId}`).emit('chat:done', { conversationId });
     }
     activeStreams.delete(conversationId);
   }
@@ -673,8 +673,9 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
     }
 
     // Emit chat:done after follow-up
+    // Broadcast to room (not just originating socket) so reconnected clients receive it
     console.log(`[Socket] Emitting chat:done for conversation: ${conversationId}${streamResult.reportData ? ' (with report)' : ''}`);
-    socket.emit('chat:done', {
+    io.to(`conversation:${conversationId}`).emit('chat:done', {
       conversationId,
       usage: streamResult.usage ? {
         promptTokens: streamResult.usage.promptTokens,
@@ -717,9 +718,10 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
     });
   } finally {
     // ALWAYS emit chat:done if not already emitted - this clears the loading state
+    // Broadcast to room so reconnected clients receive it
     if (!chatDoneEmitted) {
       console.log(`[Socket] Emitting chat:done in finally block (error case)`);
-      socket.emit('chat:done', { conversationId });
+      io.to(`conversation:${conversationId}`).emit('chat:done', { conversationId });
     }
     activeStreams.delete(conversationId);
   }
@@ -843,7 +845,7 @@ async function streamWithToolLoop(
 /**
  * Handle chat:cancel event
  */
-function handleChatCancel(socket: TypedSocket, payload: ChatCancelPayload): void {
+function handleChatCancel(socket: TypedSocket, io: TypedIO, payload: ChatCancelPayload): void {
   const { conversationId } = payload;
   console.log(`[Socket] chat:cancel from ${socket.id} - conversation: ${conversationId}`);
 
@@ -852,7 +854,7 @@ function handleChatCancel(socket: TypedSocket, payload: ChatCancelPayload): void
     controller.abort();
     activeStreams.delete(conversationId);
 
-    socket.emit('chat:done', {
+    io.to(`conversation:${conversationId}`).emit('chat:done', {
       conversationId,
     });
   }
@@ -925,7 +927,7 @@ export function registerSocketHandlers(io: TypedIO): void {
 
     // Register event handlers
     socket.on('chat:message', (payload) => handleChatMessage(socket, io, payload));
-    socket.on('chat:cancel', (payload) => handleChatCancel(socket, payload));
+    socket.on('chat:cancel', (payload) => handleChatCancel(socket, io, payload));
     socket.on('conversation:join', (payload) => handleConversationJoin(socket, payload));
     socket.on('conversation:leave', (payload) => handleConversationLeave(socket, payload));
 
