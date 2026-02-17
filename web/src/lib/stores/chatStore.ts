@@ -323,7 +323,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
 
     // Determine if we should use streaming (default: use WebSocket if connected)
-    const { connected } = getConnectionStatus();
+    // If socket exists but isn't connected yet (fresh load, reconnecting after restart),
+    // wait briefly for connection before falling back to non-streaming HTTP
+    let { connected } = getConnectionStatus();
+    if (!connected) {
+      const sock = getSocketInstance();
+      connected = await new Promise<boolean>((resolve) => {
+        if (sock.connected) { resolve(true); return; }
+        const onConnect = () => { clearTimeout(timer); resolve(true); };
+        const timer = setTimeout(() => { sock.off('connect', onConnect); resolve(false); }, 3000);
+        sock.once('connect', onConnect);
+      });
+    }
     const useStreaming = options.useStreaming ?? connected;
 
     // Ensure we have a conversation
