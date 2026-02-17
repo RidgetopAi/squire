@@ -673,9 +673,9 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
     }
 
     // Emit chat:done after follow-up
-    // Broadcast to room (not just originating socket) so reconnected clients receive it
-    console.log(`[Socket] Emitting chat:done for conversation: ${conversationId}${streamResult.reportData ? ' (with report)' : ''}`);
-    io.to(`conversation:${conversationId}`).emit('chat:done', {
+    // Belt-and-suspenders: emit directly to socket AND broadcast to room
+    // Direct emit guarantees originating socket gets it; room broadcast covers reconnected sockets
+    const chatDonePayload = {
       conversationId,
       usage: streamResult.usage ? {
         promptTokens: streamResult.usage.promptTokens,
@@ -683,7 +683,10 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
         totalTokens: streamResult.usage.promptTokens + streamResult.usage.completionTokens,
       } : undefined,
       reportData: streamResult.reportData,
-    });
+    };
+    console.log(`[Socket] Emitting chat:done for conversation: ${conversationId}${streamResult.reportData ? ' (with report)' : ''}`);
+    socket.emit('chat:done', chatDonePayload);
+    io.to(`conversation:${conversationId}`).emit('chat:done', chatDonePayload);
     chatDoneEmitted = true;
 
     // Step 6: Persist assistant message (including follow-up) after streaming completes
@@ -718,9 +721,9 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
     });
   } finally {
     // ALWAYS emit chat:done if not already emitted - this clears the loading state
-    // Broadcast to room so reconnected clients receive it
     if (!chatDoneEmitted) {
       console.log(`[Socket] Emitting chat:done in finally block (error case)`);
+      socket.emit('chat:done', { conversationId });
       io.to(`conversation:${conversationId}`).emit('chat:done', { conversationId });
     }
     activeStreams.delete(conversationId);

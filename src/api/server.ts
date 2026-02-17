@@ -48,6 +48,10 @@ const io = new SocketIOServer(httpServer, {
     methods: ['GET', 'POST'],
   },
   maxHttpBufferSize: 10 * 1024 * 1024, // 10MB for image uploads
+  // Generous timeouts to prevent disconnects during long LLM streams
+  // Mobile browsers throttle JS during streaming, causing delayed pong responses
+  pingTimeout: 60000,    // 60s (default 20s) — time to wait for pong
+  pingInterval: 30000,   // 30s (default 25s) — interval between pings
 });
 
 // Register Socket.IO event handlers
@@ -57,7 +61,7 @@ registerSocketHandlers(io);
 setSocketServer(io);
 
 // Middleware
-app.use(express.json());
+app.use(express.json({ limit: '5mb' }));
 
 // Routes
 app.use('/api/health', healthRouter);
