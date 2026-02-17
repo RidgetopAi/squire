@@ -9,6 +9,7 @@
 import { getNextGoal, markGoalWorkedOn, addGoalNote } from '../../goals.js';
 import { AgentEngine } from '../../agent/index.js';
 import { notify } from '../notifier.js';
+import { createEntry } from '../../scratchpad.js';
 import type { CourierTask, TaskResult } from './index.js';
 import { config } from '../../../config/index.js';
 
@@ -138,7 +139,20 @@ Begin working on your goal now.`;
       // Auto-add a note about the session
       await addGoalNote(goal.id, `[Auto] Background session: ${result.turnCount} turns, state: ${result.state}. ${result.content.substring(0, 300)}`);
 
-      // 6. Notify via Telegram (brief summary)
+      // 6. Write to scratchpad so main Squire knows what happened
+      try {
+        await createEntry({
+          entry_type: 'thread',
+          content: `[Goal Worker] Completed work on "${goal.title}" (${result.turnCount} turns, ${result.state}). ${result.content.substring(0, 300)}`,
+          priority: 2, // High priority so it gets noticed
+          metadata: { goalId: goal.id, turns: result.turnCount, state: result.state }
+        });
+        console.log('[GoalWorker] Wrote progress to scratchpad');
+      } catch (scratchpadError) {
+        console.error('[GoalWorker] Scratchpad write failed:', scratchpadError);
+      }
+
+      // 7. Notify via Telegram (brief summary)
       const notifyMessage = `🎯 *Goal Worker*\nWorked on: _${goal.title}_\nTurns: ${result.turnCount} | Status: ${result.state}\n${result.content.substring(0, 200)}`;
       
       try {
