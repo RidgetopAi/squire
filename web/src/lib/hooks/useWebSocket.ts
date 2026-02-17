@@ -149,7 +149,12 @@ let connectionCount = 0;
 
 function getSocket(): Socket {
   if (!socket) {
-    const url = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+    // In browser, connect to same origin (goes through Nginx to backend).
+    // Avoids depending on NEXT_PUBLIC_API_URL which is baked at build time
+    // and breaks when built on a machine with a different .env.
+    const url = typeof window !== 'undefined'
+      ? window.location.origin
+      : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000');
     socket = io(url, {
       autoConnect: false,
       reconnection: true,
