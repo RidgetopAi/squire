@@ -624,7 +624,7 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
     
     // Force Anthropic for vision - xAI/Grok doesn't support images
     const hasImages = images && images.length > 0;
-    const providerOverride = hasImages ? { provider: 'anthropic', model: 'claude-sonnet-4-20250514' } : undefined;
+    const providerOverride = hasImages ? { provider: 'anthropic', model: 'claude-sonnet-4-6' } : undefined;
     const providerName = providerOverride?.provider ?? config.llm.provider;
     
     console.log(`[Socket] Step 4: Starting ${providerName} stream... (${tools?.length ?? 0} tools available${hasImages ? ', with images' : ''})`);

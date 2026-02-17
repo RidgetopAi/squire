@@ -169,7 +169,7 @@ How to use:
 - Be specific: "In /opt/squire, implement X in src/services/foo.ts that does Y"
 - Specify the working directory if not /opt/projects (e.g., workingDir: "/opt/squire")
 - Claude Code has Mandrel access - it will store context and decisions automatically
-- Default model is Opus 4.5, use model: "sonnet" for simpler tasks
+- Default model is Sonnet, use model: "opus" for complex tasks, "haiku" for simple ones
 
 Example:
 \`\`\`

@@ -5,7 +5,7 @@
  * Uses Max subscription for inference, maintains session continuity.
  *
  * Architecture:
- * - Squire (Opus 4.5 API) = Orchestrator + Chat + Memory
+ * - Squire (Sonnet 4.6 API) = Orchestrator + Chat + Memory
  * - Claude Code (Max sub) = Coding Worker with full tooling
  */
 
@@ -23,7 +23,7 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 // Default configuration
 const DEFAULTS = {
   workingDir: '/opt/projects',
-  model: 'opus',
+  model: 'sonnet',
   timeout: 900000, // 15 minutes
   vpsUser: 'ridgetop',
   sshHost: 'hetzner',
@@ -250,7 +250,7 @@ Each call generates a fresh session. To resume a previous session, pass a valid 
       model: {
         type: 'string',
         enum: ['opus', 'sonnet', 'haiku'],
-        description: 'Model to use (default: opus). Use sonnet/haiku for simpler tasks to save quota.',
+        description: 'Model to use (default: sonnet). Use opus for complex tasks, haiku for simple ones.',
       },
       timeout: {
         type: 'number',

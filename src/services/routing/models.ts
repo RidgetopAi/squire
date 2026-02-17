@@ -10,7 +10,7 @@ import { config } from '../../config/index.js';
 
 /**
  * Available model tiers
- * - smart: High capability model for complex tasks (Opus)
+ * - smart: High capability model for complex tasks (Sonnet)
  * - fast: Quick/cheap model for search and retrieval (Grok)
  */
 export type ModelTier = 'smart' | 'fast';
