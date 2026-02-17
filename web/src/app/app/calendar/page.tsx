@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { CalendarEvent } from '@/lib/types';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+// Use relative URLs in browser (same-origin, routed by Nginx)
+const API_URL = '';
 
 type ViewMode = 'week' | 'month';
 

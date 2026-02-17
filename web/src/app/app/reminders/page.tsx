@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { PushPermission } from '@/components/notifications';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+// Use relative URLs in browser (same-origin, routed by Nginx)
+const API_URL = '';
 
 type ReminderStatus = 'pending' | 'sent' | 'acknowledged' | 'snoozed' | 'canceled' | 'failed';
 

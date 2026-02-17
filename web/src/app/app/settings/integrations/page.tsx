@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { GoogleAccount, GoogleCalendar, GoogleConnectionStatus } from '@/lib/types';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+// Use relative URLs in browser (same-origin, routed by Nginx)
+const API_URL = '';
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return 'Never';

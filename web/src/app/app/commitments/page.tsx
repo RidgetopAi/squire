@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { Commitment, CommitmentStatus } from '@/lib/types';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+// Use relative URLs in browser (same-origin, routed by Nginx)
+const API_URL = '';
 
 const statusColors: Record<CommitmentStatus, string> = {
   open: 'bg-accent-mustard/20 text-accent-mustard border-accent-mustard/30',
