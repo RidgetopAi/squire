@@ -127,25 +127,6 @@ export function getStats(): SchedulerStats {
   return { ...stats };
 }
 
-/**
- * Reset stats (for testing)
- */
-export function resetStats(): void {
-  stats.lastRun = null;
-  stats.totalProcessed = 0;
-  stats.totalSent = 0;
-  stats.totalFailed = 0;
-  stats.totalRetried = 0;
-  stats.totalUnsnoozed = 0;
-}
-
-/**
- * Run a single tick manually (useful for testing or manual trigger)
- */
-export async function runOnce(): Promise<TickResult> {
-  return tick();
-}
-
 // ========================================
 // Internal Processing
 // ========================================

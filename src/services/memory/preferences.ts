@@ -84,10 +84,3 @@ export async function updatePreference(
   };
 }
 
-export async function deletePreference(key: string): Promise<boolean> {
-  const result = await pool.query(
-    `DELETE FROM preferences WHERE key = $1 RETURNING id`,
-    [key]
-  );
-  return (result.rowCount ?? 0) > 0;
-}

@@ -829,46 +829,6 @@ export async function getOrCreateEntity(
 }
 
 /**
- * Create a mention link between a memory and an entity
- */
-export async function createMention(
-  memoryId: string,
-  entityId: string,
-  extracted: ExtractedEntity
-): Promise<EntityMention> {
-  // Check if mention already exists at this position
-  const existing = await pool.query(
-    `SELECT * FROM entity_mentions
-     WHERE memory_id = $1 AND entity_id = $2 AND position_start = $3`,
-    [memoryId, entityId, extracted.positionStart]
-  );
-
-  if (existing.rows.length > 0) {
-    return existing.rows[0] as EntityMention;
-  }
-
-  const result = await pool.query(
-    `INSERT INTO entity_mentions (
-      memory_id, entity_id, mention_text, context_snippet,
-      position_start, position_end, extraction_method, confidence
-    )
-    VALUES ($1, $2, $3, $4, $5, $6, 'regex', $7)
-    RETURNING *`,
-    [
-      memoryId,
-      entityId,
-      extracted.mentionText,
-      extracted.context,
-      extracted.positionStart,
-      extracted.positionEnd,
-      extracted.confidence,
-    ]
-  );
-
-  return result.rows[0] as EntityMention;
-}
-
-/**
  * Create a mention link with relationship information
  * Used for LLM-extracted entities that include relationship context
  */

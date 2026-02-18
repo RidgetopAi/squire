@@ -418,14 +418,3 @@ export function clearCaches(): void {
   answerCache.clear();
 }
 
-/**
- * Clear cache for a specific document
- */
-export function clearDocumentCache(buffer: Buffer): void {
-  const hash = hashBuffer(buffer);
-
-  // We can't selectively clear related cache entries without iterating
-  // For now, just clear the document cache entry
-  // Summary and answer caches will expire naturally
-  documentCache.get(hash); // Access to check, then it auto-expires if called
-}

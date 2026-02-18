@@ -23,7 +23,6 @@ export const config = {
   },
   server: {
     port: parseInt(optional('PORT', '3000'), 10),
-    nodeEnv: optional('NODE_ENV', 'development'),
     corsOrigin: optional('CORS_ORIGIN', 'http://localhost:3001'),
   },
   embedding: {
@@ -47,9 +46,6 @@ export const config = {
     maxTokens: parseInt(optional('LLM_MAX_TOKENS', '8192'), 10),
     temperature: parseFloat(optional('LLM_TEMPERATURE', '0.7')),
     apiTimeoutMs: parseInt(optional('LLM_API_TIMEOUT_MS', '60000'), 10),
-  },
-  features: {
-    emotionTagging: optional('ENABLE_EMOTION_TAGGING', 'false') === 'true',
   },
   search: {
     documentThreshold: parseFloat(optional('SEARCH_DOCUMENT_THRESHOLD', '0.55')),
@@ -82,7 +78,6 @@ export const config = {
   },
   mandrel: {
     baseUrl: optional('MANDREL_URL', 'http://localhost:8080'),
-    enabled: optional('MANDREL_ENABLED', 'true') === 'true',
   },
   routing: {
     enabled: optional('ROUTING_ENABLED', 'true') === 'true',

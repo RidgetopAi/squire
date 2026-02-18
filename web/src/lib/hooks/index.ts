@@ -17,7 +17,6 @@ export {
 } from './useBeliefs';
 export {
   usePatterns,
-  usePattern,
   usePatternStats,
 } from './usePatterns';
 export {

@@ -1,4 +1,4 @@
-import { config } from '../../config/index.js';
+import { callLLM } from '../llm/index.js';
 import type { Email } from '../google/gmail.js';
 
 export interface EmailSummary {
@@ -23,28 +23,13 @@ export async function summarizeEmails(emails: Email[]): Promise<EmailSummary[]> 
   ).join('\n\n---\n\n');
 
   try {
-    const response = await fetch('https://api.x.ai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.llm.xaiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'grok-3-fast',
-        messages: [{ role: 'user', content: SUMMARIZE_PROMPT.replace('{emails}', formatted) }],
-        max_tokens: 1000,
-        temperature: 0.3,
-      }),
-    });
+    const response = await callLLM(
+      [{ role: 'user', content: SUMMARIZE_PROMPT.replace('{emails}', formatted) }],
+      undefined,
+      { provider: 'xai', model: 'grok-3-fast', maxTokens: 1000, temperature: 0.3 }
+    );
 
-    if (!response.ok) {
-      throw new Error(`Grok API error: ${response.status}`);
-    }
-
-    const data = await response.json() as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const summaryText = data.choices?.[0]?.message?.content || '';
+    const summaryText = response.content || '';
 
     // Parse summaries back to structured format
     // Each line is "• [Sender] - [Summary]"

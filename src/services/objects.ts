@@ -273,18 +273,6 @@ export async function getObjectById(id: string): Promise<StoredObject | null> {
   return mapRowToObject(result.rows[0]);
 }
 
-/**
- * Get object by hash (for deduplication)
- */
-export async function getObjectByHash(hash: string): Promise<StoredObject | null> {
-  const result = await pool.query(
-    `SELECT * FROM objects WHERE hash_sha256 = $1 AND status = 'active'`,
-    [hash]
-  );
-  if (result.rows.length === 0) return null;
-  return mapRowToObject(result.rows[0]);
-}
-
 export interface ListObjectsOptions {
   limit?: number;
   offset?: number;

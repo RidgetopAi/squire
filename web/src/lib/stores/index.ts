@@ -1,6 +1,5 @@
 export {
   useChatStore,
-  useIsLoading,
   useIsLoadingContext,
   initWebSocketListeners,
 } from './chatStore';
@@ -10,8 +9,6 @@ export {
   useOverlayCards,
   useOverlayVisible,
   useOverlayLoading,
-  useActiveMessageId,
-  useShowMemoriesForMessage,
   useHideMemories,
   useDismissCard,
   type OverlayCard,

@@ -34,8 +34,8 @@ import { startTelegramPoller, stopTelegramPoller } from '../services/telegram/in
 import { startCourier, stopCourier } from '../services/courier/index.js';
 import { initCommuneScheduler, shutdownCommuneScheduler } from '../services/commune/index.js';
 
-// Google Calendar sync interval (15 minutes)
-const CALENDAR_SYNC_INTERVAL_MS = 15 * 60 * 1000;
+// Google Calendar sync interval (configurable, default 15 minutes)
+const CALENDAR_SYNC_INTERVAL_MS = parseInt(process.env['CALENDAR_SYNC_INTERVAL_MS'] || '900000', 10);
 let calendarSyncTimer: NodeJS.Timeout | null = null;
 
 const app = express();

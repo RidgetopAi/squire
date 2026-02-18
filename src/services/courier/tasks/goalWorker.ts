@@ -55,7 +55,7 @@ export const goalWorkerTask: CourierTask = {
 
       // 2.5. Ensure Mandrel is on the right project
       try {
-        const res = await fetch('http://localhost:8080/mcp/tools/project_switch', {
+        const res = await fetch(`${config.mandrel.baseUrl}/mcp/tools/project_switch`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ arguments: { project: 'squire-agent' } }),

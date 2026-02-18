@@ -64,9 +64,11 @@ export async function checkServices(): Promise<ServiceHealth[]> {
 // Endpoint Health Checking
 // ========================================
 
+import { config } from '../../config/index.js';
+
 const ENDPOINTS = [
-  { url: 'http://localhost:3000/api/health', name: 'Squire API' },
-  { url: 'http://localhost:8080/health', name: 'Mandrel' },
+  { url: `http://localhost:${config.server.port}/api/health`, name: 'Squire API' },
+  { url: `${config.mandrel.baseUrl}/health`, name: 'Mandrel' },
 ];
 
 /**

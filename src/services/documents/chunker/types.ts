@@ -231,20 +231,3 @@ export function rowToChunk(row: DocumentChunkRow): DocumentChunk {
   };
 }
 
-/**
- * Convert a DocumentChunk to database row format
- */
-export function chunkToRow(chunk: DocumentChunk): Omit<DocumentChunkRow, 'created_at'> {
-  return {
-    id: chunk.id,
-    object_id: chunk.objectId,
-    chunk_index: chunk.chunkIndex,
-    content: chunk.content,
-    token_count: chunk.tokenCount,
-    page_number: chunk.pageNumber ?? null,
-    section_title: chunk.sectionTitle ?? null,
-    chunking_strategy: chunk.chunkingStrategy,
-    embedding: chunk.embedding ?? null,
-    metadata: chunk.metadata,
-  };
-}

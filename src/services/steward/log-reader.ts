@@ -6,7 +6,7 @@ import type { ErrorEntry } from './types.js';
 // Log Reading
 // ========================================
 
-const MANDREL_LOG_PATH = '/var/log/mandrel-mcp.log';
+const MANDREL_LOG_PATH = process.env['MANDREL_LOG_PATH'] || '/var/log/mandrel-mcp.log';
 const MAX_LOG_LINES = 100;
 const MAX_ERRORS = 10;
 

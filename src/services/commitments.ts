@@ -556,43 +556,6 @@ export async function countCommitmentsByStatus(): Promise<Record<CommitmentStatu
   return counts as Record<CommitmentStatus, number>;
 }
 
-/**
- * Set Google Calendar sync fields
- */
-export async function setGoogleSync(
-  id: string,
-  googleData: {
-    google_account_id: string;
-    google_calendar_id: string;
-    google_event_id: string;
-    google_etag?: string;
-    google_sync_status?: GoogleSyncStatus;
-  }
-): Promise<Commitment | null> {
-  const result = await pool.query(
-    `UPDATE commitments
-     SET google_account_id = $1,
-         google_calendar_id = $2,
-         google_event_id = $3,
-         google_etag = $4,
-         google_sync_status = $5,
-         last_synced_at = NOW(),
-         updated_at = NOW()
-     WHERE id = $6
-     RETURNING *`,
-    [
-      googleData.google_account_id,
-      googleData.google_calendar_id,
-      googleData.google_event_id,
-      googleData.google_etag ?? null,
-      googleData.google_sync_status ?? 'synced',
-      id,
-    ]
-  );
-
-  return (result.rows[0] as Commitment) ?? null;
-}
-
 // ============================================
 // Recurrence Expansion
 // ============================================
@@ -811,23 +774,6 @@ export function parseOccurrenceId(occurrenceId: string): {
 // ============================================================
 // PHASE 4: COMMITMENT CANDIDATE WORKFLOW
 // ============================================================
-
-/**
- * Get pending candidates that haven't been offered for confirmation yet.
- * Returns candidates in creation order (oldest first).
- */
-export async function getPendingCandidates(limit: number = 1): Promise<Commitment[]> {
-  const result = await pool.query(
-    `SELECT * FROM commitments
-     WHERE status = 'candidate'
-       AND confirmation_offered_at IS NULL
-       AND (auto_expires_at IS NULL OR auto_expires_at > NOW())
-     ORDER BY created_at ASC
-     LIMIT $1`,
-    [limit]
-  );
-  return result.rows as Commitment[];
-}
 
 /**
  * Mark a candidate as having been offered for confirmation.

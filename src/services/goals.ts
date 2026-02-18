@@ -57,11 +57,6 @@ export async function createGoal(input: CreateGoalInput): Promise<Goal> {
   return parseGoalRow(result.rows[0]);
 }
 
-export async function getGoal(id: string): Promise<Goal | null> {
-  const result = await pool.query('SELECT * FROM squire_goals WHERE id = $1', [id]);
-  return result.rows[0] ? parseGoalRow(result.rows[0]) : null;
-}
-
 export async function listGoals(options?: {
   status?: GoalStatus;
   goal_type?: GoalType;

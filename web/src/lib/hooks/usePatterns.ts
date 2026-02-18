@@ -3,7 +3,6 @@
 import { useQuery } from '@tanstack/react-query';
 import {
   fetchPatterns,
-  fetchPattern,
   fetchPatternStats,
   type FetchPatternsOptions,
 } from '@/lib/api/patterns';
@@ -18,19 +17,6 @@ export function usePatterns(options: FetchPatternsOptions = {}) {
   return useQuery<Pattern[]>({
     queryKey: ['patterns', { type, status, minConfidence, timeOfDay, dayOfWeek, limit }],
     queryFn: () => fetchPatterns({ type, status, minConfidence, timeOfDay, dayOfWeek, limit }),
-    staleTime: 1000 * 60 * 5, // 5 minutes
-    refetchOnWindowFocus: false,
-  });
-}
-
-/**
- * Hook to fetch a single pattern by ID
- */
-export function usePattern(id: string | undefined) {
-  return useQuery<Pattern>({
-    queryKey: ['patterns', id],
-    queryFn: () => fetchPattern(id!),
-    enabled: !!id,
     staleTime: 1000 * 60 * 5, // 5 minutes
     refetchOnWindowFocus: false,
   });

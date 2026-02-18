@@ -16,7 +16,6 @@ export {
 
   // Config operations
   getCommuneConfig,
-  updateCommuneConfig,
 
   // Event operations
   createCommuneEvent,
@@ -25,8 +24,6 @@ export {
   getLastSentEvent,
   markEventSent,
   markEventFailed,
-  markEventSuppressed,
-  wasRecentlySent,
 
   // Constraint checks
   isQuietHours,
@@ -39,10 +36,6 @@ export {
 
   // Main orchestration
   attemptOutreach,
-  sendCustomMessage,
-
-  // Stats
-  getCommuneStats,
 } from '../commune.js';
 
 // Re-export scheduler functions

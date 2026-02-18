@@ -73,17 +73,6 @@ export async function createEntry(input: CreateScratchpadInput): Promise<Scratch
 }
 
 /**
- * Get a single entry by ID
- */
-export async function getEntry(id: string): Promise<ScratchpadEntry | null> {
-  const result = await pool.query(
-    'SELECT * FROM scratchpad WHERE id = $1',
-    [id]
-  );
-  return (result.rows[0] as ScratchpadEntry) ?? null;
-}
-
-/**
  * List scratchpad entries with filtering options
  */
 export async function listEntries(options: ListScratchpadOptions = {}): Promise<ScratchpadEntry[]> {
@@ -156,52 +145,6 @@ export async function resolveEntryByContent(contentMatch: string): Promise<Scrat
     [`%${contentMatch}%`]
   );
   return (result.rows[0] as ScratchpadEntry) ?? null;
-}
-
-/**
- * Update an entry's content or metadata
- */
-export async function updateEntry(
-  id: string,
-  updates: { content?: string; priority?: number; metadata?: Record<string, unknown> }
-): Promise<ScratchpadEntry | null> {
-  const setClauses: string[] = ['updated_at = NOW()'];
-  const params: (string | number)[] = [];
-  let paramIndex = 1;
-
-  if (updates.content !== undefined) {
-    setClauses.push(`content = $${paramIndex}`);
-    params.push(updates.content);
-    paramIndex++;
-  }
-
-  if (updates.priority !== undefined) {
-    setClauses.push(`priority = $${paramIndex}`);
-    params.push(updates.priority);
-    paramIndex++;
-  }
-
-  if (updates.metadata !== undefined) {
-    setClauses.push(`metadata = $${paramIndex}`);
-    params.push(JSON.stringify(updates.metadata));
-    paramIndex++;
-  }
-
-  params.push(id);
-
-  const result = await pool.query(
-    `UPDATE scratchpad SET ${setClauses.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
-    params
-  );
-
-  return (result.rows[0] as ScratchpadEntry) ?? null;
-}
-
-/**
- * Delete an entry permanently
- */
-export async function deleteEntry(id: string): Promise<void> {
-  await pool.query('DELETE FROM scratchpad WHERE id = $1', [id]);
 }
 
 /**

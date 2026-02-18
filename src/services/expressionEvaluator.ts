@@ -273,26 +273,6 @@ export async function evaluateUnevaluatedMemories(): Promise<EvaluationResult> {
 }
 
 /**
- * Check if the local model is reachable.
- */
-export async function checkEvaluatorHealth(): Promise<boolean> {
-  try {
-    const { provider, model } = config.expressionEvaluator;
-    const messages: LLMMessage[] = [
-      { role: 'user', content: 'respond with: ok' },
-    ];
-    const response = await callLLM(messages, undefined, {
-      provider,
-      model,
-      maxTokens: 5,
-    });
-    return !!response.content;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Get expression evaluation statistics.
  */
 export async function getExpressionStats(): Promise<{
