@@ -1,7 +1,10 @@
 import { Router, Request, Response } from 'express';
-import { listCommitmentsExpanded, ExpandedCommitment } from '../../services/commitments.js';
-import { getAllEvents } from '../../services/google/events.js';
+import { listCommitmentsExpanded, ExpandedCommitment, updateCommitment, getCommitment } from '../../services/commitments.js';
+import { getAllEvents, updateEventInGoogle, GoogleEvent } from '../../services/google/events.js';
 import { listSyncEnabledAccounts } from '../../services/google/auth.js';
+import { getCalendar } from '../../services/google/calendars.js';
+import { syncAllAccounts } from '../../services/google/sync.js';
+import { pool } from '../../db/pool.js';
 
 const router = Router();
 
@@ -272,6 +275,171 @@ router.get('/upcoming', async (req: Request, res: Response): Promise<void> => {
   } catch (error) {
     console.error('Error getting upcoming events:', error);
     res.status(500).json({ error: 'Failed to get upcoming events' });
+  }
+});
+
+/**
+ * POST /api/calendar/sync-now
+ * Trigger an immediate incremental sync for all accounts
+ */
+router.post('/sync-now', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const accounts = await listSyncEnabledAccounts();
+    if (accounts.length === 0) {
+      res.json({ synced: false, message: 'No sync-enabled accounts' });
+      return;
+    }
+
+    const results = await syncAllAccounts();
+    const summary = {
+      synced: true,
+      accounts: accounts.length,
+      totalPulled: 0,
+      totalUpdated: 0,
+      totalDeleted: 0,
+    };
+
+    for (const result of results.values()) {
+      summary.totalPulled += result.events.pulled;
+      summary.totalUpdated += result.events.updated;
+      summary.totalDeleted += result.events.deleted;
+    }
+
+    res.json(summary);
+  } catch (error) {
+    console.error('Error triggering sync:', error);
+    res.status(500).json({ error: 'Failed to sync' });
+  }
+});
+
+/**
+ * PATCH /api/calendar/events/:id
+ * Update a calendar event (handles both Squire commitments and Google events)
+ * ID format: "google-{dbId}" or "squire-{commitmentId}"
+ */
+router.patch('/events/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const fullId = req.params.id as string;
+    const { title, description, startDate, startTime, endTime, allDay } = req.body;
+
+    if (!fullId) {
+      res.status(400).json({ error: 'Event ID is required' });
+      return;
+    }
+
+    if (fullId.startsWith('squire-')) {
+      // --- Squire commitment update ---
+      const commitmentId = fullId.replace('squire-', '');
+      const existing = await getCommitment(commitmentId);
+      if (!existing) {
+        res.status(404).json({ error: 'Commitment not found' });
+        return;
+      }
+
+      const updates: Record<string, unknown> = {};
+      if (title !== undefined) updates.title = title;
+      if (description !== undefined) updates.description = description;
+      if (allDay !== undefined) updates.all_day = allDay;
+
+      if (startDate !== undefined) {
+        if (allDay) {
+          updates.due_at = new Date(startDate + 'T00:00:00');
+        } else if (startTime) {
+          updates.due_at = new Date(startDate + 'T' + startTime);
+        }
+      }
+
+      if (startTime !== undefined && startDate) {
+        updates.due_at = new Date(startDate + 'T' + startTime);
+      }
+
+      if (endTime && startTime && startDate) {
+        const start = new Date(startDate + 'T' + startTime);
+        const end = new Date(startDate + 'T' + endTime);
+        const durationMinutes = Math.round((end.getTime() - start.getTime()) / 60000);
+        if (durationMinutes > 0) {
+          updates.duration_minutes = durationMinutes;
+        }
+      }
+
+      const updated = await updateCommitment(commitmentId, updates);
+      if (!updated) {
+        res.status(404).json({ error: 'Commitment not found' });
+        return;
+      }
+
+      res.json({ success: true, source: 'squire', id: commitmentId });
+
+    } else if (fullId.startsWith('google-')) {
+      // --- Google event update ---
+      const dbId = fullId.replace('google-', '');
+
+      // Look up event in our cache
+      const eventResult = await pool.query(
+        'SELECT * FROM google_events WHERE id = $1',
+        [dbId]
+      );
+      const event = eventResult.rows[0] as GoogleEvent | undefined;
+      if (!event) {
+        res.status(404).json({ error: 'Google event not found' });
+        return;
+      }
+
+      // Get the calendar
+      const calendar = await getCalendar(event.google_calendar_id);
+      if (!calendar) {
+        res.status(404).json({ error: 'Calendar not found' });
+        return;
+      }
+
+      // Check sync direction
+      if (calendar.sync_direction === 'read_only') {
+        res.status(403).json({ error: 'This calendar is read-only. Change sync direction in settings to enable editing.' });
+        return;
+      }
+
+      // Build update payload
+      const updates: {
+        title?: string;
+        description?: string;
+        due_at?: Date;
+        duration_minutes?: number;
+        all_day?: boolean;
+        timezone?: string;
+      } = {};
+
+      if (title !== undefined) updates.title = title;
+      if (description !== undefined) updates.description = description;
+      if (allDay !== undefined) updates.all_day = allDay;
+
+      if (startDate !== undefined) {
+        if (allDay) {
+          updates.due_at = new Date(startDate + 'T00:00:00');
+        } else if (startTime) {
+          updates.due_at = new Date(startDate + 'T' + startTime);
+        }
+      }
+
+      if (endTime && startTime && startDate) {
+        const start = new Date(startDate + 'T' + startTime);
+        const end = new Date(startDate + 'T' + endTime);
+        const durationMinutes = Math.round((end.getTime() - start.getTime()) / 60000);
+        if (durationMinutes > 0) {
+          updates.duration_minutes = durationMinutes;
+        }
+      }
+
+      // Push update to Google Calendar
+      await updateEventInGoogle(calendar, event.event_id, updates);
+
+      res.json({ success: true, source: 'google', id: dbId, eventId: event.event_id });
+
+    } else {
+      res.status(400).json({ error: 'Invalid event ID format. Expected "google-{id}" or "squire-{id}"' });
+    }
+  } catch (error) {
+    console.error('Error updating calendar event:', error);
+    res.status(500).json({ error: 'Failed to update event' });
   }
 });
 

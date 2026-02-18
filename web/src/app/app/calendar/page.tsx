@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { CalendarEvent } from '@/lib/types';
 
 // Use relative URLs in browser (same-origin, routed by Nginx)
@@ -115,13 +115,66 @@ function EventCard({ event, compact = false, onClick }: EventCardProps) {
 interface EventDetailsPanelProps {
   event: CalendarEvent | null;
   onClose: () => void;
+  onSave: (event: CalendarEvent, updates: EventUpdates) => Promise<void>;
 }
 
-function EventDetailsPanel({ event, onClose }: EventDetailsPanelProps) {
+interface EventUpdates {
+  title: string;
+  description: string;
+  startDate: string;
+  startTime: string;
+  endTime: string;
+  allDay: boolean;
+}
+
+function toLocalDate(dateStr: string): string {
+  const d = new Date(dateStr);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function toLocalTime(dateStr: string): string {
+  const d = new Date(dateStr);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function EventDetailsPanel({ event, onClose, onSave }: EventDetailsPanelProps) {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editForm, setEditForm] = useState<EventUpdates>({
+    title: '', description: '', startDate: '', startTime: '', endTime: '', allDay: false,
+  });
+
+  // Reset edit state when event changes
+  useEffect(() => {
+    if (event) {
+      setEditing(false);
+      setEditForm({
+        title: event.title,
+        description: event.description || '',
+        startDate: toLocalDate(event.start),
+        startTime: event.allDay ? '' : toLocalTime(event.start),
+        endTime: event.end && !event.allDay ? toLocalTime(event.end) : '',
+        allDay: event.allDay,
+      });
+    }
+  }, [event]);
+
   if (!event) return null;
 
   const isGoogle = event.source === 'google';
   const color = event.color || (isGoogle ? '#4285f4' : 'var(--accent-burgundy)');
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await onSave(event, editForm);
+      setEditing(false);
+    } catch {
+      // error handled in parent
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
@@ -132,7 +185,16 @@ function EventDetailsPanel({ event, onClose }: EventDetailsPanelProps) {
         <div className="p-4 border-b border-[var(--card-border)]" style={{ borderLeftColor: color, borderLeftWidth: '4px' }}>
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              <h2 className="text-lg font-semibold text-foreground">{event.title}</h2>
+              {editing ? (
+                <input
+                  type="text"
+                  value={editForm.title}
+                  onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                  className="w-full text-lg font-semibold bg-[var(--input-bg)] border border-[var(--card-border)] rounded-lg px-2 py-1 text-foreground focus:outline-none focus:border-primary"
+                />
+              ) : (
+                <h2 className="text-lg font-semibold text-foreground">{event.title}</h2>
+              )}
               <div className="flex items-center gap-2 mt-1">
                 <span className={`text-xs px-2 py-0.5 rounded ${
                   isGoogle ? 'bg-info/20 text-info' : 'bg-accent-burgundy/20 text-accent-burgundy'
@@ -150,86 +212,176 @@ function EventDetailsPanel({ event, onClose }: EventDetailsPanelProps) {
         </div>
 
         <div className="p-4 space-y-4">
-          <div className="flex items-start gap-3">
-            <svg className="w-5 h-5 text-foreground-muted mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <div>
-              <div className="text-foreground">
-                {new Date(event.start).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-              </div>
-              <div className="text-foreground-muted text-sm">
-                {event.allDay ? 'All day' : (
-                  <>
-                    {formatTime(event.start, false)}
-                    {event.end && ` - ${formatTime(event.end, false)}`}
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {event.location && (
-            <div className="flex items-start gap-3">
-              <svg className="w-5 h-5 text-foreground-muted mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              <div className="text-foreground">{event.location}</div>
-            </div>
-          )}
-
-          {event.description && (
-            <div className="flex items-start gap-3">
-              <svg className="w-5 h-5 text-foreground-muted mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
-              </svg>
-              <div className="text-cream text-sm whitespace-pre-wrap">{event.description}</div>
-            </div>
-          )}
-
-          {event.isRecurring && (
-            <div className="flex items-start gap-3">
-              <svg className="w-5 h-5 text-foreground-muted mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
+          {editing ? (
+            <>
+              {/* Date */}
               <div>
-                <div className="text-foreground">Recurring event</div>
-                {event.isOccurrence && event.occurrenceIndex !== undefined && (
-                  <div className="text-foreground-muted text-sm">
-                    Occurrence #{event.occurrenceIndex + 1}
-                  </div>
-                )}
+                <label className="block text-xs font-medium text-foreground-muted mb-1">Date</label>
+                <input
+                  type="date"
+                  value={editForm.startDate}
+                  onChange={(e) => setEditForm({ ...editForm, startDate: e.target.value })}
+                  className="w-full px-3 py-2 bg-[var(--input-bg)] border border-[var(--card-border)] rounded-lg text-foreground focus:outline-none focus:border-primary"
+                />
               </div>
-            </div>
+              {/* All day toggle */}
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="editAllDay"
+                  checked={editForm.allDay}
+                  onChange={(e) => setEditForm({ ...editForm, allDay: e.target.checked })}
+                  className="w-4 h-4 rounded border-[var(--card-border)] bg-[var(--input-bg)]"
+                />
+                <label htmlFor="editAllDay" className="text-sm text-cream">All day event</label>
+              </div>
+              {/* Time inputs */}
+              {!editForm.allDay && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-foreground-muted mb-1">Start Time</label>
+                    <input
+                      type="time"
+                      value={editForm.startTime}
+                      onChange={(e) => setEditForm({ ...editForm, startTime: e.target.value })}
+                      className="w-full px-3 py-2 bg-[var(--input-bg)] border border-[var(--card-border)] rounded-lg text-foreground focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-foreground-muted mb-1">End Time</label>
+                    <input
+                      type="time"
+                      value={editForm.endTime}
+                      onChange={(e) => setEditForm({ ...editForm, endTime: e.target.value })}
+                      className="w-full px-3 py-2 bg-[var(--input-bg)] border border-[var(--card-border)] rounded-lg text-foreground focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                </div>
+              )}
+              {/* Description */}
+              <div>
+                <label className="block text-xs font-medium text-foreground-muted mb-1">Description</label>
+                <textarea
+                  value={editForm.description}
+                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                  rows={3}
+                  className="w-full px-3 py-2 bg-[var(--input-bg)] border border-[var(--card-border)] rounded-lg text-foreground focus:outline-none focus:border-primary resize-none"
+                  placeholder="Event details..."
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 text-foreground-muted mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <div className="text-foreground">
+                    {new Date(event.start).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                  </div>
+                  <div className="text-foreground-muted text-sm">
+                    {event.allDay ? 'All day' : (
+                      <>
+                        {formatTime(event.start, false)}
+                        {event.end && ` - ${formatTime(event.end, false)}`}
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {event.location && (
+                <div className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-foreground-muted mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <div className="text-foreground">{event.location}</div>
+                </div>
+              )}
+
+              {event.description && (
+                <div className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-foreground-muted mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
+                  </svg>
+                  <div className="text-cream text-sm whitespace-pre-wrap">{event.description}</div>
+                </div>
+              )}
+
+              {event.isRecurring && (
+                <div className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-foreground-muted mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  <div>
+                    <div className="text-foreground">Recurring event</div>
+                    {event.isOccurrence && event.occurrenceIndex !== undefined && (
+                      <div className="text-foreground-muted text-sm">
+                        Occurrence #{event.occurrenceIndex + 1}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
 
         <div className="p-4 border-t border-[var(--card-border)] flex gap-2">
-          {isGoogle && event.htmlLink && (
-            <a
-              href={event.htmlLink}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex-1 px-4 py-2 bg-info/20 hover:bg-info/30 text-info rounded-lg text-center text-sm font-medium transition-colors"
-            >
-              Open in Google Calendar
-            </a>
+          {editing ? (
+            <>
+              <button
+                onClick={() => setEditing(false)}
+                disabled={saving}
+                className="flex-1 px-4 py-2 bg-background-tertiary hover:bg-foreground-muted/10 text-cream rounded-lg text-sm transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving || !editForm.title.trim() || !editForm.startDate}
+                className="flex-1 px-4 py-2 bg-primary hover:bg-primary-hover disabled:bg-primary/50 disabled:cursor-not-allowed text-foreground rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+              >
+                {saving && <span className="w-4 h-4 border-2 border-foreground/30 border-t-foreground rounded-full animate-spin" />}
+                {saving ? 'Saving...' : 'Save'}
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => setEditing(true)}
+                className="flex-1 px-4 py-2 bg-primary/20 hover:bg-primary/30 text-primary rounded-lg text-center text-sm font-medium transition-colors"
+              >
+                Edit
+              </button>
+              {isGoogle && event.htmlLink && (
+                <a
+                  href={event.htmlLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 bg-info/20 hover:bg-info/30 text-info rounded-lg text-center text-sm font-medium transition-colors"
+                >
+                  Google
+                </a>
+              )}
+              {!isGoogle && event.commitmentId && (
+                <a
+                  href={`/app/commitments?id=${event.commitmentId}`}
+                  className="px-4 py-2 bg-accent-burgundy/20 hover:bg-accent-burgundy/30 text-accent-burgundy rounded-lg text-center text-sm font-medium transition-colors"
+                >
+                  Details
+                </a>
+              )}
+              <button
+                onClick={onClose}
+                className="px-4 py-2 bg-background-tertiary hover:bg-foreground-muted/10 text-cream rounded-lg text-sm transition-colors"
+              >
+                Close
+              </button>
+            </>
           )}
-          {!isGoogle && event.commitmentId && (
-            <a
-              href={`/app/commitments?id=${event.commitmentId}`}
-              className="flex-1 px-4 py-2 bg-accent-burgundy/20 hover:bg-accent-burgundy/30 text-accent-burgundy rounded-lg text-center text-sm font-medium transition-colors"
-            >
-              View Commitment
-            </a>
-          )}
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-background-tertiary hover:bg-foreground-muted/10 text-cream rounded-lg text-sm transition-colors"
-          >
-            Close
-          </button>
         </div>
       </div>
     </div>
@@ -246,6 +398,8 @@ export default function CalendarPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newEvent, setNewEvent] = useState({ title: '', description: '', startDate: '', startTime: '', endTime: '', allDay: false });
   const [creating, setCreating] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const lastSyncRef = useRef<number>(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -319,6 +473,49 @@ export default function CalendarPage() {
       setLoading(false);
     }
   }, [viewMode, currentDate]);
+
+  // Auto-refresh when tab regains focus (syncs with Google Calendar)
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState !== 'visible') return;
+
+      // Debounce: don't sync more than once per 30 seconds
+      const now = Date.now();
+      if (now - lastSyncRef.current < 30_000) return;
+      lastSyncRef.current = now;
+
+      setSyncing(true);
+      try {
+        await fetch(`${API_URL}/api/calendar/sync-now`, { method: 'POST' });
+        await fetchEvents();
+      } catch (err) {
+        console.error('Background sync failed:', err);
+      } finally {
+        setSyncing(false);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [fetchEvents]);
+
+  // Save handler for event edits
+  const handleSaveEvent = useCallback(async (event: CalendarEvent, updates: EventUpdates) => {
+    const res = await fetch(`${API_URL}/api/calendar/events/${event.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      alert(err.error || 'Failed to save event');
+      throw new Error(err.error);
+    }
+
+    setSelectedEvent(null);
+    await fetchEvents();
+  }, [fetchEvents]);
 
   const navigatePrev = () => {
     const newDate = new Date(currentDate);
@@ -663,8 +860,16 @@ export default function CalendarPage() {
         )}
       </div>
 
+      {/* Sync indicator */}
+      {syncing && (
+        <div className="fixed top-4 right-4 z-40 flex items-center gap-2 px-3 py-1.5 bg-[var(--card-bg)] border border-[var(--card-border)] rounded-lg shadow-lg text-xs text-foreground-muted">
+          <span className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          Syncing...
+        </div>
+      )}
+
       {/* Event Details Panel */}
-      <EventDetailsPanel event={selectedEvent} onClose={() => setSelectedEvent(null)} />
+      <EventDetailsPanel event={selectedEvent} onClose={() => setSelectedEvent(null)} onSave={handleSaveEvent} />
 
       {/* Add Event Modal */}
       {showAddModal && (
