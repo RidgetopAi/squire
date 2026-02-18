@@ -207,6 +207,7 @@ export interface ChatMessage {
   context?: ContextPackage;
   memoryIds?: string[];
   reportData?: ReportData;
+  images?: { preview: string; name: string }[];
 }
 
 // Report Data (from present_report tool)

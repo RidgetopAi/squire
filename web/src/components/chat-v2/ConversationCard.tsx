@@ -58,16 +58,30 @@ export function ConversationCard({ pair, index, onBookmark, isBookmarked = false
         )}
 
         {/* User message section */}
-        {userMessage.content && (
+        {(userMessage.content || (userMessage.images && userMessage.images.length > 0)) && (
           <div className="px-5 pt-4 pb-2">
-            <p className="text-sm text-foreground-muted/60 leading-relaxed">
-              {userMessage.content}
-            </p>
+            {userMessage.images && userMessage.images.length > 0 && (
+              <div className={`flex gap-2 flex-wrap${userMessage.content ? ' mb-2' : ''}`}>
+                {userMessage.images.map((img, i) => (
+                  <img
+                    key={i}
+                    src={img.preview}
+                    alt={img.name}
+                    className="w-20 h-20 object-cover rounded border border-[var(--card-border)]"
+                  />
+                ))}
+              </div>
+            )}
+            {userMessage.content && (
+              <p className="text-sm text-foreground-muted/60 leading-relaxed">
+                {userMessage.content}
+              </p>
+            )}
           </div>
         )}
 
         {/* Divider */}
-        {userMessage.content && (assistantMessage || isStreaming) && (
+        {(userMessage.content || (userMessage.images && userMessage.images.length > 0)) && (assistantMessage || isStreaming) && (
           <div className="mx-5 border-t border-[var(--card-border)]" />
         )}
 

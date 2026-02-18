@@ -331,10 +331,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
       get().startNewConversation();
     }
 
-    // Add user message
+    // Add user message (include image previews for display in conversation cards)
     const userMessage = addMessage({
       role: 'user',
       content,
+      images: images?.map((img) => ({
+        preview: `data:${img.mediaType};base64,${img.data}`,
+        name: 'image',
+      })),
     });
 
     // Save to localStorage backup BEFORE sending to server
