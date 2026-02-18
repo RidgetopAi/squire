@@ -2,7 +2,6 @@ import { pool } from '../db/pool.js';
 import { generateEmbedding } from '../providers/embeddings.js';
 import { expandRecurrence, getNextOccurrence } from './recurrence.js';
 import { config } from '../config/index.js';
-import { listSyncEnabledAccounts } from './google/auth.js';
 import { refreshCommitmentsSummary } from './summaries.js';
 
 // Commitment status values (from IMPLEMENTATION-TRACKER.md locked naming)
@@ -188,26 +187,9 @@ export async function createCommitment(input: CreateCommitmentInput): Promise<Co
 
   const commitment = result.rows[0] as Commitment;
 
-  // Auto-mark for Google sync if there's a sync-enabled account and commitment has a due date
-  if (due_at && source_type !== 'google_sync') {
-    try {
-      const accounts = await listSyncEnabledAccounts();
-      const firstAccount = accounts[0];
-      if (firstAccount) {
-        await pool.query(
-          `UPDATE commitments SET
-            google_account_id = $1,
-            google_sync_status = 'pending_push'
-          WHERE id = $2`,
-          [firstAccount.id, commitment.id]
-        );
-        console.log(`[Commitments] Marked "${title}" for Google sync`);
-      }
-    } catch (err) {
-      // Don't fail commitment creation if sync marking fails
-      console.error('[Commitments] Failed to mark for Google sync:', err);
-    }
-  }
+  // Commitments stay local_only by default.
+  // Squire model handles Google Calendar event creation explicitly via tool calls,
+  // preventing duplicate events with mismatched times.
 
   return commitment;
 }
