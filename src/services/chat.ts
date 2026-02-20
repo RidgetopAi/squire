@@ -87,19 +87,20 @@ function buildMessages(
 ): LLMMessage[] {
   const messages: LLMMessage[] = [];
 
-  // System prompt with date/time grounding, tool instructions, and optional context
-  const dateTimeGrounding = `**Current date and time**: ${getCurrentDateTimeString()}\n\n`;
-  let systemContent = dateTimeGrounding + SQUIRE_SYSTEM_PROMPT_BASE;
-
-  // Add tool calling instructions when tools are available
+  // Static system prompt (cacheable — identical across calls)
+  let staticPrompt = SQUIRE_SYSTEM_PROMPT_BASE;
   if (hasTools()) {
-    systemContent += TOOL_CALLING_INSTRUCTIONS;
+    staticPrompt += TOOL_CALLING_INSTRUCTIONS;
   }
+  messages.push({ role: 'system', content: staticPrompt });
 
+  // Dynamic system prompt (changes per call — date/time + context)
+  const dateTimeGrounding = `**Current date and time**: ${getCurrentDateTimeString()}`;
+  let dynamicContent = dateTimeGrounding;
   if (contextMarkdown) {
-    systemContent += `\n\n---\n\n${contextMarkdown}`;
+    dynamicContent += `\n\n---\n\n${contextMarkdown}`;
   }
-  messages.push({ role: 'system', content: systemContent });
+  messages.push({ role: 'system', content: dynamicContent });
 
   // Add conversation history (last N messages to fit context)
   const recentHistory = conversationHistory.slice(-10); // Keep last 10 exchanges

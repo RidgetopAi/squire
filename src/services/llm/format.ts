@@ -55,18 +55,20 @@ export type AnthropicToolDef = {
 
 /**
  * Convert canonical messages to Anthropic format.
- * Extracts system prompt (Anthropic uses top-level system field).
+ * Extracts system prompts (Anthropic uses top-level system field).
+ * Supports multiple system messages for prompt caching: the first system
+ * message is treated as static/cacheable, subsequent ones as dynamic.
  */
 export function toAnthropicMessages(messages: LLMMessage[]): {
-  system?: string;
+  systemParts: string[];
   messages: AnthropicMessage[];
 } {
-  let system: string | undefined;
+  const systemParts: string[] = [];
   const anthropicMessages: AnthropicMessage[] = [];
 
   for (const msg of messages) {
     if (msg.role === 'system') {
-      system = msg.content;
+      systemParts.push(msg.content);
     } else if (msg.role === 'user') {
       // Handle user messages with optional images
       if (msg.images && msg.images.length > 0) {
@@ -124,7 +126,7 @@ export function toAnthropicMessages(messages: LLMMessage[]): {
     }
   }
 
-  return { system, messages: anthropicMessages };
+  return { systemParts, messages: anthropicMessages };
 }
 
 /**
@@ -146,17 +148,27 @@ export function toAnthropicTools(tools: ToolDefinition[]): AnthropicToolDef[] {
   });
 }
 
+export type AnthropicSystemBlockUncached = {
+  type: 'text';
+  text: string;
+};
+
 /**
- * Build Anthropic system block with prompt caching.
+ * Build Anthropic system blocks with prompt caching.
+ * First block (static content) gets cache_control for prompt caching.
+ * Subsequent blocks (dynamic content like date/time, context) are uncached.
  */
-export function toAnthropicSystem(systemPrompt: string): AnthropicSystemBlock[] {
-  return [
-    {
-      type: 'text',
-      text: systemPrompt,
-      cache_control: { type: 'ephemeral' },
-    },
-  ];
+export function toAnthropicSystem(systemParts: string[]): (AnthropicSystemBlock | AnthropicSystemBlockUncached)[] {
+  if (systemParts.length === 0) return [];
+
+  return systemParts.map((text, index) => {
+    if (index === 0) {
+      // First block is static — cache it
+      return { type: 'text' as const, text, cache_control: { type: 'ephemeral' as const } };
+    }
+    // Subsequent blocks are dynamic — no cache_control
+    return { type: 'text' as const, text };
+  });
 }
 
 /**

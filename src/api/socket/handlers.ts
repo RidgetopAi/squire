@@ -336,8 +336,9 @@ async function handleDocumentDiscussion(
 
     // Step 3: Build lean system prompt
     const sizeKb = document.size_bytes ? `${(document.size_bytes / 1024).toFixed(0)} KB` : 'unknown size';
-    let systemContent = systemPromptBase;
-    systemContent += getCurrentTimeContext();
+
+    // Dynamic system content (date/time + user context + document)
+    let dynamicContent = getCurrentTimeContext();
 
     // Minimal user context — personality + relationships only (~4K)
     const userContextParts: string[] = [];
@@ -348,11 +349,11 @@ async function handleDocumentDiscussion(
       userContextParts.push(`**Relationships**: ${relationshipsSummary.content}`);
     }
     if (userContextParts.length > 0) {
-      systemContent += `\n\n## About the Person You're Talking To\n\n${userContextParts.join('\n\n')}`;
+      dynamicContent += `\n\n## About the Person You're Talking To\n\n${userContextParts.join('\n\n')}`;
     }
 
     // Document content injection
-    systemContent += `\n\n## Document Under Discussion
+    dynamicContent += `\n\n## Document Under Discussion
 
 The user has selected this document for focused discussion. Answer based on its contents.
 
@@ -370,7 +371,8 @@ ${documentContent}
 
     // Step 4: Build messages array
     const messages: Array<{ role: string; content: string; images?: ImageContent[]; tool_calls?: ToolCall[]; tool_call_id?: string }> = [];
-    messages.push({ role: 'system', content: systemContent });
+    messages.push({ role: 'system', content: systemPromptBase });
+    messages.push({ role: 'system', content: dynamicContent });
 
     for (const msg of history.slice(-10)) {
       messages.push({ role: msg.role, content: msg.content });
@@ -599,17 +601,18 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
       memoryContextPromise,
     ]);
 
-    let systemContent = systemPromptBase;
-    systemContent += getCurrentTimeContext();
+    // Static system prompt (cacheable — identical across calls)
+    messages.push({ role: 'system', content: systemPromptBase });
 
+    // Dynamic system prompt (changes per call — date/time + context)
+    let dynamicContent = getCurrentTimeContext();
     if (memoryContext) {
-      systemContent += `\n\n---\n\n${memoryContext}`;
+      dynamicContent += `\n\n---\n\n${memoryContext}`;
     }
-
     if (contextMarkdown) {
-      systemContent += `\n\n---\n\n${contextMarkdown}`;
+      dynamicContent += `\n\n---\n\n${contextMarkdown}`;
     }
-    messages.push({ role: 'system', content: systemContent });
+    messages.push({ role: 'system', content: dynamicContent });
 
     // Add conversation history
     for (const msg of history.slice(-10)) {

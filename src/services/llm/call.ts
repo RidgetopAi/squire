@@ -76,7 +76,7 @@ async function callAnthropic(
   pc: ProviderConfig,
   options?: CallOptions
 ): Promise<LLMResponse> {
-  const { system, messages: anthropicMessages } = toAnthropicMessages(messages);
+  const { systemParts, messages: anthropicMessages } = toAnthropicMessages(messages);
 
   const requestBody: Record<string, unknown> = {
     model: pc.model,
@@ -86,8 +86,8 @@ async function callAnthropic(
     stream: false,
   };
 
-  if (system) {
-    requestBody.system = toAnthropicSystem(system);
+  if (systemParts.length > 0) {
+    requestBody.system = toAnthropicSystem(systemParts);
   }
 
   if (tools && tools.length > 0) {
