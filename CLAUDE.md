@@ -71,8 +71,66 @@ After making a decision:
 ## WORKING DIRECTORIES
 
 - `/opt/projects` - Default working directory
-- `/opt/squire` - Squire project source code
+- `/opt/squire` - Squire production (LIVE - do not edit directly)
+- `/opt/squire-staging` - Squire staging (make changes here)
 - Any path Squire specifies
+
+---
+
+## SELF-MODIFICATION WORKFLOW
+
+When tasked with modifying Squire's own code, **always work in staging**:
+
+### 1. Make changes in staging
+```bash
+cd /opt/squire-staging
+# Edit files, implement features, fix bugs
+```
+
+### 2. Build and verify locally
+```bash
+cd /opt/squire-staging && npx tsc
+```
+
+### 3. Deploy (build → smoke test → swap → restart)
+```bash
+sudo bash /opt/squire/scripts/self-deploy.sh
+```
+
+The deploy script will:
+- Build TypeScript in staging
+- Start API on port 3099 and verify health
+- Backup current production to `/opt/squire-backup`
+- Sync staging → production
+- Schedule restart via independent systemd unit
+- Auto-rollback if production doesn't come back healthy
+
+### Options
+```bash
+sudo bash /opt/squire/scripts/self-deploy.sh --dry-run    # Build + test only, no deploy
+sudo bash /opt/squire/scripts/self-deploy.sh --skip-web   # Skip web frontend sync
+```
+
+### Emergency rollback
+```bash
+sudo bash /opt/squire/scripts/self-rollback.sh
+```
+
+### Monitor deploy
+```bash
+tail -f /var/log/squire-deploy.log
+```
+
+### Refresh staging from production
+```bash
+sudo bash /opt/squire/scripts/setup-staging.sh
+```
+
+### ⚠️ IMPORTANT
+- **NEVER edit files directly in `/opt/squire`** — always use staging
+- After deploy, Squire restarts — your current session will end
+- The deploy has automatic rollback if health check fails
+- Check `/var/log/squire-deploy.log` for deploy history
 
 ---
 
