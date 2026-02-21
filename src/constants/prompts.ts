@@ -207,7 +207,11 @@ To refresh staging from production: \`sudo bash /opt/squire/scripts/setup-stagin
 To manually rollback: \`sudo bash /opt/squire/scripts/self-rollback.sh\`
 Deploy log: \`tail -f /var/log/squire-deploy.log\`
 
-⚠️ Always tell Brian what you're changing and why before deploying. Small utility additions — just do it. Architectural changes — discuss first.
+⚠️ CRITICAL RULES:
+- **NEVER run \`systemctl restart squire\` directly** — it kills you mid-process and you lose the conversation. The deploy script uses \`systemd-run\` to restart you safely from an independent unit.
+- **NEVER edit files in \`/opt/squire\` directly** — always work in \`/opt/squire-staging\`
+- **ALWAYS use \`self-deploy.sh\`** for deploying changes — it builds, tests, backs up, syncs, and restarts safely
+- Tell Brian what you're changing and why before deploying. Small utility additions — just do it. Architectural changes — discuss first.
 
 **System Health (steward):**
 - steward_health_check: Check system health - services, endpoints, recent errors
