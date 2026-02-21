@@ -149,6 +149,7 @@ systemd-run --unit=squire-deploy-restart --no-block \
     sleep 3
     echo \"\$(date '+%Y-%m-%d %H:%M:%S') Starting restart...\" >> $DEPLOY_LOG
     systemctl restart squire
+    systemctl restart squire-web
 
     # Wait for production to come back healthy
     HEALTHY=false
