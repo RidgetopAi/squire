@@ -12,7 +12,7 @@ import { pool } from '../db/pool.js';
 import { config } from '../config/index.js';
 import { generateEmbedding } from '../providers/embeddings.js';
 import { EntityType } from './entities.js';
-import { getNonEmptySummaries, type LivingSummary } from './summaries.js';
+import { getNonEmptySummaries, generateSummary, type LivingSummary, type SummaryCategory } from './summaries.js';
 import { searchNotes, getPinnedNotes } from './notes.js';
 import { searchLists } from './lists.js';
 import { searchForContext } from './documents/search.js';
@@ -335,6 +335,207 @@ async function getEntitiesForMemories(memoryIds: string[]): Promise<EntitySummar
 }
 
 // === FORMATTING ===
+
+
+// === LIVE SCHEDULE ===
+
+/**
+ * Freshness threshold for living summaries (in hours).
+ * If a summary is older than this, it will be regenerated before serving.
+ */
+const SUMMARY_TTL_HOURS = 12;
+
+/**
+ * Check and refresh stale summaries.
+ * Returns the refreshed summaries.
+ */
+async function ensureFreshSummaries(summaries: LivingSummary[]): Promise<LivingSummary[]> {
+  const now = Date.now();
+  const ttlMs = SUMMARY_TTL_HOURS * 60 * 60 * 1000;
+  const refreshed: LivingSummary[] = [];
+
+  for (const s of summaries) {
+    const age = now - new Date(s.last_updated_at).getTime();
+    if (age > ttlMs) {
+      try {
+        console.log(`[Context] Summary "${s.category}" is ${Math.round(age / 3600000)}h old (TTL: ${SUMMARY_TTL_HOURS}h), refreshing...`);
+        const result = await generateSummary(s.category as SummaryCategory, true);
+        refreshed.push(result.summary);
+      } catch (err) {
+        console.error(`[Context] Failed to refresh ${s.category}, using stale:`, err);
+        refreshed.push(s); // Fall back to stale version
+      }
+    } else {
+      refreshed.push(s);
+    }
+  }
+
+  return refreshed;
+}
+
+export interface ScheduleItem {
+  title: string;
+  startTime: Date;
+  endTime: Date | null;
+  allDay: boolean;
+  source: 'calendar' | 'reminder' | 'commitment';
+  status?: string;
+}
+
+/**
+ * Fetch live schedule data from Google Calendar events, reminders, and dated commitments.
+ * Returns items for the next 7 days, sorted by start time.
+ */
+async function fetchLiveSchedule(): Promise<ScheduleItem[]> {
+  const items: ScheduleItem[] = [];
+
+  // Fetch Google Calendar events for next 7 days
+  try {
+    const calResult = await pool.query(`
+      SELECT summary, start_time, end_time, all_day, status
+      FROM google_events
+      WHERE start_time >= NOW() - INTERVAL '1 day'
+        AND start_time <= NOW() + INTERVAL '7 days'
+        AND status != 'cancelled'
+      ORDER BY start_time ASC
+      LIMIT 20
+    `);
+
+    for (const row of calResult.rows) {
+      items.push({
+        title: row.summary || 'Untitled event',
+        startTime: new Date(row.start_time),
+        endTime: row.end_time ? new Date(row.end_time) : null,
+        allDay: row.all_day ?? false,
+        source: 'calendar',
+        status: row.status,
+      });
+    }
+  } catch (err) {
+    console.error('[Context] Failed to fetch calendar events:', err);
+  }
+
+  // Fetch pending reminders for next 7 days
+  try {
+    const remResult = await pool.query(`
+      SELECT title, scheduled_for, status
+      FROM reminders
+      WHERE status = 'pending'
+        AND scheduled_for >= NOW() - INTERVAL '1 hour'
+        AND scheduled_for <= NOW() + INTERVAL '7 days'
+      ORDER BY scheduled_for ASC
+      LIMIT 10
+    `);
+
+    for (const row of remResult.rows) {
+      items.push({
+        title: row.title || 'Reminder',
+        startTime: new Date(row.scheduled_for),
+        endTime: null,
+        allDay: false,
+        source: 'reminder',
+        status: row.status,
+      });
+    }
+  } catch (err) {
+    console.error('[Context] Failed to fetch reminders:', err);
+  }
+
+  // Fetch commitments with due dates in next 7 days
+  try {
+    const comResult = await pool.query(`
+      SELECT title, due_at, status, all_day
+      FROM commitments
+      WHERE status IN ('open', 'in_progress')
+        AND due_at IS NOT NULL
+        AND due_at >= NOW() - INTERVAL '1 day'
+        AND due_at <= NOW() + INTERVAL '7 days'
+      ORDER BY due_at ASC
+      LIMIT 10
+    `);
+
+    for (const row of comResult.rows) {
+      items.push({
+        title: row.title || 'Commitment',
+        startTime: new Date(row.due_at),
+        endTime: null,
+        allDay: row.all_day ?? false,
+        source: 'commitment',
+        status: row.status,
+      });
+    }
+  } catch (err) {
+    console.error('[Context] Failed to fetch commitments:', err);
+  }
+
+  // Sort by start time
+  items.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+  return items;
+}
+
+/**
+ * Format live schedule items as markdown for context injection.
+ * Groups by day (Today, Tomorrow, day-of-week) for natural conversation.
+ */
+function formatScheduleMarkdown(items: ScheduleItem[]): string {
+  if (items.length === 0) return '';
+
+  const lines: string[] = [];
+  lines.push('# Schedule & Upcoming');
+  lines.push('');
+  lines.push('*This is live data — use it to ground your awareness of their day.*');
+  lines.push('');
+
+  const now = new Date();
+  const todayStr = now.toLocaleDateString('en-US', { timeZone: 'America/New_York' });
+
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = tomorrow.toLocaleDateString('en-US', { timeZone: 'America/New_York' });
+
+  // Group by day
+  const byDay = new Map<string, ScheduleItem[]>();
+  for (const item of items) {
+    const itemDateStr = item.startTime.toLocaleDateString('en-US', { timeZone: 'America/New_York' });
+    const existing = byDay.get(itemDateStr) || [];
+    existing.push(item);
+    byDay.set(itemDateStr, existing);
+  }
+
+  for (const [dateStr, dayItems] of byDay) {
+    // Format day header
+    let dayLabel: string;
+    if (dateStr === todayStr) {
+      dayLabel = 'Today (' + now.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'America/New_York' }) + ')';
+    } else if (dateStr === tomorrowStr) {
+      dayLabel = 'Tomorrow (' + tomorrow.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'America/New_York' }) + ')';
+    } else {
+      const d = dayItems[0]!.startTime;
+      dayLabel = d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'America/New_York' });
+    }
+
+    lines.push(`**${dayLabel}**`);
+    for (const item of dayItems) {
+      const sourceTag = item.source === 'calendar' ? '' : ` [${item.source}]`;
+      // Check if event is in the past
+      const isPast = item.endTime ? new Date(item.endTime).getTime() < now.getTime() : item.startTime.getTime() < now.getTime() - 3600000;
+
+      if (item.allDay) {
+        const prefix = isPast ? '~~' : '';
+        const suffix = isPast ? '~~ *(done)*' : '';
+        lines.push(`- ${prefix}${item.title}${sourceTag} (all day)${suffix}`);
+      } else {
+        const timeStr = item.startTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' });
+        const prefix = isPast ? '~~' : '';
+        const suffix = isPast ? '~~ *(done)*' : '';
+        lines.push(`- ${prefix}${timeStr} — ${item.title}${sourceTag}${suffix}`);
+      }
+    }
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
 
 /**
  * Format memories as markdown
@@ -746,6 +947,7 @@ export async function generateContext(
     relevantLists,
     docResults,
     disclosureId,
+    liveSchedule,
   ] = await Promise.all([
     getEntitiesForMemories(memoryIds),
     getNonEmptySummaries(),
@@ -773,10 +975,14 @@ export async function generateContext(
         })
       : Promise.resolve({ chunks: [] as { sourceId: string; documentName: string; content: string; pageNumber?: number; sectionTitle?: string; similarity: number; tokenCount: number }[] }),
     logDisclosure(profile.name, query, memoryIds, totalTokens, profile.format, weights, conversationId),
+    fetchLiveSchedule(),
   ]);
 
+  // Fix C: Freshness gate — refresh stale summaries before serving
+  const freshSummaries = await ensureFreshSummaries(livingSummaries);
+
   // Map living summaries
-  const summaries: SummarySnapshot[] = livingSummaries.map((s: LivingSummary) => ({
+  const summaries: SummarySnapshot[] = freshSummaries.map((s: LivingSummary) => ({
     category: s.category,
     content: s.content,
     version: s.version,
@@ -826,8 +1032,13 @@ export async function generateContext(
     tokenCount: chunk.tokenCount,
   }));
 
-  // Format output
-  let markdown = formatMarkdown(filteredMemories, entities, summaries, profile, query);
+  // Format output — schedule comes FIRST (live data), then summaries, then memories
+  const scheduleMarkdown = formatScheduleMarkdown(liveSchedule);
+  let markdown = '';
+  if (scheduleMarkdown) {
+    markdown += scheduleMarkdown + '\n';
+  }
+  markdown += formatMarkdown(filteredMemories, entities, summaries, profile, query);
   if (notes.length > 0) {
     markdown += '\n' + formatNotesMarkdown(notes);
   }
