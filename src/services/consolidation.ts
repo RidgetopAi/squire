@@ -99,12 +99,20 @@ export interface ConsolidationResult {
 }
 
 /**
+ * Time-bound extraction types that should decay faster after their date passes.
+ * Events, tasks, and reminders are inherently temporal — "meeting next Thursday"
+ * shouldn't persist at full strength weeks after Thursday.
+ */
+const TIME_BOUND_TYPES = new Set(['event', 'task', 'reminder']);
+
+/**
  * Calculate decay amount for a memory
  *
  * Decay formula:
  * - Higher salience = less decay (salience protects)
  * - More recent access = less decay (access protects)
  * - Higher access count = less decay (frequent use protects)
+ * - Time-bound memories (events/tasks/reminders) decay 3x faster after 5 days
  */
 function calculateDecay(memory: Memory): number {
   const { baseRate, accessDecayDays, unaccessed_multiplier, minStrength } = CONSOLIDATION_CONFIG.decay;
@@ -133,6 +141,19 @@ function calculateDecay(memory: Memory): number {
   // Accelerate decay for unaccessed, low-salience memories
   if (!memory.last_accessed_at && memory.salience_score < highSalienceThreshold) {
     decayRate *= unaccessed_multiplier;
+  }
+
+  // Accelerated decay for time-bound memories (events, tasks, reminders)
+  // After 5 days, these decay 3x faster — they're temporal, not timeless facts.
+  // After 14 days, 5x faster — stale appointments shouldn't persist.
+  const extractionType = (memory.source_metadata as Record<string, unknown>)?.extraction_type as string | undefined;
+  if (extractionType && TIME_BOUND_TYPES.has(extractionType)) {
+    const daysSinceCreated = (Date.now() - new Date(memory.created_at).getTime()) / (1000 * 60 * 60 * 24);
+    if (daysSinceCreated > 14) {
+      decayRate *= 5.0;
+    } else if (daysSinceCreated > 5) {
+      decayRate *= 3.0;
+    }
   }
 
   // Don't decay below minimum
@@ -187,8 +208,10 @@ async function processMemoryStrength(): Promise<{ decayed: number; strengthened:
   const { minStrength } = CONSOLIDATION_CONFIG.decay;
 
   // Get all memories with their current state
+  // Include source_metadata + created_at for time-bound decay calculation
   const result = await pool.query(
-    `SELECT id, salience_score, last_accessed_at, access_count, current_strength
+    `SELECT id, salience_score, last_accessed_at, access_count, current_strength,
+            source_metadata, created_at
      FROM memories
      WHERE current_strength > $1`,
     [minStrength]

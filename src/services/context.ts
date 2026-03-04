@@ -370,9 +370,13 @@ function formatMarkdown(
   if (allMemories.length > 0) {
     lines.push('# Relevant Context');
     lines.push('');
+    const now = new Date();
     for (const m of allMemories) {
-      // Simple bullet, no scores or dates - just the knowledge
-      lines.push(`- ${m.content}`);
+      // Include date so the model can reason about temporal relevance
+      const age = Math.floor((now.getTime() - new Date(m.created_at).getTime()) / (1000 * 60 * 60 * 24));
+      const dateStr = new Date(m.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const ageLabel = age === 0 ? 'today' : age === 1 ? 'yesterday' : `${age}d ago`;
+      lines.push(`- [${dateStr}, ${ageLabel}] ${m.content}`);
     }
     lines.push('');
   }

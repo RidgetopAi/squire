@@ -8,12 +8,13 @@
 
 import { pool } from '../db/pool.js';
 import { complete, type LLMMessage } from '../providers/llm.js';
-import { config } from '../config/index.js';
+// import { config } from '../config/index.js'; // Only used by disabled auto-extraction prompts
 import { createMemory } from './memories.js';
 import { processMemoryForBeliefs } from './beliefs.js';
 import { classifyMemoryCategories, linkMemoryToCategories, getSummary, updateSummary, type CategoryClassification } from './summaries.js';
-import { createCommitment } from './commitments.js';
-import { createStandaloneReminder, createScheduledReminder } from './reminders.js';
+// DISABLED: LLM tools handle reminders/commitments now (same as notes/lists)
+// import { createCommitment } from './commitments.js';
+// import { createStandaloneReminder, createScheduledReminder } from './reminders.js';
 import { processMessagesForResolutions, type ResolutionCandidate } from './resolution.js';
 // DISABLED: LLM tools handle notes/lists now (Decision: 99e91b23)
 // import { createNote } from './notes.js';
@@ -342,9 +343,8 @@ IMPORTANT: Return ONLY valid JSON array, no markdown, no explanation. MAX 3 item
 
 // === DATE/TIME HELPERS ===
 
-/**
- * Get a date formatted in a specific timezone as YYYY-MM-DD
- */
+// DISABLED: Date/time helpers used by auto-extraction prompts — LLM tools handle this now
+/*
 function formatDateInTimezone(date: Date, timezone: string): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
     year: 'numeric',
@@ -359,9 +359,6 @@ function formatDateInTimezone(date: Date, timezone: string): string {
   return `${year}-${month}-${day}`;
 }
 
-/**
- * Get day of week (0=Sunday, 6=Saturday) for a date in a specific timezone
- */
 function getDayOfWeekInTimezone(date: Date, timezone: string): number {
   const dayName = new Intl.DateTimeFormat('en-US', {
     weekday: 'long',
@@ -372,18 +369,13 @@ function getDayOfWeekInTimezone(date: Date, timezone: string): number {
   return days.indexOf(dayName);
 }
 
-/**
- * Get the date for a specific day of week relative to today, in a timezone
- * dayOfWeek: 0=Sunday, 1=Monday, ..., 6=Saturday
- */
 function getDateForDayOfWeek(dayOfWeek: number, timezone: string): string {
   const now = new Date();
   const todayDow = getDayOfWeekInTimezone(now, timezone);
 
-  // Calculate days until the target day (this week)
   let daysUntil = dayOfWeek - todayDow;
   if (daysUntil < 0) {
-    daysUntil += 7; // Target is next week
+    daysUntil += 7;
   }
 
   const targetDate = new Date(now);
@@ -392,10 +384,6 @@ function getDateForDayOfWeek(dayOfWeek: number, timezone: string): string {
   return formatDateInTimezone(targetDate, timezone);
 }
 
-/**
- * Get current date/time context for LLM prompts (Eastern Time)
- * All dates are calculated in the user's timezone to avoid off-by-one errors
- */
 function getDateTimeContext(): {
   iso: string;
   formatted: string;
@@ -417,11 +405,9 @@ function getDateTimeContext(): {
     timeZone: timezone,
   };
 
-  // Calculate tomorrow in local timezone
   const tomorrow = new Date(now);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
-  // Pre-calculate dates for each day of the week
   const weekdayDates: Record<string, string> = {
     sunday: getDateForDayOfWeek(0, timezone),
     monday: getDateForDayOfWeek(1, timezone),
@@ -441,6 +427,7 @@ function getDateTimeContext(): {
     weekdayDates,
   };
 }
+*/
 
 // === CONVERSATION MODE CLASSIFIER (Phase 1) ===
 
@@ -562,7 +549,9 @@ async function classifyConversationMode(
 }
 
 // === COMMITMENT DETECTION PROMPT ===
+// DISABLED: LLM tools handle commitments now — auto-extraction removed
 
+/*
 function getCommitmentDetectionPrompt(): string {
   const dt = getDateTimeContext();
 
@@ -632,9 +621,12 @@ interface CommitmentDetection {
   due_at: string | null;
   all_day: boolean;
 }
+*/
 
 // === REMINDER DETECTION PROMPT ===
+// DISABLED: LLM tools handle reminders now — auto-extraction removed
 
+/*
 function getReminderDetectionPrompt(): string {
   const dt = getDateTimeContext();
 
@@ -751,6 +743,7 @@ interface ReminderDetection {
   delay_minutes: number | null;
   scheduled_at: string | null;
 }
+*/
 
 // DISABLED: LLM tools handle notes/lists now (Decision: 99e91b23)
 // NOTE_DETECTION_PROMPT, NoteDetection, LIST_DETECTION_PROMPT, ListDetection
@@ -787,11 +780,9 @@ function safeParseJSON<T>(content: string): T | null {
   }
 }
 
-/**
- * Detect if a message contains a reminder request
- */
+// DISABLED: Auto-extraction functions — LLM tools handle reminders/commitments now
+/*
 async function detectReminderRequest(message: string): Promise<ReminderDetection | null> {
-  // Quick check - skip if no reminder-related keywords
   const reminderKeywords = /remind|ping|alert|don't forget|dont forget|set.+reminder/i;
   if (!reminderKeywords.test(message)) {
     return null;
@@ -821,9 +812,6 @@ async function detectReminderRequest(message: string): Promise<ReminderDetection
   }
 }
 
-/**
- * Detect if a memory represents an actionable commitment
- */
 async function detectCommitment(memoryContent: string): Promise<CommitmentDetection | null> {
   try {
     const messages: LLMMessage[] = [
@@ -848,6 +836,7 @@ async function detectCommitment(memoryContent: string): Promise<CommitmentDetect
     return null;
   }
 }
+*/
 
 // DISABLED: LLM tools handle notes/lists now (Decision: 99e91b23)
 /*
@@ -1118,8 +1107,10 @@ async function extractFromConversation(
     // Extract memories via LLM
     const extracted = await extractFromTranscript(transcript);
 
-    // First, check raw messages for reminder requests (before memory extraction)
-    let remindersCreated = 0;
+    // DISABLED: Consolidation-path reminder extraction — LLM create_reminder tool handles this now
+    // Prevents double/triple creation when real-time extraction + LLM tool + consolidation all fire
+    const remindersCreated = 0;
+    /*
     for (const msg of messages) {
       try {
         const reminderInfo = await detectReminderRequest(msg.content);
@@ -1151,6 +1142,7 @@ async function extractFromConversation(
         console.error('[ChatExtraction] Reminder creation failed:', reminderError);
       }
     }
+    */
 
     // Check for resolution of existing commitments
     let commitmentsResolved = 0;
@@ -1309,9 +1301,9 @@ async function extractFromConversation(
           }
         }
 
-        // Detect and create commitments from goals and decisions
-        // Phase 1: Skip commitment creation for meta_ai mode (dev chatter)
-        // "Fix the bug" in meta_ai mode should NOT become a tracked commitment
+        // DISABLED: Consolidation-path commitment extraction — LLM commitment tools handle this now
+        // Prevents double-creation when auto-extraction and LLM tool calls both fire
+        /*
         if ((mem.type === 'goal' || mem.type === 'decision') && conversationMode !== 'meta_ai') {
           try {
             const commitmentInfo = await detectCommitment(mem.content);
@@ -1339,6 +1331,7 @@ async function extractFromConversation(
         } else if ((mem.type === 'goal' || mem.type === 'decision') && conversationMode === 'meta_ai') {
           console.log(`[ChatExtraction] Skipping commitment for meta_ai mode: ${mem.content.slice(0, 50)}...`);
         }
+        */
       } catch (memError) {
         console.error('[ChatExtraction] Failed to create memory:', memError);
       }
@@ -1463,13 +1456,14 @@ export async function processMessageRealTime(message: string): Promise<{
   await extractIdentityRealTime(message, result);
   await extractRelationshipsRealTime(message);
 
-  // Quick keyword checks to avoid unnecessary LLM calls
-  const commitmentKeywords = /\b(need to|have to|should|must|want to|going to|will|promise|commit|schedule|plan to|deadline|by|due|tomorrow|next week|today)\b/i;
-  const reminderKeywords = /remind|ping|alert|don't forget|dont forget|set.+reminder/i;
-  // NOTE: noteKeywords and listKeywords removed - LLM tools handle notes/lists now
-  // Decision: 99e91b23-c5b9-4482-a01f-65be94e7f362
+  // DISABLED: Reminder and commitment auto-extraction — LLM tools handle these now
+  // Same pattern as notes/lists (Decision: 99e91b23). The model calls create_reminder
+  // and commitment tools directly, preventing double-creation from parallel paths.
+  // const commitmentKeywords = /\b(need to|have to|should|must|want to|going to|will|promise|commit|schedule|plan to|deadline|by|due|tomorrow|next week|today)\b/i;
+  // const reminderKeywords = /remind|ping|alert|don't forget|dont forget|set.+reminder/i;
 
-  // Check for reminder requests first (more specific pattern)
+  /*
+  // DISABLED: Real-time reminder extraction — LLM create_reminder tool handles this now
   if (reminderKeywords.test(message)) {
     try {
       const reminderResult = await detectReminderRequest(message);
@@ -1513,6 +1507,7 @@ export async function processMessageRealTime(message: string): Promise<{
       console.error('[RealTimeExtraction] Reminder detection error:', error);
     }
   }
+  */
 
   // DISABLED: Note and list extraction - LLM tools handle this now
   // Decision: 99e91b23-c5b9-4482-a01f-65be94e7f362
@@ -1638,7 +1633,9 @@ export async function processMessageRealTime(message: string): Promise<{
   }
   */
 
-  // Check for commitment (lower priority - check last)
+  // DISABLED: Real-time commitment extraction — LLM commitment tools handle this now
+  // Same pattern as notes/lists (Decision: 99e91b23). Prevents double-creation.
+  /*
   if (commitmentKeywords.test(message)) {
     console.log(`[RealTimeExtraction] Commitment keywords matched - this means reminder early return did NOT happen`);
     try {
@@ -1662,6 +1659,7 @@ export async function processMessageRealTime(message: string): Promise<{
       console.error('[RealTimeExtraction] Commitment detection error:', error);
     }
   }
+  */
 
   return result;
 }
