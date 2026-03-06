@@ -3,14 +3,15 @@
 #
 # Usage: sudo bash /opt/squire/scripts/self-deploy.sh [--skip-web] [--dry-run]
 #
-# Called by Claude Code after making changes in /opt/squire-staging.
+# Called by Squire's agent after making changes in /opt/squire-staging.
 #
 # Workflow:
-#   1. Build TypeScript in staging
-#   2. Smoke test staging API on temp port
-#   3. Backup current production dist
-#   4. Sync staging → production
-#   5. Schedule independent restart + verify + auto-rollback
+#   1. Acquire deploy lock (prevent concurrent deploys)
+#   2. Build TypeScript in staging
+#   3. Smoke test staging API on temp port
+#   4. Backup current production dist
+#   5. Sync staging → production
+#   6. Schedule independent restart + verify + auto-rollback
 #
 # The restart runs in a separate systemd unit (survives Squire's death).
 # If production doesn't come back healthy, it auto-rolls back.
@@ -24,6 +25,7 @@ TEST_PORT=3099
 HEALTH_TIMEOUT=30
 PROD_PORT=3001
 DEPLOY_LOG="/var/log/squire-deploy.log"
+LOCK_FILE="/tmp/squire-deploy.lock"
 
 SKIP_WEB=false
 DRY_RUN=false
@@ -37,6 +39,30 @@ done
 
 log() { echo "[deploy] $(date '+%H:%M:%S') $1"; }
 die() { log "ERROR: $1"; exit 1; }
+
+# --- Step 0: Deploy lock ---
+# Prevent concurrent deploys. Lock auto-expires after 5 minutes (stale protection).
+if [ -f "$LOCK_FILE" ]; then
+  lock_age=$(( $(date +%s) - $(stat -c %Y "$LOCK_FILE") ))
+  if [ "$lock_age" -lt 300 ]; then
+    log "Deploy already in progress (lock age: ${lock_age}s). Skipping."
+    log "If stuck, remove: rm $LOCK_FILE"
+    exit 0
+  else
+    log "Stale lock detected (${lock_age}s old). Removing."
+    rm -f "$LOCK_FILE"
+  fi
+fi
+
+# Check if a deploy-restart unit is already running
+if systemctl is-active squire-deploy-restart.service >/dev/null 2>&1; then
+  log "Deploy restart already in progress (squire-deploy-restart.service active). Skipping."
+  exit 0
+fi
+
+# Acquire lock
+echo "$$" > "$LOCK_FILE"
+trap 'rm -f "$LOCK_FILE"' EXIT
 
 # Verify staging exists
 [ -d "$STAGING" ] || die "Staging not found. Run: sudo bash /opt/squire/scripts/setup-staging.sh"
@@ -142,13 +168,27 @@ log "✓ Synced to production"
 # --- Step 5: Schedule restart (independent of Squire's cgroup) ---
 log "[5/5] Scheduling restart with health verification..."
 
+# Stop any leftover deploy-restart unit from a previous failed deploy
+systemctl stop squire-deploy-restart.service 2>/dev/null || true
+systemctl reset-failed squire-deploy-restart.service 2>/dev/null || true
+
 # The restart + verify + rollback all happen in a separate systemd transient unit.
 # This survives Squire's own process being killed during restart.
-systemd-run --unit=squire-deploy-restart --no-block \
+# Uses --on-active=1 to start after 1 second delay.
+if ! systemd-run --unit=squire-deploy-restart --no-block \
   bash -c "
-    sleep 3
+    sleep 2
     echo \"\$(date '+%Y-%m-%d %H:%M:%S') Starting restart...\" >> $DEPLOY_LOG
-    systemctl restart squire
+
+    # Force-stop squire quickly (don't wait for graceful shutdown of agent loop)
+    systemctl kill -s SIGTERM squire
+    sleep 3
+    # If still alive after 3s, SIGKILL
+    if systemctl is-active squire.service >/dev/null 2>&1; then
+      systemctl kill -s SIGKILL squire
+      sleep 1
+    fi
+    systemctl start squire
     systemctl restart squire-web
 
     # Wait for production to come back healthy
@@ -176,9 +216,15 @@ systemd-run --unit=squire-deploy-restart --no-block \
         echo \"\$(date '+%Y-%m-%d %H:%M:%S') ✗ Rollback FAILED - manual intervention needed\" >> $DEPLOY_LOG
       fi
     fi
-  " 2>/dev/null
 
-log "✓ Restart scheduled (fires in 3 seconds)"
+    # Clean up deploy lock
+    rm -f $LOCK_FILE
+  "; then
+  log "ERROR: Failed to schedule restart unit"
+  die "systemd-run failed - check: systemctl status squire-deploy-restart"
+fi
+
+log "✓ Restart scheduled (fires in 2 seconds)"
 log ""
 log "=== Deploy initiated ==="
 log "  Monitor: tail -f $DEPLOY_LOG"
