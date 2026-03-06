@@ -217,6 +217,7 @@ import { tools as stewardTools } from './steward.js';
 import { tools as mandrelTools } from './mandrel/index.js';
 import { tools as memoryTools } from './memory/index.js';
 import { tools as emailTools } from './email/index.js';
+import { tools as squireEmailTools } from './squire-email/index.js';
 import { tools as searchTools } from './search.js';
 import { tools as scratchpadTools } from './scratchpad.js';
 import { tools as communeTools } from './commune.js';
@@ -237,6 +238,7 @@ const allToolSpecs: ToolSpec[] = [
   ...mandrelTools,
   ...memoryTools,
   ...emailTools,
+  ...squireEmailTools,
   ...searchTools,
   ...scratchpadTools,
   ...communeTools,

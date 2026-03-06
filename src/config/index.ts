@@ -120,6 +120,10 @@ export const config = {
     minHoursBetweenMessages: parseFloat(optional('COMMUNE_MIN_HOURS_BETWEEN', '2')),
     defaultChannel: optional('COMMUNE_DEFAULT_CHANNEL', 'telegram') as 'telegram' | 'push' | 'email',
   },
+  agentmail: {
+    apiKey: process.env['AGENTMAIL_API_KEY'] ?? '',
+    inboxId: 'squireagent@agentmail.to',
+  },
 } as const;
 
 export type Config = typeof config;

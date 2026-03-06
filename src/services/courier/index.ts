@@ -11,3 +11,10 @@ registerTask('email-check', emailCheckTask);
 
 import { goalWorkerTask } from './tasks/goalWorker.js';
 registerTask('goal-worker', goalWorkerTask);
+
+// Register AgentMail check task (if configured)
+if (process.env['AGENTMAIL_API_KEY']) {
+  import('./tasks/agentmailCheck.js').then(({ agentmailCheckTask }) => {
+    registerTask('agentmail-check', agentmailCheckTask);
+  });
+}
