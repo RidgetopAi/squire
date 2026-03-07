@@ -148,8 +148,30 @@ const MIME_TYPE_MAP: Record<string, string> = {
   'image/gif': 'Image (GIF)',
 };
 
-export function getFileTypeLabel(mimeType: string): string {
-  return MIME_TYPE_MAP[mimeType] || 'Unknown';
+const EXTENSION_LABEL_MAP: Record<string, string> = {
+  '.pdf': 'PDF',
+  '.docx': 'Word',
+  '.doc': 'Word',
+  '.txt': 'Text',
+  '.md': 'Markdown',
+  '.csv': 'CSV',
+  '.png': 'Image (PNG)',
+  '.jpg': 'Image (JPEG)',
+  '.jpeg': 'Image (JPEG)',
+  '.webp': 'Image (WebP)',
+  '.tiff': 'Image (TIFF)',
+  '.bmp': 'Image (BMP)',
+  '.gif': 'Image (GIF)',
+};
+
+export function getFileTypeLabel(mimeType: string, fileName?: string): string {
+  const label = MIME_TYPE_MAP[mimeType];
+  if (label) return label;
+  if (fileName) {
+    const ext = '.' + fileName.split('.').pop()?.toLowerCase();
+    return EXTENSION_LABEL_MAP[ext] || 'Unknown';
+  }
+  return 'Unknown';
 }
 
 export function formatFileSize(bytes: number): string {

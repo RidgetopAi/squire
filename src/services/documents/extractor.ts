@@ -49,7 +49,7 @@ function findExtractor(mimeType: string): DocumentExtractor | null {
 /**
  * Detect MIME type from file extension
  */
-function mimeFromExtension(filePath: string): string | null {
+export function mimeFromExtension(filePath: string): string | null {
   const ext = path.extname(filePath).toLowerCase();
   const mimeMap: Record<string, string> = {
     '.pdf': 'application/pdf',
