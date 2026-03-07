@@ -19,6 +19,9 @@ import {
 import { extractMemoriesFromChat } from './chatExtraction.js';
 import { updateAllSummaries } from './summaries.js';
 import { evaluateUnevaluatedMemories } from './expressionEvaluator.js';
+import { processThreadsForConsolidation } from './continuity.js';
+import { processStateSnapshot } from './stateSnapshots.js';
+import { processTrendsForConsolidation } from './trends.js';
 
 /**
  * Consolidation Configuration
@@ -95,6 +98,14 @@ export interface ConsolidationResult {
   expressionEvaluated: number;
   expressionPassed: number;
   expressionBlocked: number;
+  // Continuity threads (Step 8.5)
+  threadsDormant: number;
+  followupsGenerated: number;
+  // State snapshot (Step 9)
+  snapshotCreated: boolean;
+  concernsDetected: number;
+  // Trends (Step 10)
+  trendsGenerated: string[];
   durationMs: number;
 }
 
@@ -417,6 +428,15 @@ async function consolidateSession(session: Session): Promise<ConsolidationResult
     // 8. Update living summaries (generate summaries from pending memories)
     const summaryResult = await updateAllSummaries();
 
+    // 8.5. Process continuity threads
+    const continuityResult = await processThreadsForConsolidation();
+
+    // 9. Generate state snapshot
+    const snapshotResult = await processStateSnapshot();
+
+    // 10. Process trends
+    const trendsResult = await processTrendsForConsolidation();
+
     // Count total memories processed
     const countResult = await pool.query(`SELECT COUNT(*) as count FROM memories`);
     const memoriesProcessed = parseInt(countResult.rows[0]?.count ?? '0', 10);
@@ -461,6 +481,11 @@ async function consolidateSession(session: Session): Promise<ConsolidationResult
       expressionEvaluated: expressionResult.evaluated,
       expressionPassed: expressionResult.passed,
       expressionBlocked: expressionResult.blocked,
+      threadsDormant: continuityResult.threadsDormant,
+      followupsGenerated: continuityResult.followupsGenerated,
+      snapshotCreated: snapshotResult.snapshotCreated,
+      concernsDetected: snapshotResult.concernsDetected,
+      trendsGenerated: trendsResult.trendsGenerated,
       durationMs: Date.now() - startTime,
     };
   } catch (error) {
@@ -516,6 +541,18 @@ export async function consolidateAll(): Promise<ConsolidationResult> {
   console.log('[Consolidation] Step 8: Updating living summaries...');
   const summaryResult = await updateAllSummaries();
 
+  // 8.5. Process continuity threads (dormancy + follow-up generation)
+  console.log('[Consolidation] Step 8.5: Processing continuity threads...');
+  const continuityResult = await processThreadsForConsolidation();
+
+  // 9. Generate state snapshot (affect inference + narrative)
+  console.log('[Consolidation] Step 9: Generating state snapshot...');
+  const snapshotResult = await processStateSnapshot();
+
+  // 10. Generate trend summaries (weekly/monthly/quarterly as appropriate)
+  console.log('[Consolidation] Step 10: Processing trends...');
+  const trendsResult = await processTrendsForConsolidation();
+
   // Count total memories processed
   const countResult = await pool.query(`SELECT COUNT(*) as count FROM memories`);
   const memoriesProcessed = parseInt(countResult.rows[0]?.count ?? '0', 10);
@@ -550,6 +587,11 @@ export async function consolidateAll(): Promise<ConsolidationResult> {
     expressionEvaluated: expressionResult.evaluated,
     expressionPassed: expressionResult.passed,
     expressionBlocked: expressionResult.blocked,
+    threadsDormant: continuityResult.threadsDormant,
+    followupsGenerated: continuityResult.followupsGenerated,
+    snapshotCreated: snapshotResult.snapshotCreated,
+    concernsDetected: snapshotResult.concernsDetected,
+    trendsGenerated: trendsResult.trendsGenerated,
     durationMs: Date.now() - startTime,
   };
 }

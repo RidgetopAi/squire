@@ -16,6 +16,10 @@ import { getNonEmptySummaries, generateSummary, type LivingSummary, type Summary
 import { searchNotes, getPinnedNotes } from './notes.js';
 import { searchLists } from './lists.js';
 import { searchForContext } from './documents/search.js';
+import { listEntries as listScratchpadEntries } from './scratchpad.js';
+import { getThreadsForContext, getDueFollowups } from './continuity.js';
+import { getLatestSnapshotNarrative, getUnacknowledgedConcerns } from './stateSnapshots.js';
+import { getLatestTrend } from './trends.js';
 // expressionFilter.ts is no longer called at runtime — safety is pre-computed
 // by expressionEvaluator.ts (local Ollama model) during consolidation.
 
@@ -538,6 +542,253 @@ function formatScheduleMarkdown(items: ScheduleItem[]): string {
 }
 
 /**
+ * Fetch continuity preamble for context injection (Memory Upgrade Phase 2)
+ *
+ * Uses first-class continuity threads (Phase 2) with scratchpad fallback (Phase 1).
+ * Returns formatted markdown sections for active threads and follow-ups.
+ */
+async function fetchContinuityPreamble(): Promise<string> {
+  try {
+    // Phase 2: Try structured continuity threads first
+    const threads = await getThreadsForContext(8);
+    const followups = await getDueFollowups();
+
+    if (threads.length === 0 && followups.length === 0) {
+      // Phase 1 fallback: check scratchpad continuity entries
+      return await fetchScratchpadContinuity();
+    }
+
+    const lines: string[] = [];
+    lines.push('# Active Threads');
+    lines.push('');
+    lines.push('*Ongoing things in their life — check in naturally when relevant.*');
+    lines.push('');
+
+    for (const thread of threads) {
+      const emotionalTag = thread.emotional_weight >= 7 ? ' [emotionally significant]' : '';
+      const stateTag = thread.last_state_transition ? ` (${thread.last_state_transition})` : '';
+      lines.push(`- **${thread.title}**${stateTag}${emotionalTag}`);
+      if (thread.current_state_summary) {
+        lines.push(`  ${thread.current_state_summary}`);
+      }
+    }
+
+    if (followups.length > 0) {
+      lines.push('');
+      lines.push('**Follow-up Questions** *(ask naturally, don\'t force)*');
+      for (const f of followups) {
+        lines.push(`- ${f.next_followup_question} *(re: ${f.title})*`);
+      }
+    }
+
+    lines.push('');
+    return lines.join('\n');
+  } catch (error) {
+    console.error('[Context] Failed to fetch continuity preamble:', error);
+    return '';
+  }
+}
+
+/**
+ * Fetch current state context for context injection (Memory Upgrade Phase 3)
+ *
+ * Returns the latest snapshot narrative and any unacknowledged concern signals.
+ */
+async function fetchStateContext(): Promise<string> {
+  try {
+    const narrative = await getLatestSnapshotNarrative();
+    const concerns = await getUnacknowledgedConcerns();
+    const weeklyTrend = await getLatestTrend('7day');
+
+    if (!narrative && concerns.length === 0 && !weeklyTrend) return '';
+
+    const lines: string[] = [];
+
+    if (narrative) {
+      lines.push('# Current State');
+      lines.push('');
+      lines.push('*How they seem to be doing lately:*');
+      lines.push(narrative);
+      lines.push('');
+    }
+
+    // Include weekly trend if it shows significant change
+    if (weeklyTrend?.narrative) {
+      const hasSignificantChange =
+        weeklyTrend.stress_trend !== 0 ||
+        weeklyTrend.energy_trend !== 0 ||
+        weeklyTrend.motivation_trend !== 0;
+
+      if (hasSignificantChange) {
+        lines.push('**Week-over-week:**');
+        lines.push(weeklyTrend.narrative);
+        lines.push('');
+      }
+    }
+
+    // Inject concern signals as internal awareness (guides tone, not content)
+    if (concerns.length > 0) {
+      const significantConcerns = concerns.filter(c => c.severity !== 'mild');
+      if (significantConcerns.length > 0) {
+        lines.push('**[Internal awareness — do not mention directly]**');
+        for (const c of significantConcerns) {
+          lines.push(`- ${c.signal_type}: ${c.description} (${c.severity})`);
+        }
+        lines.push('');
+      }
+    }
+
+    return lines.join('\n');
+  } catch (error) {
+    console.error('[Context] Failed to fetch state context:', error);
+    return '';
+  }
+}
+
+/**
+ * Fetch support guidance from beliefs for context injection (Memory Upgrade Phase 4)
+ *
+ * Queries support-related beliefs and formats as system-level guidance
+ * that shapes Squire's tone and approach.
+ */
+async function fetchSupportGuidance(): Promise<string> {
+  try {
+    const result = await pool.query<{
+      content: string;
+      belief_type: string;
+      confidence: number;
+    }>(
+      `SELECT content, belief_type, confidence FROM beliefs
+       WHERE belief_type IN ('support_preference', 'trigger_sensitivity', 'protective_priority', 'vulnerability_theme')
+         AND status = 'active'
+         AND confidence >= 0.6
+       ORDER BY confidence DESC
+       LIMIT 12`
+    );
+
+    if (result.rows.length === 0) return '';
+
+    const byType: Record<string, string[]> = {};
+    for (const row of result.rows) {
+      if (!byType[row.belief_type]) byType[row.belief_type] = [];
+      byType[row.belief_type]!.push(row.content);
+    }
+
+    const lines: string[] = [];
+    lines.push('# How to Support This Person');
+    lines.push('');
+    lines.push('*[Internal guidance — shapes your tone, not your content]*');
+    lines.push('');
+
+    if (byType.support_preference) {
+      lines.push('**Support Preferences**');
+      for (const b of byType.support_preference) lines.push(`- ${b}`);
+      lines.push('');
+    }
+    if (byType.trigger_sensitivity) {
+      lines.push('**Sensitivities**');
+      for (const b of byType.trigger_sensitivity) lines.push(`- ${b}`);
+      lines.push('');
+    }
+    if (byType.protective_priority) {
+      lines.push('**Non-Negotiables**');
+      for (const b of byType.protective_priority) lines.push(`- ${b}`);
+      lines.push('');
+    }
+    if (byType.vulnerability_theme) {
+      lines.push('**Underlying Themes**');
+      for (const b of byType.vulnerability_theme) lines.push(`- ${b}`);
+      lines.push('');
+    }
+
+    return lines.join('\n');
+  } catch (error) {
+    console.error('[Context] Failed to fetch support guidance:', error);
+    return '';
+  }
+}
+
+/**
+ * Phase 1 fallback: scratchpad-based continuity entries
+ */
+async function fetchScratchpadContinuity(): Promise<string> {
+  try {
+    const activeEntries = await listScratchpadEntries({
+      entry_type: 'thread',
+      include_resolved: false,
+      include_expired: false,
+      limit: 10,
+    });
+
+    const continuityThreads = activeEntries.filter(
+      (e) => e.metadata && (e.metadata as Record<string, unknown>).continuity === true
+    );
+
+    const recentObservations = await pool.query<{
+      content: string;
+      metadata: Record<string, unknown>;
+      created_at: Date;
+    }>(
+      `SELECT content, metadata, created_at FROM scratchpad
+       WHERE entry_type = 'observation'
+         AND metadata->>'continuity' = 'true'
+         AND metadata->>'transition' IN ('completed', 'abandoned')
+         AND created_at > NOW() - INTERVAL '48 hours'
+       ORDER BY created_at DESC
+       LIMIT 5`
+    );
+
+    if (continuityThreads.length === 0 && recentObservations.rows.length === 0) {
+      return '';
+    }
+
+    const lines: string[] = [];
+    lines.push('# Continuity');
+    lines.push('');
+
+    const inProgress = continuityThreads.filter((t) => {
+      const m = t.metadata as Record<string, unknown>;
+      return m.transition === 'started' || m.transition === 'planned';
+    });
+    if (inProgress.length > 0) {
+      lines.push('**In Progress**');
+      for (const t of inProgress) {
+        const m = t.metadata as Record<string, unknown>;
+        lines.push(`- ${m.subject} (${m.transition})`);
+      }
+      lines.push('');
+    }
+
+    const blocked = continuityThreads.filter((t) => {
+      const m = t.metadata as Record<string, unknown>;
+      return m.transition === 'blocked' || m.transition === 'deferred';
+    });
+    if (blocked.length > 0) {
+      lines.push('**Blocked / On Hold**');
+      for (const t of blocked) {
+        const m = t.metadata as Record<string, unknown>;
+        lines.push(`- ${m.subject} (${m.transition})`);
+      }
+      lines.push('');
+    }
+
+    if (recentObservations.rows.length > 0) {
+      lines.push('**Recently Completed**');
+      for (const obs of recentObservations.rows) {
+        const m = obs.metadata;
+        lines.push(`- ${m.subject} (${m.transition})`);
+      }
+      lines.push('');
+    }
+
+    return lines.join('\n');
+  } catch (error) {
+    console.error('[Context] Scratchpad continuity fallback failed:', error);
+    return '';
+  }
+}
+
+/**
  * Format memories as markdown
  *
  * Design philosophy: Present context as genuine knowledge, not database output.
@@ -1032,11 +1283,23 @@ export async function generateContext(
     tokenCount: chunk.tokenCount,
   }));
 
-  // Format output — schedule comes FIRST (live data), then summaries, then memories
+  // Format output — schedule → continuity → state → support → summaries/memories → notes/lists/docs
   const scheduleMarkdown = formatScheduleMarkdown(liveSchedule);
+  const continuityPreamble = await fetchContinuityPreamble();
+  const stateContext = await fetchStateContext();
+  const supportGuidance = await fetchSupportGuidance();
   let markdown = '';
   if (scheduleMarkdown) {
     markdown += scheduleMarkdown + '\n';
+  }
+  if (continuityPreamble) {
+    markdown += continuityPreamble + '\n';
+  }
+  if (stateContext) {
+    markdown += stateContext + '\n';
+  }
+  if (supportGuidance) {
+    markdown += supportGuidance + '\n';
   }
   markdown += formatMarkdown(filteredMemories, entities, summaries, profile, query);
   if (notes.length > 0) {
