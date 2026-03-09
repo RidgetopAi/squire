@@ -9,16 +9,28 @@
  * - Claude Code (Max sub) = Coding Worker with full tooling
  */
 
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import { exec, type ChildProcess } from 'child_process';
 import { existsSync, writeFileSync, unlinkSync } from 'fs';
 import type { ToolHandler, ToolSpec } from '../types.js';
 import type { ClaudeCodeArgs, ClaudeCodeResult } from './types.js';
 
-const execAsync = promisify(exec);
-
 // UUID validation regex
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Track active Claude Code child processes for cleanup on disconnect
+const activeProcesses = new Map<string, ChildProcess>();
+
+/**
+ * Kill all active Claude Code child processes.
+ * Called when a socket disconnects to prevent orphan processes.
+ */
+export function killActiveClaudeCodeProcesses(): void {
+  for (const [sessionId, proc] of activeProcesses) {
+    console.log(`[claude_code] Killing orphan process: ${sessionId} (pid: ${proc.pid})`);
+    proc.kill('SIGTERM');
+    activeProcesses.delete(sessionId);
+  }
+}
 
 // Default configuration
 const DEFAULTS = {
@@ -132,7 +144,9 @@ async function claudeCode(args: ClaudeCodeArgs): Promise<string> {
     console.log(`[claude_code] Executing LOCALLY on VPS: ${effectiveWorkingDir}`);
   } else {
     // Running remotely - copy prompt file to VPS first, then execute
-    await execAsync(`scp ${tmpPromptFile} ${DEFAULTS.sshHost}:${tmpPromptFile}`);
+    await new Promise<void>((resolve, reject) => {
+      exec(`scp ${tmpPromptFile} ${DEFAULTS.sshHost}:${tmpPromptFile}`, (err) => err ? reject(err) : resolve());
+    });
     command = `ssh ${DEFAULTS.sshHost} 'sudo -u ${DEFAULTS.vpsUser} bash -c "cd ${effectiveWorkingDir} && ${claudeCommand} < ${tmpPromptFile} ; rm -f ${tmpPromptFile}"'`;
     console.log(`[claude_code] Executing via SSH to VPS: ${effectiveWorkingDir}`);
   }
@@ -140,16 +154,39 @@ async function claudeCode(args: ClaudeCodeArgs): Promise<string> {
   console.log(`[claude_code] Session: ${sessionId}`);
   console.log(`[claude_code] Model: ${effectiveModel}`);
 
+  // Heartbeat timer for long-running CC processes
+  const startTime = Date.now();
+  const heartbeat = setInterval(() => {
+    console.log(`[claude_code] Still running: ${sessionId} (${Math.round((Date.now() - startTime) / 1000)}s)`);
+  }, 30000);
+
   try {
-    const { stdout, stderr } = await execAsync(command, {
-      timeout: effectiveTimeout,
-      maxBuffer: 10 * 1024 * 1024, // 10MB buffer for large outputs
-      env: {
-        ...process.env,
-        // Ensure SSH doesn't hang on prompts
-        SSH_ASKPASS: '',
-        GIT_ASKPASS: '',
-      },
+    // Use raw exec (not promisified) to get ChildProcess reference for kill-on-disconnect
+    const { stdout, stderr } = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+      const proc = exec(command, {
+        timeout: effectiveTimeout,
+        maxBuffer: 10 * 1024 * 1024, // 10MB buffer for large outputs
+        env: {
+          ...process.env,
+          // Ensure SSH doesn't hang on prompts
+          SSH_ASKPASS: '',
+          GIT_ASKPASS: '',
+        },
+      }, (error, stdout, stderr) => {
+        activeProcesses.delete(sessionId);
+        if (error) {
+          reject(Object.assign(error, {
+            stdout: stdout?.toString() || '',
+            stderr: stderr?.toString() || '',
+          }));
+        } else {
+          resolve({
+            stdout: stdout?.toString() || '',
+            stderr: stderr?.toString() || '',
+          });
+        }
+      });
+      activeProcesses.set(sessionId, proc);
     });
 
     // Debug logging
@@ -199,6 +236,8 @@ async function claudeCode(args: ClaudeCodeArgs): Promise<string> {
 
     return `Error executing Claude Code: ${errorMessage}\n\n${stderr ? `stderr: ${stderr}\n\n` : ''}Session: ${sessionId}`;
   } finally {
+    clearInterval(heartbeat);
+    activeProcesses.delete(sessionId);
     // Clean up temp prompt file
     try {
       unlinkSync(tmpPromptFile);
