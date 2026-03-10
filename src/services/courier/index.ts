@@ -12,6 +12,10 @@ registerTask('email-check', emailCheckTask);
 import { goalWorkerTask } from './tasks/goalWorker.js';
 registerTask('goal-worker', goalWorkerTask);
 
+// Register Daily Brief task (sends 7 AM EDT)
+import { dailyBriefTask } from './tasks/dailyBrief.js';
+registerTask('daily-brief', dailyBriefTask);
+
 // Register AgentMail check task (if configured)
 if (process.env['AGENTMAIL_API_KEY']) {
   import('./tasks/agentmailCheck.js').then(({ agentmailCheckTask }) => {

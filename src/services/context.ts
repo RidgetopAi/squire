@@ -16,10 +16,8 @@ import { getNonEmptySummaries, generateSummary, type LivingSummary, type Summary
 import { searchNotes, getPinnedNotes } from './notes.js';
 import { searchLists } from './lists.js';
 import { searchForContext } from './documents/search.js';
-import { listEntries as listScratchpadEntries } from './scratchpad.js';
-import { getThreadsForContext, getDueFollowups } from './continuity.js';
-import { getLatestSnapshotNarrative, getUnacknowledgedConcerns } from './stateSnapshots.js';
-import { getLatestTrend } from './trends.js';
+import { detectSignal, getBudgetForSignal, applyBudgetLevel, type MessageSignal } from './signalDetector.js';
+import { multiChannelRetrieval } from './multiChannelRetrieval.js';
 // expressionFilter.ts is no longer called at runtime — safety is pre-computed
 // by expressionEvaluator.ts (local Ollama model) during consolidation.
 
@@ -338,6 +336,39 @@ async function getEntitiesForMemories(memoryIds: string[]): Promise<EntitySummar
   }));
 }
 
+/**
+ * Fetch memories by ID (for multi-channel retrieval)
+ * Returns memories with NULL similarity (same as no-query path)
+ */
+async function fetchMemoriesById(memoryIds: string[]): Promise<{
+  id: string;
+  content: string;
+  created_at: Date;
+  salience_score: number;
+  current_strength: number;
+  similarity: null;
+}[]> {
+  if (memoryIds.length === 0) return [];
+
+  const result = await pool.query(
+    `SELECT id, content, created_at, salience_score, current_strength, NULL as similarity
+     FROM memories
+     WHERE id = ANY($1)
+       AND (expression_safe IS NULL OR expression_safe = TRUE)
+       AND (tier IS NULL OR tier = 'solid')`,
+    [memoryIds]
+  );
+
+  return result.rows as {
+    id: string;
+    content: string;
+    created_at: Date;
+    salience_score: number;
+    current_strength: number;
+    similarity: null;
+  }[];
+}
+
 // === FORMATTING ===
 
 
@@ -389,9 +420,18 @@ export interface ScheduleItem {
 /**
  * Fetch live schedule data from Google Calendar events, reminders, and dated commitments.
  * Returns items for the next 7 days, sorted by start time.
+ *
+ * @param maxItems - Maximum number of items to return (default: null = no limit)
  */
-async function fetchLiveSchedule(): Promise<ScheduleItem[]> {
+async function fetchLiveSchedule(maxItems: number | null = null): Promise<ScheduleItem[]> {
   const items: ScheduleItem[] = [];
+
+  // Calculate limits per source
+  // Default: 20 calendar + 10 reminders + 10 commitments = 40 total
+  // If maxItems specified, distribute proportionally
+  const calLimit = maxItems ? Math.ceil(maxItems * 0.5) : 20;
+  const remLimit = maxItems ? Math.ceil(maxItems * 0.25) : 10;
+  const comLimit = maxItems ? Math.ceil(maxItems * 0.25) : 10;
 
   // Fetch Google Calendar events for next 7 days
   try {
@@ -402,8 +442,8 @@ async function fetchLiveSchedule(): Promise<ScheduleItem[]> {
         AND start_time <= NOW() + INTERVAL '7 days'
         AND status != 'cancelled'
       ORDER BY start_time ASC
-      LIMIT 20
-    `);
+      LIMIT $1
+    `, [calLimit]);
 
     for (const row of calResult.rows) {
       items.push({
@@ -428,8 +468,8 @@ async function fetchLiveSchedule(): Promise<ScheduleItem[]> {
         AND scheduled_for >= NOW() - INTERVAL '1 hour'
         AND scheduled_for <= NOW() + INTERVAL '7 days'
       ORDER BY scheduled_for ASC
-      LIMIT 10
-    `);
+      LIMIT $1
+    `, [remLimit]);
 
     for (const row of remResult.rows) {
       items.push({
@@ -455,8 +495,8 @@ async function fetchLiveSchedule(): Promise<ScheduleItem[]> {
         AND due_at >= NOW() - INTERVAL '1 day'
         AND due_at <= NOW() + INTERVAL '7 days'
       ORDER BY due_at ASC
-      LIMIT 10
-    `);
+      LIMIT $1
+    `, [comLimit]);
 
     for (const row of comResult.rows) {
       items.push({
@@ -474,6 +514,12 @@ async function fetchLiveSchedule(): Promise<ScheduleItem[]> {
 
   // Sort by start time
   items.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+
+  // Apply final limit if specified
+  if (maxItems && items.length > maxItems) {
+    return items.slice(0, maxItems);
+  }
+
   return items;
 }
 
@@ -539,253 +585,6 @@ function formatScheduleMarkdown(items: ScheduleItem[]): string {
   }
 
   return lines.join('\n');
-}
-
-/**
- * Fetch continuity preamble for context injection (Memory Upgrade Phase 2)
- *
- * Uses first-class continuity threads (Phase 2) with scratchpad fallback (Phase 1).
- * Returns formatted markdown sections for active threads and follow-ups.
- */
-async function fetchContinuityPreamble(): Promise<string> {
-  try {
-    // Phase 2: Try structured continuity threads first
-    const threads = await getThreadsForContext(8);
-    const followups = await getDueFollowups();
-
-    if (threads.length === 0 && followups.length === 0) {
-      // Phase 1 fallback: check scratchpad continuity entries
-      return await fetchScratchpadContinuity();
-    }
-
-    const lines: string[] = [];
-    lines.push('# Active Threads');
-    lines.push('');
-    lines.push('*Ongoing things in their life — check in naturally when relevant.*');
-    lines.push('');
-
-    for (const thread of threads) {
-      const emotionalTag = thread.emotional_weight >= 7 ? ' [emotionally significant]' : '';
-      const stateTag = thread.last_state_transition ? ` (${thread.last_state_transition})` : '';
-      lines.push(`- **${thread.title}**${stateTag}${emotionalTag}`);
-      if (thread.current_state_summary) {
-        lines.push(`  ${thread.current_state_summary}`);
-      }
-    }
-
-    if (followups.length > 0) {
-      lines.push('');
-      lines.push('**Follow-up Questions** *(ask naturally, don\'t force)*');
-      for (const f of followups) {
-        lines.push(`- ${f.next_followup_question} *(re: ${f.title})*`);
-      }
-    }
-
-    lines.push('');
-    return lines.join('\n');
-  } catch (error) {
-    console.error('[Context] Failed to fetch continuity preamble:', error);
-    return '';
-  }
-}
-
-/**
- * Fetch current state context for context injection (Memory Upgrade Phase 3)
- *
- * Returns the latest snapshot narrative and any unacknowledged concern signals.
- */
-async function fetchStateContext(): Promise<string> {
-  try {
-    const narrative = await getLatestSnapshotNarrative();
-    const concerns = await getUnacknowledgedConcerns();
-    const weeklyTrend = await getLatestTrend('7day');
-
-    if (!narrative && concerns.length === 0 && !weeklyTrend) return '';
-
-    const lines: string[] = [];
-
-    if (narrative) {
-      lines.push('# Current State');
-      lines.push('');
-      lines.push('*How they seem to be doing lately:*');
-      lines.push(narrative);
-      lines.push('');
-    }
-
-    // Include weekly trend if it shows significant change
-    if (weeklyTrend?.narrative) {
-      const hasSignificantChange =
-        weeklyTrend.stress_trend !== 0 ||
-        weeklyTrend.energy_trend !== 0 ||
-        weeklyTrend.motivation_trend !== 0;
-
-      if (hasSignificantChange) {
-        lines.push('**Week-over-week:**');
-        lines.push(weeklyTrend.narrative);
-        lines.push('');
-      }
-    }
-
-    // Inject concern signals as internal awareness (guides tone, not content)
-    if (concerns.length > 0) {
-      const significantConcerns = concerns.filter(c => c.severity !== 'mild');
-      if (significantConcerns.length > 0) {
-        lines.push('**[Internal awareness — do not mention directly]**');
-        for (const c of significantConcerns) {
-          lines.push(`- ${c.signal_type}: ${c.description} (${c.severity})`);
-        }
-        lines.push('');
-      }
-    }
-
-    return lines.join('\n');
-  } catch (error) {
-    console.error('[Context] Failed to fetch state context:', error);
-    return '';
-  }
-}
-
-/**
- * Fetch support guidance from beliefs for context injection (Memory Upgrade Phase 4)
- *
- * Queries support-related beliefs and formats as system-level guidance
- * that shapes Squire's tone and approach.
- */
-async function fetchSupportGuidance(): Promise<string> {
-  try {
-    const result = await pool.query<{
-      content: string;
-      belief_type: string;
-      confidence: number;
-    }>(
-      `SELECT content, belief_type, confidence FROM beliefs
-       WHERE belief_type IN ('support_preference', 'trigger_sensitivity', 'protective_priority', 'vulnerability_theme')
-         AND status = 'active'
-         AND confidence >= 0.6
-       ORDER BY confidence DESC
-       LIMIT 12`
-    );
-
-    if (result.rows.length === 0) return '';
-
-    const byType: Record<string, string[]> = {};
-    for (const row of result.rows) {
-      if (!byType[row.belief_type]) byType[row.belief_type] = [];
-      byType[row.belief_type]!.push(row.content);
-    }
-
-    const lines: string[] = [];
-    lines.push('# How to Support This Person');
-    lines.push('');
-    lines.push('*[Internal guidance — shapes your tone, not your content]*');
-    lines.push('');
-
-    if (byType.support_preference) {
-      lines.push('**Support Preferences**');
-      for (const b of byType.support_preference) lines.push(`- ${b}`);
-      lines.push('');
-    }
-    if (byType.trigger_sensitivity) {
-      lines.push('**Sensitivities**');
-      for (const b of byType.trigger_sensitivity) lines.push(`- ${b}`);
-      lines.push('');
-    }
-    if (byType.protective_priority) {
-      lines.push('**Non-Negotiables**');
-      for (const b of byType.protective_priority) lines.push(`- ${b}`);
-      lines.push('');
-    }
-    if (byType.vulnerability_theme) {
-      lines.push('**Underlying Themes**');
-      for (const b of byType.vulnerability_theme) lines.push(`- ${b}`);
-      lines.push('');
-    }
-
-    return lines.join('\n');
-  } catch (error) {
-    console.error('[Context] Failed to fetch support guidance:', error);
-    return '';
-  }
-}
-
-/**
- * Phase 1 fallback: scratchpad-based continuity entries
- */
-async function fetchScratchpadContinuity(): Promise<string> {
-  try {
-    const activeEntries = await listScratchpadEntries({
-      entry_type: 'thread',
-      include_resolved: false,
-      include_expired: false,
-      limit: 10,
-    });
-
-    const continuityThreads = activeEntries.filter(
-      (e) => e.metadata && (e.metadata as Record<string, unknown>).continuity === true
-    );
-
-    const recentObservations = await pool.query<{
-      content: string;
-      metadata: Record<string, unknown>;
-      created_at: Date;
-    }>(
-      `SELECT content, metadata, created_at FROM scratchpad
-       WHERE entry_type = 'observation'
-         AND metadata->>'continuity' = 'true'
-         AND metadata->>'transition' IN ('completed', 'abandoned')
-         AND created_at > NOW() - INTERVAL '48 hours'
-       ORDER BY created_at DESC
-       LIMIT 5`
-    );
-
-    if (continuityThreads.length === 0 && recentObservations.rows.length === 0) {
-      return '';
-    }
-
-    const lines: string[] = [];
-    lines.push('# Continuity');
-    lines.push('');
-
-    const inProgress = continuityThreads.filter((t) => {
-      const m = t.metadata as Record<string, unknown>;
-      return m.transition === 'started' || m.transition === 'planned';
-    });
-    if (inProgress.length > 0) {
-      lines.push('**In Progress**');
-      for (const t of inProgress) {
-        const m = t.metadata as Record<string, unknown>;
-        lines.push(`- ${m.subject} (${m.transition})`);
-      }
-      lines.push('');
-    }
-
-    const blocked = continuityThreads.filter((t) => {
-      const m = t.metadata as Record<string, unknown>;
-      return m.transition === 'blocked' || m.transition === 'deferred';
-    });
-    if (blocked.length > 0) {
-      lines.push('**Blocked / On Hold**');
-      for (const t of blocked) {
-        const m = t.metadata as Record<string, unknown>;
-        lines.push(`- ${m.subject} (${m.transition})`);
-      }
-      lines.push('');
-    }
-
-    if (recentObservations.rows.length > 0) {
-      lines.push('**Recently Completed**');
-      for (const obs of recentObservations.rows) {
-        const m = obs.metadata;
-        lines.push(`- ${m.subject} (${m.transition})`);
-      }
-      lines.push('');
-    }
-
-    return lines.join('\n');
-  } catch (error) {
-    console.error('[Context] Scratchpad continuity fallback failed:', error);
-    return '';
-  }
 }
 
 /**
@@ -1036,6 +835,16 @@ export async function generateContext(
 ): Promise<ContextPackage> {
   const { query, maxTokens, conversationId, includeDocuments = true, maxDocumentTokens = 2000 } = options;
 
+  // === PLAN A: SOURCE GATE ===
+  // Detect message signal and apply budget constraints
+  const signal: MessageSignal = query ? detectSignal(query) : 'substantive';
+  const sourceBudget = getBudgetForSignal(signal);
+
+  // Log signal detection for monitoring (visible in console)
+  if (signal !== 'substantive') {
+    console.log(`[Context] Signal detected: ${signal} → applying budgets: notes=${sourceBudget.recentContext}, events=${sourceBudget.upcomingEvents}, memories=${sourceBudget.memories}`);
+  }
+
   // Get profile
   let profile: ContextProfile;
   if (options.profile) {
@@ -1057,6 +866,10 @@ export async function generateContext(
   if (query) {
     queryEmbedding = await generateEmbedding(query);
   }
+
+  // === PLAN A: APPLY MEMORY BUDGET ===
+  // Calculate memory fetch limit based on signal
+  const memoryFetchLimit = applyBudgetLevel(sourceBudget.memories, 100) ?? 100;
 
   // Fetch candidate memories
   const lookbackDate = new Date();
@@ -1097,9 +910,9 @@ export async function generateContext(
         AND (tier IS NULL OR tier = 'solid')
         AND (expression_safe IS NULL OR expression_safe = TRUE)
       ORDER BY similarity DESC, salience_score DESC
-      LIMIT 100
+      LIMIT $6
     `;
-    queryParams = [embeddingStr, profile.min_salience, profile.min_strength, lookbackDate, similarityThreshold];
+    queryParams = [embeddingStr, profile.min_salience, profile.min_strength, lookbackDate, similarityThreshold, memoryFetchLimit];
   } else {
     memoriesQuery = `
       SELECT
@@ -1113,15 +926,44 @@ export async function generateContext(
         AND (tier IS NULL OR tier = 'solid')
         AND (expression_safe IS NULL OR expression_safe = TRUE)
       ORDER BY salience_score DESC, created_at DESC
-      LIMIT 100
+      LIMIT $4
     `;
-    queryParams = [profile.min_salience, profile.min_strength, lookbackDate];
+    queryParams = [profile.min_salience, profile.min_strength, lookbackDate, memoryFetchLimit];
   }
 
   const result = await pool.query(memoriesQuery, queryParams);
 
+  // === PLAN B: MULTI-CHANNEL RETRIEVAL ===
+  // Run additional retrieval channels in parallel with vector search processing
+  let additionalMemories: Awaited<ReturnType<typeof fetchMemoriesById>> = [];
+  let threadSnippets: string[] = [];
+
+  if (query) {
+    try {
+      const multiChannelResults = await multiChannelRetrieval(pool, query, {
+        minSalience: profile.min_salience,
+        lookbackDays: profile.lookback_days,
+      });
+
+      // Fetch the additional memories by ID
+      if (multiChannelResults.additionalMemoryIds.length > 0) {
+        additionalMemories = await fetchMemoriesById(multiChannelResults.additionalMemoryIds);
+      }
+
+      threadSnippets = multiChannelResults.threadSnippets;
+    } catch (err) {
+      // Graceful degradation: log error and continue with vector results only
+      console.error('[Context] Multi-channel retrieval error:', err);
+    }
+  }
+
+  // Merge vector results with additional memories (deduplicate by ID)
+  const vectorMemoryIds = new Set(result.rows.map((row: { id: string }) => row.id));
+  const uniqueAdditionalMemories = additionalMemories.filter(mem => !vectorMemoryIds.has(mem.id));
+  const allMemoryRows = [...result.rows, ...uniqueAdditionalMemories];
+
   // Score and categorize memories
-  const scoredMemories: ScoredMemory[] = result.rows.map((row) => {
+  const scoredMemories: ScoredMemory[] = allMemoryRows.map((row) => {
     const recencyScore = calculateRecencyScore(row.created_at, profile.lookback_days);
     const finalScore = calculateFinalScore(
       {
@@ -1189,6 +1031,13 @@ export async function generateContext(
   const totalTokens = filteredMemories.reduce((sum, m) => sum + m.token_estimate, 0);
   const memoryIds = filteredMemories.map((m) => m.id);
 
+  // === PLAN A: APPLY BUDGETS ===
+  // Calculate limits based on signal type
+  const notesLimit = applyBudgetLevel(sourceBudget.recentContext, 5) ?? 5;
+  const listsLimit = applyBudgetLevel(sourceBudget.recentContext, 5) ?? 5;
+  const docsLimit = applyBudgetLevel(sourceBudget.recentContext, 10) ?? 10;
+  const scheduleLimit = applyBudgetLevel(sourceBudget.upcomingEvents, 40);
+
   // Parallel fetch: all independent data sources at once
   const [
     entities,
@@ -1201,16 +1050,16 @@ export async function generateContext(
     liveSchedule,
   ] = await Promise.all([
     getEntitiesForMemories(memoryIds),
-    getNonEmptySummaries(),
+    getNonEmptySummaries(), // Always fetched (exempt)
     getPinnedNotes(),
     query
-      ? searchNotes(query, { limit: 5, threshold: config.search.notesThreshold }).catch((error) => {
+      ? searchNotes(query, { limit: notesLimit, threshold: config.search.notesThreshold }).catch((error) => {
           console.error('[Context] Error fetching notes:', error);
           return [] as Awaited<ReturnType<typeof searchNotes>>;
         })
       : Promise.resolve([] as Awaited<ReturnType<typeof searchNotes>>),
     query
-      ? searchLists(query, 5).catch((error) => {
+      ? searchLists(query, listsLimit).catch((error) => {
           console.error('[Context] Error fetching lists:', error);
           return [] as Awaited<ReturnType<typeof searchLists>>;
         })
@@ -1219,14 +1068,14 @@ export async function generateContext(
       ? searchForContext(query, {
           maxTokens: maxDocumentTokens,
           threshold: config.search.contextThreshold,
-          limit: 10,
+          limit: docsLimit,
         }).catch((error) => {
           console.error('[Context] Error fetching documents:', error);
           return { chunks: [] as { sourceId: string; documentName: string; content: string; pageNumber?: number; sectionTitle?: string; similarity: number; tokenCount: number }[] };
         })
       : Promise.resolve({ chunks: [] as { sourceId: string; documentName: string; content: string; pageNumber?: number; sectionTitle?: string; similarity: number; tokenCount: number }[] }),
     logDisclosure(profile.name, query, memoryIds, totalTokens, profile.format, weights, conversationId),
-    fetchLiveSchedule(),
+    fetchLiveSchedule(scheduleLimit),
   ]);
 
   // Fix C: Freshness gate — refresh stale summaries before serving
@@ -1283,25 +1132,24 @@ export async function generateContext(
     tokenCount: chunk.tokenCount,
   }));
 
-  // Format output — schedule → continuity → state → support → summaries/memories → notes/lists/docs
+  // Format output — schedule comes FIRST (live data), then summaries, then memories
   const scheduleMarkdown = formatScheduleMarkdown(liveSchedule);
-  const continuityPreamble = await fetchContinuityPreamble();
-  const stateContext = await fetchStateContext();
-  const supportGuidance = await fetchSupportGuidance();
   let markdown = '';
   if (scheduleMarkdown) {
     markdown += scheduleMarkdown + '\n';
   }
-  if (continuityPreamble) {
-    markdown += continuityPreamble + '\n';
-  }
-  if (stateContext) {
-    markdown += stateContext + '\n';
-  }
-  if (supportGuidance) {
-    markdown += supportGuidance + '\n';
-  }
   markdown += formatMarkdown(filteredMemories, entities, summaries, profile, query);
+
+  // Add active threads section if any found via multi-channel retrieval
+  if (threadSnippets.length > 0) {
+    markdown += '\n## Active Threads\n\n';
+    markdown += '*Ongoing situations and open threads from recent conversations.*\n\n';
+    for (const snippet of threadSnippets) {
+      markdown += `- ${snippet}\n`;
+    }
+    markdown += '\n';
+  }
+
   if (notes.length > 0) {
     markdown += '\n' + formatNotesMarkdown(notes);
   }

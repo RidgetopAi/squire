@@ -18,13 +18,16 @@ async function squireEmailListToolHandler(args: { limit?: number }): Promise<str
         hour: 'numeric',
         minute: '2-digit',
       });
-      const from = msg.from.map(f => f.name || f.email).join(', ');
-      const preview = msg.text?.substring(0, 100) || msg.html?.substring(0, 100) || '(no content)';
+      const from = typeof msg.from === 'string'
+        ? msg.from
+        : (msg.from as any[]).map((f: any) => f.name || f.email).join(', ');
+      const preview = msg.preview?.substring(0, 100) || msg.text?.substring(0, 100) || msg.html?.substring(0, 100) || '(no content)';
 
       return `${i + 1}. [${msg.message_id}] ${date}\n   From: ${from}\n   Subject: ${msg.subject}\n   ${preview}`;
     }).join('\n\n');
 
-    return `Showing ${response.messages.length} of ${response.total} emails in Squire's inbox:\n\n${formatted}\n\nUse squire_email_read with a message_id to see full content.`;
+    const total = response.total ?? response.count ?? response.messages.length;
+    return `Showing ${response.messages.length} of ${total} emails in Squire's inbox:\n\n${formatted}\n\nUse squire_email_read with a message_id to see full content.`;
   } catch (error) {
     return `Error: ${error instanceof Error ? error.message : 'Unknown error'}`;
   }

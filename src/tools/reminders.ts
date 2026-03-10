@@ -11,6 +11,42 @@ import { config } from '../config/index.js';
 import type { ToolHandler, ToolSpec } from './types.js';
 
 // =============================================================================
+// TIMEZONE HELPER - Dynamic DST-aware offset
+// =============================================================================
+
+/**
+ * Returns a dynamic timezone description string for LLM tool instructions.
+ * Reads the current UTC offset from Node so DST is handled automatically.
+ * e.g., "EST (UTC-5)" in winter, "EDT (UTC-4)" in summer
+ */
+function getTimezoneInstruction(): string {
+  const now = new Date();
+  // Get offset in minutes (negative for west of UTC), convert to hours
+  const offsetMinutes = now.getTimezoneOffset(); // e.g., 300 for EST, 240 for EDT
+  const offsetHours = offsetMinutes / 60;
+  const sign = offsetHours > 0 ? '-' : '+';
+  const absHours = Math.abs(offsetHours);
+
+  // Determine abbreviation using Intl
+  const abbr = new Intl.DateTimeFormat('en-US', {
+    timeZone: config.timezone,
+    timeZoneName: 'short',
+  }).formatToParts(now).find(p => p.type === 'timeZoneName')?.value ?? `UTC${sign}${absHours}`;
+
+  // Example times for the description
+  const nineAMUtc = offsetHours + 9;   // 9am local -> UTC
+  const twoPMUtc  = offsetHours + 14;  // 2pm local -> UTC
+  const defaultUtc = offsetHours + 9;  // default 9am local -> UTC
+
+  return (
+    `TIMEZONE RULE: User is in ${abbr} (UTC${sign}${absHours}). ` +
+    `Convert local times to UTC by adding ${absHours} hours. ` +
+    `Examples: 9am ${abbr} = ${nineAMUtc}:00 UTC, 2pm ${abbr} = ${twoPMUtc}:00 UTC. ` +
+    `If user gives only a date (e.g., "Monday"), default to 9am local time (${String(defaultUtc).padStart(2,'0')}:00:00Z).`
+  );
+}
+
+// =============================================================================
 // CREATE REMINDER TOOL
 // =============================================================================
 
@@ -127,10 +163,8 @@ export const tools: ToolSpec[] = [{
       },
       scheduled_at: {
         type: 'string',
-        description: 'The date/time for the reminder in ISO 8601 UTC format (e.g., "2026-01-19T14:00:00Z" for 9am EST). ' +
-          'TIMEZONE RULE: User is in EST (UTC-5). Convert local times to UTC by adding 5 hours. ' +
-          'Examples: 9am EST = 14:00 UTC, 2pm EST = 19:00 UTC. ' +
-          'If user gives only a date (e.g., "Monday"), default to 9am local time (14:00 UTC).',
+        description: 'The date/time for the reminder in ISO 8601 UTC format (e.g., "2026-01-19T14:00:00Z" for 9am local). ' +
+          getTimezoneInstruction(),
       },
       delay_minutes: {
         type: 'number',

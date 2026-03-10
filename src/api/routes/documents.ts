@@ -11,7 +11,6 @@ import {
   extractFromBuffer,
   isSupported,
   getSupportedMimeTypes,
-  mimeFromExtension,
   ExtractionOptions,
   // Chunking
   hybridChunker,
@@ -72,18 +71,8 @@ router.post('/extract', upload.single('file'), async (req: Request, res: Respons
       return;
     }
 
-    // Browsers often send application/octet-stream for files like .md, .csv, .docx
-    // Fall back to extension-based detection when the browser MIME type is generic
-    let mimeType = file.mimetype;
-    if (!isSupported(mimeType) && file.originalname) {
-      const detected = mimeFromExtension(file.originalname);
-      if (detected && isSupported(detected)) {
-        mimeType = detected;
-      }
-    }
-
     // Check if MIME type is supported
-    if (!isSupported(mimeType)) {
+    if (!isSupported(file.mimetype)) {
       res.status(400).json({
         error: `Unsupported file type: ${file.mimetype}`,
         supportedTypes: getSupportedMimeTypes(),
@@ -111,7 +100,7 @@ router.post('/extract', upload.single('file'), async (req: Request, res: Respons
     }
 
     // Perform extraction
-    const result = await extractFromBuffer(file.buffer, mimeType, options);
+    const result = await extractFromBuffer(file.buffer, file.mimetype, options);
 
     if (!result.success) {
       res.status(422).json({
@@ -125,7 +114,7 @@ router.post('/extract', upload.single('file'), async (req: Request, res: Respons
     const { object, isDuplicate } = await createObject({
       name: file.originalname,
       filename: file.originalname,
-      mimeType: mimeType,
+      mimeType: file.mimetype,
       data: file.buffer,
       source: 'upload',
       metadata: {
@@ -153,7 +142,7 @@ router.post('/extract', upload.single('file'), async (req: Request, res: Respons
       isDuplicate,
       file: {
         originalName: file.originalname,
-        mimeType: mimeType,
+        mimeType: file.mimetype,
         size: file.size,
       },
     });
@@ -600,15 +589,7 @@ router.post('/summarize', upload.single('file'), async (req: Request, res: Respo
       return;
     }
 
-    let summarizeMimeType = file.mimetype;
-    if (!isSupported(summarizeMimeType) && file.originalname) {
-      const detected = mimeFromExtension(file.originalname);
-      if (detected && isSupported(detected)) {
-        summarizeMimeType = detected;
-      }
-    }
-
-    if (!isSupported(summarizeMimeType)) {
+    if (!isSupported(file.mimetype)) {
       res.status(400).json({
         error: `Unsupported file type: ${file.mimetype}`,
         supportedTypes: getSupportedMimeTypes(),
@@ -622,7 +603,7 @@ router.post('/summarize', upload.single('file'), async (req: Request, res: Respo
       ? parseInt(req.query.maxTokens as string, 10)
       : undefined;
 
-    const result = await summarizeDocument(file.buffer, summarizeMimeType, file.originalname, {
+    const result = await summarizeDocument(file.buffer, file.mimetype, file.originalname, {
       style,
       focus,
       maxSummaryTokens,
@@ -669,15 +650,7 @@ router.post('/ask', upload.single('file'), async (req: Request, res: Response) =
       return;
     }
 
-    let askMimeType = file.mimetype;
-    if (!isSupported(askMimeType) && file.originalname) {
-      const detected = mimeFromExtension(file.originalname);
-      if (detected && isSupported(detected)) {
-        askMimeType = detected;
-      }
-    }
-
-    if (!isSupported(askMimeType)) {
+    if (!isSupported(file.mimetype)) {
       res.status(400).json({
         error: `Unsupported file type: ${file.mimetype}`,
         supportedTypes: getSupportedMimeTypes(),
@@ -690,7 +663,7 @@ router.post('/ask', upload.single('file'), async (req: Request, res: Response) =
       : undefined;
     const includeCitations = req.query.citations !== 'false';
 
-    const result = await askDocument(file.buffer, askMimeType, file.originalname, question, {
+    const result = await askDocument(file.buffer, file.mimetype, file.originalname, question, {
       maxAnswerTokens,
       includeCitations,
     });

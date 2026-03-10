@@ -43,7 +43,9 @@ export const agentmailCheckTask: CourierTask = {
       const header = `📬 *AgentMail* (${newMessages.length} new)\n\n`;
 
       const body = newMessages.map((msg, i) => {
-        const from = msg.from.map(f => f.name || f.email).join(', ');
+        const from = typeof msg.from === 'string'
+          ? msg.from
+          : (msg.from as any[]).map((f: any) => f.name || f.email).join(', ');
         const safeSubject = msg.subject.replace(/[*_`\[\]]/g, '');
         const preview = (msg.text?.substring(0, 80) || msg.html?.substring(0, 80) || '(no content)').replace(/[*_`\[\]]/g, '');
         return `*${i + 1}. ${from}*\n${safeSubject}\n${preview}...`;

@@ -23,8 +23,6 @@ import { processMessagesForResolutions, type ResolutionCandidate } from './resol
 import { getUserIdentity, setInitialIdentity } from './identity.js';
 import { invalidateStoryCache } from './storyEngine.js';
 import { checkReinforcement } from './reinforcement.js';
-import { createContinuityEntry } from './scratchpad.js';
-import { findOrCreateThreadFromTransition } from './continuity.js';
 
 // === TYPES ===
 
@@ -33,17 +31,6 @@ export interface ExtractedMemory {
   type: 'fact' | 'decision' | 'goal' | 'event' | 'preference';
   salience_hint: number;
   confidence?: number; // 0.0-1.0, added in Phase 3 for tiering
-  state_transitions?: StateTransitionSignal[];
-}
-
-// === STATE TRANSITIONS (Memory Upgrade Phase 1) ===
-
-export type StateTransition = 'planned' | 'started' | 'blocked' | 'completed' | 'abandoned' | 'deferred';
-
-export interface StateTransitionSignal {
-  transition: StateTransition;
-  subject: string;
-  confidence: number;
 }
 
 // === SALIENCE CALIBRATION ===
@@ -352,22 +339,7 @@ Output:
 
 If there's nothing worth remembering tomorrow, return: []
 
-=== STATE TRANSITIONS ===
-If the user mentions something changing state, include a "state_transitions" array on the response object (sibling to the memories array).
-Each entry: {"transition": "planned|started|blocked|completed|abandoned|deferred", "subject": "what changed", "confidence": 0.0-1.0}
-Only include clear transitions. If none, omit the field entirely.
-
-Examples of state transitions:
-- "I started the deck project" → {"transition": "started", "subject": "deck project", "confidence": 0.9}
-- "The quarterly report is done" → {"transition": "completed", "subject": "quarterly report", "confidence": 0.95}
-- "I'm stuck on the permit application" → {"transition": "blocked", "subject": "permit application", "confidence": 0.8}
-- "I've decided not to do the kitchen remodel" → {"transition": "abandoned", "subject": "kitchen remodel", "confidence": 0.85}
-- "I'm putting the garden on hold until spring" → {"transition": "deferred", "subject": "garden", "confidence": 0.9}
-
-When state transitions are present, return a JSON object: {"memories": [...], "state_transitions": [...]}
-When NO state transitions are detected, return just the memories array: [...]
-
-IMPORTANT: Return ONLY valid JSON (array or object), no markdown, no explanation. MAX 3 memories. Include confidence for each.`;
+IMPORTANT: Return ONLY valid JSON array, no markdown, no explanation. MAX 3 items. Include confidence for each.`;
 
 // === DATE/TIME HELPERS ===
 
@@ -991,19 +963,14 @@ function buildTranscript(messages: PendingMessage[]): string {
     .join('\n');
 }
 
-interface ExtractionOutput {
-  memories: ExtractedMemory[];
-  stateTransitions: StateTransitionSignal[];
-}
-
 /**
  * Call LLM to extract memories from transcript
  */
 async function extractFromTranscript(
   transcript: string
-): Promise<ExtractionOutput> {
+): Promise<ExtractedMemory[]> {
   if (!transcript.trim()) {
-    return { memories: [], stateTransitions: [] };
+    return [];
   }
 
   const messages: LLMMessage[] = [
@@ -1022,49 +989,20 @@ async function extractFromTranscript(
 
     // Handle empty response
     if (!content || content === '[]') {
-      return { memories: [], stateTransitions: [] };
+      return [];
     }
 
     // Try to extract JSON from response (in case of markdown wrapping)
     let jsonStr = content;
-
-    // Response may be an object with {memories, state_transitions} or a plain array
-    let memories: ExtractedMemory[] = [];
-    let stateTransitions: StateTransitionSignal[] = [];
-
-    // Try object format first: {"memories": [...], "state_transitions": [...]}
-    const objMatch = content.match(/\{[\s\S]*\}/);
-    const arrMatch = content.match(/\[[\s\S]*\]/);
-
-    if (objMatch) {
-      try {
-        const parsed = JSON.parse(objMatch[0]) as {
-          memories?: ExtractedMemory[];
-          state_transitions?: StateTransitionSignal[];
-        };
-        if (parsed.memories && Array.isArray(parsed.memories)) {
-          memories = parsed.memories;
-          stateTransitions = (parsed.state_transitions ?? []).filter(
-            (st) => st.transition && st.subject && st.confidence >= 0.5
-          );
-        } else if (arrMatch) {
-          // Object didn't have memories key — try array
-          memories = JSON.parse(arrMatch[0]) as ExtractedMemory[];
-        }
-      } catch {
-        // Object parse failed, try array
-        if (arrMatch) {
-          jsonStr = arrMatch[0];
-          memories = JSON.parse(jsonStr) as ExtractedMemory[];
-        }
-      }
-    } else if (arrMatch) {
-      jsonStr = arrMatch[0];
-      memories = JSON.parse(jsonStr) as ExtractedMemory[];
+    const jsonMatch = content.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      jsonStr = jsonMatch[0];
     }
 
-    // Validate and filter memories
-    const validated = memories.filter((m) =>
+    const parsed = JSON.parse(jsonStr) as ExtractedMemory[];
+
+    // Validate and filter
+    const validated = parsed.filter((m) =>
       m.content &&
       typeof m.content === 'string' &&
       m.content.length > 5 &&
@@ -1081,14 +1019,10 @@ async function extractFromTranscript(
       console.log(`[ChatExtraction] Episodic limit applied: ${validated.length} → 3 memories (dropped ${validated.length - 3})`);
     }
 
-    if (stateTransitions.length > 0) {
-      console.log(`[ChatExtraction] Detected ${stateTransitions.length} state transition(s): ${stateTransitions.map(st => `${st.subject} → ${st.transition}`).join(', ')}`);
-    }
-
-    return { memories: limited, stateTransitions };
+    return limited;
   } catch (error) {
     console.error('[ChatExtraction] Failed to parse LLM response:', error);
-    return { memories: [], stateTransitions: [] };
+    return [];
   }
 }
 
@@ -1170,21 +1104,8 @@ async function extractFromConversation(
     const conversationMode = modeResult.mode;
     console.log(`[ChatExtraction] Conversation mode: ${conversationMode} (${(modeResult.confidence * 100).toFixed(0)}% - ${modeResult.reasoning})`);
 
-    // Extract memories via LLM (now also returns state transitions)
-    const { memories: extracted, stateTransitions } = await extractFromTranscript(transcript);
-
-    // Process state transitions into scratchpad (Phase 1) + continuity threads (Phase 2)
-    for (const signal of stateTransitions) {
-      try {
-        // Phase 1: Scratchpad continuity entries (lightweight, fast)
-        await createContinuityEntry(signal.subject, signal.transition, '', signal.confidence);
-        // Phase 2: Structured continuity threads (first-class, persistent)
-        await findOrCreateThreadFromTransition(signal, '');
-        console.log(`[ChatExtraction] Created continuity entry + thread: ${signal.subject} → ${signal.transition}`);
-      } catch (continuityError) {
-        console.error('[ChatExtraction] Continuity processing failed:', continuityError);
-      }
-    }
+    // Extract memories via LLM
+    const extracted = await extractFromTranscript(transcript);
 
     // DISABLED: Consolidation-path reminder extraction — LLM create_reminder tool handles this now
     // Prevents double/triple creation when real-time extraction + LLM tool + consolidation all fire
@@ -1267,10 +1188,7 @@ async function extractFromConversation(
     // Create memories from extracted content
     for (const mem of extracted) {
       try {
-        // Create the memory with conversation mode and any matched state transitions
-        const matchedTransitions = stateTransitions.filter(
-          (st) => mem.content.toLowerCase().includes(st.subject.toLowerCase())
-        );
+        // Create the memory with conversation mode
         const { memory } = await createMemory({
           content: mem.content,
           source: 'chat',
@@ -1279,7 +1197,6 @@ async function extractFromConversation(
             extraction_type: mem.type,
             salience_hint: mem.salience_hint,
             conversation_mode: conversationMode,
-            ...(matchedTransitions.length > 0 ? { state_transitions: matchedTransitions } : {}),
           },
         });
 
@@ -1381,17 +1298,6 @@ async function extractFromConversation(
           } catch (beliefError) {
             // Log but don't fail - beliefs are secondary
             console.error('[ChatExtraction] Belief extraction failed:', beliefError);
-          }
-        }
-
-        // Phase 2: Link memory to continuity threads via state transitions
-        if (matchedTransitions.length > 0) {
-          for (const st of matchedTransitions) {
-            try {
-              await findOrCreateThreadFromTransition(st, memory.id);
-            } catch (threadError) {
-              console.error('[ChatExtraction] Thread linking failed:', threadError);
-            }
           }
         }
 

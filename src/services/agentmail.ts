@@ -19,18 +19,21 @@ export interface AgentMailAddress {
 export interface AgentMailMessage {
   message_id: string;
   inbox_id: string;
-  from: AgentMailAddress[];
-  to: AgentMailAddress[];
+  from: AgentMailAddress[] | string;
+  to: AgentMailAddress[] | string[];
   subject: string;
   text?: string;
   html?: string;
+  preview?: string;
   timestamp: string;
   thread_id?: string;
+  labels?: string[];
 }
 
 export interface AgentMailListResponse {
   messages: AgentMailMessage[];
-  total: number;
+  total?: number;
+  count?: number;
 }
 
 /**
@@ -75,7 +78,7 @@ export const agentmail = {
    */
   async listMessages(limit = 20, page = 1): Promise<AgentMailListResponse> {
     console.log('[AgentMail] Listing messages', { limit, page });
-    return apiCall('GET', `/inboxes/${INBOX_ID}/messages?limit=${limit}&page=${page}`);
+    return apiCall('GET', `/inboxes/${encodeURIComponent(INBOX_ID)}/messages?limit=${limit}&page=${page}`);
   },
 
   /**
@@ -83,7 +86,7 @@ export const agentmail = {
    */
   async getMessage(messageId: string): Promise<AgentMailMessage> {
     console.log('[AgentMail] Getting message', { messageId });
-    return apiCall('GET', `/inboxes/${INBOX_ID}/messages/${messageId}`);
+    return apiCall('GET', `/inboxes/${encodeURIComponent(INBOX_ID)}/messages/${messageId}`);
   },
 
   /**
@@ -91,7 +94,7 @@ export const agentmail = {
    */
   async sendMessage(to: string, subject: string, text: string, html?: string): Promise<AgentMailMessage> {
     console.log('[AgentMail] Sending message', { to, subject });
-    return apiCall('POST', `/inboxes/${INBOX_ID}/messages`, { to, subject, text, html });
+    return apiCall('POST', `/inboxes/${encodeURIComponent(INBOX_ID)}/messages/send`, { to, subject, text, html });
   },
 
   /**

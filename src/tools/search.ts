@@ -96,6 +96,71 @@ async function webSearch(args: WebSearchArgs): Promise<string> {
   }
 }
 
+// === FETCH URL ===
+
+interface FetchUrlArgs {
+  url: string;
+  max_length?: number;
+}
+
+async function fetchUrl(args: FetchUrlArgs): Promise<string> {
+  const { url, max_length = 8000 } = args;
+
+  if (!url || url.trim().length === 0) {
+    return 'Error: URL is required.';
+  }
+
+  try {
+    const response = await fetch(url.trim(), {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; Squire/1.0)',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      },
+    });
+
+    if (!response.ok) {
+      return `Error: HTTP ${response.status} fetching ${url}`;
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('text/html') && !contentType.includes('text/plain') && !contentType.includes('application/json')) {
+      return `Error: Unsupported content type "${contentType}" — can only read HTML, plain text, or JSON pages.`;
+    }
+
+    const html = await response.text();
+
+    // Strip HTML tags and extract readable text
+    const text = html
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      .replace(/<nav[\s\S]*?<\/nav>/gi, '')
+      .replace(/<footer[\s\S]*?<\/footer>/gi, '')
+      .replace(/<head[\s\S]*?<\/head>/gi, '')
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/\s{3,}/g, '\n\n')
+      .trim();
+
+    if (text.length === 0) {
+      return 'Error: Page returned no readable text content.';
+    }
+
+    const truncated = text.length > max_length;
+    const output = truncated ? text.slice(0, max_length) + '\n\n[... content truncated ...]' : text;
+
+    return `**Page content from:** ${url}\n\n${output}`;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return `Error fetching URL: ${message}`;
+  }
+}
+
 // === TOOL DEFINITION ===
 
 export const tools: ToolSpec[] = [{
@@ -121,4 +186,22 @@ export const tools: ToolSpec[] = [{
     required: ['query'],
   },
   handler: webSearch as ToolHandler,
+}, {
+  name: 'fetch_url',
+  description: 'Fetch and read the content of a URL directly. Use this when the user pastes a URL and wants you to read it, or when you need to read a specific web page. Strips HTML and returns readable text. Works on articles, documentation, blog posts, etc.',
+  parameters: {
+    type: 'object',
+    properties: {
+      url: {
+        type: 'string',
+        description: 'The URL to fetch and read',
+      },
+      max_length: {
+        type: 'number',
+        description: 'Maximum characters to return (default: 8000)',
+      },
+    },
+    required: ['url'],
+  },
+  handler: fetchUrl as ToolHandler,
 }];

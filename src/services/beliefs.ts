@@ -13,18 +13,14 @@ import { searchEntities } from './entities.js';
 // === TYPES ===
 
 export const BELIEF_TYPES = [
-  'value',               // core values ("I value honesty")
-  'preference',          // preferences ("I prefer morning work")
-  'self_knowledge',      // self-understanding ("I work best under pressure")
-  'prediction',          // expectations ("The project will succeed")
-  'about_person',        // beliefs about others ("Sarah is reliable")
-  'about_project',       // beliefs about work ("This approach is best")
-  'about_world',         // general world beliefs ("Remote work is the future")
-  'should',              // normative ("I should prioritize health")
-  'support_preference',  // How they prefer to be supported
-  'trigger_sensitivity', // What triggers negative reactions
-  'protective_priority', // What they'll protect at all costs
-  'vulnerability_theme', // Deep fears/insecurities shaping behavior
+  'value',           // core values ("I value honesty")
+  'preference',      // preferences ("I prefer morning work")
+  'self_knowledge',  // self-understanding ("I work best under pressure")
+  'prediction',      // expectations ("The project will succeed")
+  'about_person',    // beliefs about others ("Sarah is reliable")
+  'about_project',   // beliefs about work ("This approach is best")
+  'about_world',     // general world beliefs ("Remote work is the future")
+  'should',          // normative ("I should prioritize health")
 ] as const;
 
 export type BeliefType = (typeof BELIEF_TYPES)[number];
@@ -97,15 +93,6 @@ Belief types:
 - about_project: Beliefs about work/projects ("This codebase is well-designed")
 - about_world: General beliefs ("Remote work is the future", "AI will transform work")
 - should: Normative beliefs ("I should prioritize health", "One should always be honest")
-- support_preference: How they prefer to be supported ("I need space when stressed", "I want direct feedback")
-- trigger_sensitivity: What triggers negative reactions ("Being rushed makes me shut down", "I hate being micromanaged")
-- protective_priority: What they'll protect at all costs ("My family time is non-negotiable", "I won't compromise on quality")
-- vulnerability_theme: Deep fears/insecurities shaping behavior ("I worry I'm not doing enough", "I fear losing control")
-
-IMPORTANT for support types (support_preference, trigger_sensitivity, protective_priority, vulnerability_theme):
-- Only extract when CLEARLY demonstrated through behavior or explicit statement (not single offhand comments)
-- Start at LOW confidence (0.4) — these need 3+ reinforcements to reach the display threshold
-- These are deeply personal — be conservative in extraction
 
 Return ONLY a JSON array of beliefs found. Include confidence (0.0-1.0).
 If no beliefs are present, return an empty array: []
@@ -674,10 +661,6 @@ export function getBeliefTypeDescription(type: BeliefType): string {
     about_project: 'Beliefs about work and projects',
     about_world: 'General world beliefs',
     should: 'Normative beliefs (what should be)',
-    support_preference: 'How they prefer to be supported',
-    trigger_sensitivity: 'What triggers negative reactions',
-    protective_priority: 'What they protect at all costs',
-    vulnerability_theme: 'Deep fears and insecurities',
   };
   return descriptions[type];
 }

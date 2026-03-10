@@ -27,7 +27,6 @@ import {
   type ToolDefinition,
 } from '../../tools/index.js';
 import { streamLLM } from '../../services/llm/index.js';
-import { killActiveClaudeCodeProcesses } from '../../tools/coding/claude-code.js';
 import { buildMemoryContext } from '../../services/memory/index.js';
 import { SQUIRE_SYSTEM_PROMPT_BASE, TOOL_CALLING_INSTRUCTIONS } from '../../constants/prompts.js';
 import { getObjectById } from '../../services/objects.js';
@@ -49,9 +48,6 @@ type TypedIO = Server<ClientToServerEvents, ServerToClientEvents, object, Socket
 
 // Track active streaming requests for cancellation
 const activeStreams = new Map<string, AbortController>();
-
-// Track socket → conversationId for cleanup on disconnect
-const socketConversationMap = new Map<string, string>();
 
 // Debounced consolidation timer
 // Consolidation runs after 15 minutes of inactivity (no new messages)
@@ -276,7 +272,6 @@ async function handleDocumentDiscussion(
   let chatDoneEmitted = false;
   const abortController = new AbortController();
   activeStreams.set(conversationId, abortController);
-  socketConversationMap.set(socket.id, conversationId);
 
   try {
     // Step 0: Ensure conversation + persist user message
@@ -427,7 +422,6 @@ ${documentContent}
       io.to(`conversation:${conversationId}`).emit('chat:done', { conversationId });
     }
     activeStreams.delete(conversationId);
-    socketConversationMap.delete(socket.id);
   }
 }
 
@@ -458,7 +452,6 @@ async function handleChatMessage(
   // Create abort controller for this stream
   const abortController = new AbortController();
   activeStreams.set(conversationId, abortController);
-  socketConversationMap.set(socket.id, conversationId);
 
   // Track context for persistence
   let memoryIds: string[] = [];
@@ -737,7 +730,6 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
       io.to(`conversation:${conversationId}`).emit('chat:done', { conversationId });
     }
     activeStreams.delete(conversationId);
-    socketConversationMap.delete(socket.id);
   }
 }
 
@@ -808,12 +800,6 @@ async function streamWithToolLoop(
     // Execute tool calls
     console.log(`[Socket] Tool iteration ${iteration + 1}: ${response.toolCalls.map((t) => t.function.name).join(', ')}`);
     const toolResults = await executeTools(response.toolCalls);
-
-    // Bail if stream was aborted while tools were running (e.g., client disconnect)
-    if (signal.aborted) {
-      console.log(`[Socket] Stream aborted during tool execution, stopping loop`);
-      break;
-    }
 
     for (const result of toolResults) {
       console.log(`[Socket] Tool ${result.name}: ${result.success ? 'success' : 'failed'}`);
@@ -961,20 +947,7 @@ export function registerSocketHandlers(io: TypedIO): void {
       console.log(`[Socket] Client disconnected: ${socket.id} (${reason})`);
 
       // Cancel any active streams for this socket
-      const conversationId = socketConversationMap.get(socket.id);
-      if (conversationId) {
-        const controller = activeStreams.get(conversationId);
-        if (controller) {
-          console.log(`[Socket] Aborting active stream for conversation: ${conversationId}`);
-          controller.abort();
-          // Kill any running Claude Code child processes
-          killActiveClaudeCodeProcesses();
-          // Emit chat:done to any other clients in the room so their UI clears
-          io.to(`conversation:${conversationId}`).emit('chat:done', { conversationId });
-          activeStreams.delete(conversationId);
-        }
-        socketConversationMap.delete(socket.id);
-      }
+      // Note: In production, you'd track streams per socket
     });
   });
 }

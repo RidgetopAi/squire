@@ -13,8 +13,12 @@ async function squireEmailReadToolHandler(args: { message_id: string }): Promise
       dateStyle: 'full',
       timeStyle: 'short',
     });
-    const from = msg.from.map(f => f.name ? `${f.name} <${f.email}>` : f.email).join(', ');
-    const to = msg.to.map(t => t.name ? `${t.name} <${t.email}>` : t.email).join(', ');
+    const from = typeof msg.from === 'string'
+      ? msg.from
+      : (msg.from as any[]).map((f: any) => f.name ? `${f.name} <${f.email}>` : f.email).join(', ');
+    const to = Array.isArray(msg.to)
+      ? (msg.to as any[]).map((t: any) => typeof t === 'string' ? t : (t.name ? `${t.name} <${t.email}>` : t.email)).join(', ')
+      : String(msg.to);
 
     let result = `Message ID: ${msg.message_id}\n`;
     result += `Date: ${date}\n`;

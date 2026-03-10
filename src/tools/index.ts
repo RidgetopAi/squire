@@ -209,6 +209,7 @@ export async function executeTools(calls: ToolCall[]): Promise<ToolResult[]> {
 import { tools as timeTools } from './time.js';
 import { tools as notesTools } from './notes.js';
 import { tools as listsTools } from './lists.js';
+import { tools as trackersTools } from './trackers.js';
 import { tools as calendarTools } from './calendar.js';
 import { tools as commitmentTools } from './commitments.js';
 import { tools as reminderTools } from './reminders.js';
@@ -225,12 +226,12 @@ import { tools as imageTools } from './images.js';
 import { tools as reportTools } from './report.js';
 import { tools as pageTools } from './page.js';
 import { tools as goalTools } from './goals.js';
-import { tools as continuityTools } from './continuity.js';
 
 const allToolSpecs: ToolSpec[] = [
   ...timeTools,
   ...notesTools,
   ...listsTools,
+  ...trackersTools,
   ...calendarTools,
   ...commitmentTools,
   ...reminderTools,
@@ -247,7 +248,6 @@ const allToolSpecs: ToolSpec[] = [
   ...reportTools,
   ...pageTools,
   ...goalTools,
-  ...continuityTools,
 ];
 
 for (const spec of allToolSpecs) {

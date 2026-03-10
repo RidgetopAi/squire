@@ -293,7 +293,7 @@ export function DocumentUpload({
                         {selectedFile.file.name}
                       </p>
                       <p className="text-sm text-foreground-muted">
-                        {getFileTypeLabel(selectedFile.file.type, selectedFile.file.name)} &bull; {formatFileSize(selectedFile.file.size)}
+                        {getFileTypeLabel(selectedFile.file.type)} &bull; {formatFileSize(selectedFile.file.size)}
                       </p>
                     </div>
 

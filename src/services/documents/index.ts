@@ -15,7 +15,6 @@ export {
   extractFromBuffer,
   isSupported,
   getSupportedMimeTypes,
-  mimeFromExtension,
 } from './extractor.js';
 
 // Types
