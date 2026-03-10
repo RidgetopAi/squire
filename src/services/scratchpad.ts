@@ -211,3 +211,88 @@ export async function getStats(): Promise<{
 
   return stats;
 }
+
+// =============================================================================
+// CONTINUITY ENTRIES (Memory Upgrade Phase 1)
+// =============================================================================
+
+type StateTransition = 'planned' | 'started' | 'blocked' | 'completed' | 'abandoned' | 'deferred';
+
+/**
+ * Create or update a scratchpad entry for continuity tracking.
+ * Called from chat extraction when state transitions are detected.
+ *
+ * - planned/started → Create thread entry with continuity metadata
+ * - blocked/deferred → Update existing thread by subject match, or create new
+ * - completed/abandoned → Resolve existing thread, create observation with 48h expiry
+ */
+export async function createContinuityEntry(
+  subject: string,
+  transition: StateTransition,
+  memoryId: string,
+  confidence: number,
+): Promise<ScratchpadEntry> {
+  const meta = { continuity: true, subject, transition, memory_id: memoryId, confidence };
+
+  // Try to find existing continuity thread for this subject
+  const existing = await pool.query<ScratchpadEntry>(
+    `SELECT * FROM scratchpad
+     WHERE resolved_at IS NULL
+       AND (expires_at IS NULL OR expires_at > NOW())
+       AND metadata->>'continuity' = 'true'
+       AND LOWER(metadata->>'subject') = LOWER($1)
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [subject]
+  );
+
+  const existingEntry = existing.rows[0] ?? null;
+
+  if (transition === 'completed' || transition === 'abandoned') {
+    // Resolve existing thread if found
+    if (existingEntry) {
+      await pool.query(
+        `UPDATE scratchpad SET resolved_at = NOW(), updated_at = NOW(),
+         metadata = metadata || $1::jsonb
+         WHERE id = $2`,
+        [JSON.stringify({ last_transition: transition }), existingEntry.id]
+      );
+    }
+    // Create observation with 48h expiry for context
+    return createEntry({
+      entry_type: 'observation',
+      content: `[${transition.toUpperCase()}] ${subject}`,
+      priority: 3,
+      expires_in_hours: 48,
+      metadata: meta,
+    });
+  }
+
+  if (transition === 'blocked' || transition === 'deferred') {
+    // Update existing thread or create new
+    if (existingEntry) {
+      await pool.query(
+        `UPDATE scratchpad SET
+           content = $1,
+           updated_at = NOW(),
+           metadata = metadata || $2::jsonb
+         WHERE id = $3`,
+        [
+          `[${transition.toUpperCase()}] ${subject}`,
+          JSON.stringify({ last_transition: transition }),
+          existingEntry.id,
+        ]
+      );
+      return { ...existingEntry, content: `[${transition.toUpperCase()}] ${subject}` };
+    }
+    // Fall through to create new
+  }
+
+  // planned/started (or new blocked/deferred): create new thread entry
+  return createEntry({
+    entry_type: 'thread',
+    content: `[${transition.toUpperCase()}] ${subject}`,
+    priority: transition === 'blocked' ? 2 : 3,
+    metadata: meta,
+  });
+}

@@ -226,6 +226,7 @@ import { tools as imageTools } from './images.js';
 import { tools as reportTools } from './report.js';
 import { tools as pageTools } from './page.js';
 import { tools as goalTools } from './goals.js';
+import { tools as continuityTools } from './continuity.js';
 
 const allToolSpecs: ToolSpec[] = [
   ...timeTools,
@@ -248,6 +249,7 @@ const allToolSpecs: ToolSpec[] = [
   ...reportTools,
   ...pageTools,
   ...goalTools,
+  ...continuityTools,
 ];
 
 for (const spec of allToolSpecs) {
