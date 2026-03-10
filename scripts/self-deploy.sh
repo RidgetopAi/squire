@@ -203,6 +203,24 @@ if ! systemd-run --unit=squire-deploy-restart --no-block \
 
     if [ \"\$HEALTHY\" = \"true\" ]; then
       echo \"\$(date '+%Y-%m-%d %H:%M:%S') ✓ Deploy verified healthy\" >> $DEPLOY_LOG
+
+      # Auto-commit and push changes to git
+      cd $PRODUCTION
+      if [ -n \"\$(git status --porcelain 2>/dev/null)\" ]; then
+        echo \"\$(date '+%Y-%m-%d %H:%M:%S') Git: committing deploy changes...\" >> $DEPLOY_LOG
+        git add -A
+        SUMMARY=\$(git diff --cached --stat | tail -1)
+        git commit -m \"auto-deploy: \$(date '+%Y-%m-%d %H:%M:%S')
+
+\$SUMMARY
+
+Deployed by Squire self-deploy pipeline.\" 2>> $DEPLOY_LOG
+        git push origin main 2>> $DEPLOY_LOG && \
+          echo \"\$(date '+%Y-%m-%d %H:%M:%S') Git: pushed to origin\" >> $DEPLOY_LOG || \
+          echo \"\$(date '+%Y-%m-%d %H:%M:%S') Git: push failed (non-fatal)\" >> $DEPLOY_LOG
+      else
+        echo \"\$(date '+%Y-%m-%d %H:%M:%S') Git: no changes to commit\" >> $DEPLOY_LOG
+      fi
     else
       echo \"\$(date '+%Y-%m-%d %H:%M:%S') ✗ UNHEALTHY - rolling back\" >> $DEPLOY_LOG
       cp -a $BACKUP/dist/ $PRODUCTION/dist/
