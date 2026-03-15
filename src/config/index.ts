@@ -124,6 +124,14 @@ export const config = {
     apiKey: process.env['AGENTMAIL_API_KEY'] ?? '',
     inboxId: 'squireagent@agentmail.to',
   },
+  recall: {
+    userStopwords: (process.env['RECALL_USER_STOPWORDS'] ?? '').split(',').filter(Boolean),
+    cacheTtlMs: parseInt(optional('RECALL_CACHE_TTL_MS', '300000'), 10),
+    rerankerEnabled: optional('RECALL_RERANKER_ENABLED', 'true') === 'true',
+    rerankerProvider: optional('RECALL_RERANKER_PROVIDER', 'xai') as 'xai' | 'anthropic',
+    rerankerModel: optional('RECALL_RERANKER_MODEL', 'grok-4-1-fast-reasoning'),
+    maxRerankerCandidates: parseInt(optional('RECALL_RERANKER_POOL', '15'), 10),
+  },
 } as const;
 
 export type Config = typeof config;

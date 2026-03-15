@@ -16,8 +16,7 @@ import { getNonEmptySummaries, generateSummary, type LivingSummary, type Summary
 import { searchNotes, getPinnedNotes } from './notes.js';
 import { searchLists } from './lists.js';
 import { searchForContext } from './documents/search.js';
-import { detectSignal, getBudgetForSignal, applyBudgetLevel, type MessageSignal } from './signalDetector.js';
-import { multiChannelRetrieval } from './multiChannelRetrieval.js';
+import { enhancedRecall } from './enhancedRecall.js';
 import { listEntries as listScratchpadEntries } from './scratchpad.js';
 import { getThreadsForContext, getDueFollowups } from './continuity.js';
 import { getLatestSnapshotNarrative, getUnacknowledgedConcerns } from './stateSnapshots.js';
@@ -181,52 +180,12 @@ export async function listProfiles(): Promise<ContextProfile[]> {
  * Calculate recency score (exponential decay)
  * Score decreases as memory gets older
  */
-function calculateRecencyScore(createdAt: Date, lookbackDays: number): number {
-  const now = Date.now();
-  const memoryTime = new Date(createdAt).getTime();
-  const daysSince = (now - memoryTime) / (1000 * 60 * 60 * 24);
-
-  // Exponential decay with half-life based on lookback days
-  // At lookbackDays, score is ~0.5
-  const halfLife = lookbackDays / 2;
-  const score = Math.exp(-daysSince / halfLife);
-
-  return Math.max(0, Math.min(1, score));
-}
-
 /**
  * Estimate tokens for a piece of text
  * Rough estimate: ~4 characters per token for English
  */
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
-}
-
-/**
- * Calculate final score for a memory
- */
-function calculateFinalScore(
-  memory: {
-    salience_score: number;
-    current_strength: number;
-    created_at: Date;
-    similarity?: number;
-  },
-  weights: ScoringWeights,
-  lookbackDays: number
-): number {
-  const normalizedSalience = memory.salience_score / 10;
-  const normalizedStrength = memory.current_strength;
-  const recencyScore = calculateRecencyScore(memory.created_at, lookbackDays);
-  const relevanceScore = memory.similarity ?? 0.5; // Default if no query
-
-  const score =
-    weights.salience * normalizedSalience +
-    weights.relevance * relevanceScore +
-    weights.recency * recencyScore +
-    weights.strength * normalizedStrength;
-
-  return Math.max(0, Math.min(1, score));
 }
 
 // === TOKEN BUDGETING ===
@@ -344,35 +303,6 @@ async function getEntitiesForMemories(memoryIds: string[]): Promise<EntitySummar
  * Fetch memories by ID (for multi-channel retrieval)
  * Returns memories with NULL similarity (same as no-query path)
  */
-async function fetchMemoriesById(memoryIds: string[]): Promise<{
-  id: string;
-  content: string;
-  created_at: Date;
-  salience_score: number;
-  current_strength: number;
-  similarity: null;
-}[]> {
-  if (memoryIds.length === 0) return [];
-
-  const result = await pool.query(
-    `SELECT id, content, created_at, salience_score, current_strength, NULL as similarity
-     FROM memories
-     WHERE id = ANY($1)
-       AND (expression_safe IS NULL OR expression_safe = TRUE)
-       AND (tier IS NULL OR tier = 'solid')`,
-    [memoryIds]
-  );
-
-  return result.rows as {
-    id: string;
-    content: string;
-    created_at: Date;
-    salience_score: number;
-    current_strength: number;
-    similarity: null;
-  }[];
-}
-
 // === FORMATTING ===
 
 
@@ -1086,16 +1016,6 @@ export async function generateContext(
 ): Promise<ContextPackage> {
   const { query, maxTokens, conversationId, includeDocuments = true, maxDocumentTokens = 2000 } = options;
 
-  // === PLAN A: SOURCE GATE ===
-  // Detect message signal and apply budget constraints
-  const signal: MessageSignal = query ? detectSignal(query) : 'substantive';
-  const sourceBudget = getBudgetForSignal(signal);
-
-  // Log signal detection for monitoring (visible in console)
-  if (signal !== 'substantive') {
-    console.log(`[Context] Signal detected: ${signal} → applying budgets: notes=${sourceBudget.recentContext}, events=${sourceBudget.upcomingEvents}, memories=${sourceBudget.memories}`);
-  }
-
   // Get profile
   let profile: ContextProfile;
   if (options.profile) {
@@ -1112,160 +1032,66 @@ export async function generateContext(
   const weights = profile.scoring_weights as ScoringWeights;
   const budgetCaps = profile.budget_caps as BudgetCaps;
 
-  // Generate query embedding if query provided
+  // === ENHANCED RECALL ===
+  // Generate query embedding once — used by Enhanced Recall (hybrid retrieval)
+  // and downstream by notes/lists/docs search
   let queryEmbedding: number[] | null = null;
   if (query) {
-    queryEmbedding = await generateEmbedding(query);
+    try {
+      queryEmbedding = await generateEmbedding(query);
+    } catch (err) {
+      console.error('[Context] Embedding generation failed, continuing without:', err);
+    }
   }
 
-  // === PLAN A: APPLY MEMORY BUDGET ===
-  // Calculate memory fetch limit based on signal
-  const memoryFetchLimit = applyBudgetLevel(sourceBudget.memories, 100) ?? 100;
-
-  // Fetch candidate memories
-  const lookbackDate = new Date();
-  lookbackDate.setDate(lookbackDate.getDate() - profile.lookback_days);
-
-  let memoriesQuery: string;
-  let queryParams: (string | number | Date)[];
-
-  if (queryEmbedding) {
-    const embeddingStr = `[${queryEmbedding.join(',')}]`;
-    // When we have a query, ORDER BY SIMILARITY to get truly relevant memories
-    // 
-    // Phase 0 Enhancement: For personal-story profile or high-salience memories,
-    // use a much lower similarity threshold (0.15) to avoid filtering out
-    // biographical content that may use different vocabulary than the query.
-    // High-salience memories (>= 6.0) bypass the similarity filter entirely.
-    //
-    // Phase 1 Enhancement: Exclude meta_ai conversations from context injection.
-    // Dev chatter like "fix the bug" should not appear in personal context.
-    const isStoryMode = profile.name === 'personal-story';
-    const similarityThreshold = isStoryMode ? 0.15 : 0.25;
-    
-    memoriesQuery = `
-      SELECT
-        id, content, created_at, salience_score, current_strength,
-        1 - (embedding <=> $1::vector) as similarity
-      FROM memories
-      WHERE embedding IS NOT NULL
-        AND salience_score >= $2
-        AND current_strength >= $3
-        AND created_at >= $4
-        AND (
-          -- High-salience memories bypass similarity filter (biographical content)
-          salience_score >= 6.0
-          OR 1 - (embedding <=> $1::vector) >= $5
-        )
-        AND (conversation_mode IS NULL OR conversation_mode != 'meta_ai')
-        AND (tier IS NULL OR tier = 'solid')
-        AND (expression_safe IS NULL OR expression_safe = TRUE)
-      ORDER BY similarity DESC, salience_score DESC
-      LIMIT $6
-    `;
-    queryParams = [embeddingStr, profile.min_salience, profile.min_strength, lookbackDate, similarityThreshold, memoryFetchLimit];
-  } else {
-    memoriesQuery = `
-      SELECT
-        id, content, created_at, salience_score, current_strength,
-        NULL as similarity
-      FROM memories
-      WHERE salience_score >= $1
-        AND current_strength >= $2
-        AND created_at >= $3
-        AND (conversation_mode IS NULL OR conversation_mode != 'meta_ai')
-        AND (tier IS NULL OR tier = 'solid')
-        AND (expression_safe IS NULL OR expression_safe = TRUE)
-      ORDER BY salience_score DESC, created_at DESC
-      LIMIT $4
-    `;
-    queryParams = [profile.min_salience, profile.min_strength, lookbackDate, memoryFetchLimit];
-  }
-
-  const result = await pool.query(memoriesQuery, queryParams);
-
-  // === PLAN B: MULTI-CHANNEL RETRIEVAL ===
-  // Run additional retrieval channels in parallel with vector search processing
-  let additionalMemories: Awaited<ReturnType<typeof fetchMemoriesById>> = [];
-  let threadSnippets: string[] = [];
+  let scoredMemories: ScoredMemory[] = [];
 
   if (query) {
     try {
-      const multiChannelResults = await multiChannelRetrieval(pool, query, {
+      const recallResult = await enhancedRecall(query, {
         minSalience: profile.min_salience,
+        minStrength: profile.min_strength,
         lookbackDays: profile.lookback_days,
+        queryEmbedding: queryEmbedding ?? undefined,
       });
 
-      // Fetch the additional memories by ID
-      if (multiChannelResults.additionalMemoryIds.length > 0) {
-        additionalMemories = await fetchMemoriesById(multiChannelResults.additionalMemoryIds);
-      }
+      const s = recallResult.stats;
+      console.log(`[Context] Enhanced Recall: ${s.candidateCount} memories, ` +
+        `${s.entityMatchCount} entity matches, ${s.embeddingCandidates} embedding candidates, ` +
+        `${s.graphPropagationCount} propagations, ` +
+        `reranker=${s.rerankerUsed ? `${s.rerankerCalls} calls` : 'off'}` +
+        `${s.rerankerFallback ? ' (FALLBACK)' : ''}, ${s.elapsedMs}ms`);
 
-      threadSnippets = multiChannelResults.threadSnippets;
+      // Map MemoryCandidate[] to ScoredMemory[] for downstream compatibility
+      scoredMemories = recallResult.memories.map((mem, idx) => {
+        // Category by percentile rank in result set
+        const rank = idx / Math.max(recallResult.memories.length, 1);
+        let category: 'high_salience' | 'relevant' | 'recent';
+        if (rank < 0.2 || mem.salience_score >= 8.0) {
+          category = 'high_salience';
+        } else if (rank < 0.6 || mem.salience_score >= 6.0) {
+          category = 'relevant';
+        } else {
+          category = 'recent';
+        }
+
+        return {
+          id: mem.id,
+          content: mem.content,
+          created_at: mem.created_at,
+          salience_score: mem.salience_score,
+          current_strength: mem.current_strength,
+          similarity: undefined,
+          recency_score: 0,
+          final_score: mem.totalScore,
+          token_estimate: estimateTokens(mem.content),
+          category,
+        };
+      });
     } catch (err) {
-      // Graceful degradation: log error and continue with vector results only
-      console.error('[Context] Multi-channel retrieval error:', err);
+      console.error('[Context] Enhanced Recall error, falling back to empty:', err);
     }
   }
-
-  // Merge vector results with additional memories (deduplicate by ID)
-  const vectorMemoryIds = new Set(result.rows.map((row: { id: string }) => row.id));
-  const uniqueAdditionalMemories = additionalMemories.filter(mem => !vectorMemoryIds.has(mem.id));
-  const allMemoryRows = [...result.rows, ...uniqueAdditionalMemories];
-
-  // Score and categorize memories
-  const scoredMemories: ScoredMemory[] = allMemoryRows.map((row) => {
-    const recencyScore = calculateRecencyScore(row.created_at, profile.lookback_days);
-    const finalScore = calculateFinalScore(
-      {
-        salience_score: row.salience_score,
-        current_strength: row.current_strength,
-        created_at: row.created_at,
-        similarity: row.similarity,
-      },
-      weights,
-      profile.lookback_days
-    );
-
-    // Categorize based on primary characteristic
-    // Phase 0 Enhancement: High-salience memories (biographical content) are 
-    // always categorized as high_salience, regardless of similarity score.
-    // This ensures origin stories and key life facts are never deprioritized.
-    let category: 'high_salience' | 'relevant' | 'recent';
-    const hasHighSalience = row.salience_score >= 6.0;
-    const hasVeryHighSalience = row.salience_score >= 8.0;
-    const hasGoodSimilarity = row.similarity && row.similarity >= 0.35;
-    const hasAnySimilarity = row.similarity && row.similarity >= 0.15;
-
-    if (hasVeryHighSalience) {
-      // Very high salience (8+) = biographical/origin content → always high_salience
-      category = 'high_salience';
-    } else if (hasHighSalience && (hasAnySimilarity || !row.similarity)) {
-      // High salience (6+) with any relevance → high_salience
-      category = 'high_salience';
-    } else if (row.similarity && row.similarity >= 0.4) {
-      // Good semantic match
-      category = 'relevant';
-    } else if (hasGoodSimilarity) {
-      // Moderate semantic match
-      category = 'relevant';
-    } else {
-      category = 'recent';
-    }
-
-    return {
-      id: row.id,
-      content: row.content,
-      created_at: row.created_at,
-      salience_score: row.salience_score,
-      current_strength: row.current_strength,
-      similarity: row.similarity,
-      recency_score: recencyScore,
-      final_score: finalScore,
-      token_estimate: estimateTokens(row.content),
-      category,
-    };
-  });
 
   // Apply token budgeting
   const budgetedMemories = applyTokenBudget(
@@ -1282,12 +1108,11 @@ export async function generateContext(
   const totalTokens = filteredMemories.reduce((sum, m) => sum + m.token_estimate, 0);
   const memoryIds = filteredMemories.map((m) => m.id);
 
-  // === PLAN A: APPLY BUDGETS ===
-  // Calculate limits based on signal type
-  const notesLimit = applyBudgetLevel(sourceBudget.recentContext, 5) ?? 5;
-  const listsLimit = applyBudgetLevel(sourceBudget.recentContext, 5) ?? 5;
-  const docsLimit = applyBudgetLevel(sourceBudget.recentContext, 10) ?? 10;
-  const scheduleLimit = applyBudgetLevel(sourceBudget.upcomingEvents, 40);
+  // Fetch limits (signal detector removed — Enhanced Recall handles memory relevance)
+  const notesLimit = 5;
+  const listsLimit = 5;
+  const docsLimit = 10;
+  const scheduleLimit: number | null = null; // no cap on schedule
 
   // Parallel fetch: all independent data sources at once
   const [
@@ -1402,16 +1227,6 @@ export async function generateContext(
     markdown += supportGuidance + '\n';
   }
   markdown += formatMarkdown(filteredMemories, entities, summaries, profile, query);
-
-  // Add active threads section if any found via multi-channel retrieval
-  if (threadSnippets.length > 0) {
-    markdown += '\n## Active Threads\n\n';
-    markdown += '*Ongoing situations and open threads from recent conversations.*\n\n';
-    for (const snippet of threadSnippets) {
-      markdown += `- ${snippet}\n`;
-    }
-    markdown += '\n';
-  }
 
   if (notes.length > 0) {
     markdown += '\n' + formatNotesMarkdown(notes);
