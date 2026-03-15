@@ -60,6 +60,7 @@ export async function generateDailySnapshot(): Promise<StateSnapshot> {
   const periodStart = new Date(now);
   periodStart.setHours(0, 0, 0, 0);
   const periodEnd = new Date(now);
+  periodEnd.setHours(23, 59, 59, 999); // Clamp to end-of-day to prevent duplicate snapshots
 
   // Infer affect from recent data
   const affect = await inferAffectFromRecent(24);
@@ -74,12 +75,11 @@ export async function generateDailySnapshot(): Promise<StateSnapshot> {
   const commitmentsActive = parseInt(loopCountResult.rows[0]?.commitments ?? '0', 10);
   const openLoopCount = threadsActive + commitmentsActive;
 
-  // Count memories analyzed in this period
+  // Count active memories (recently accessed or high strength/salience)
   const memCountResult = await pool.query<{ count: string }>(
     `SELECT COUNT(*) as count FROM memories
-     WHERE created_at > $1
-       AND (conversation_mode IS NULL OR conversation_mode != 'meta_ai')`,
-    [periodStart]
+     WHERE (last_accessed_at > NOW() - INTERVAL '7 days' OR current_strength > 0.3 OR salience_score > 5.0)
+       AND (conversation_mode IS NULL OR conversation_mode != 'meta_ai')`
   );
   const memoriesAnalyzed = parseInt(memCountResult.rows[0]?.count ?? '0', 10);
 
