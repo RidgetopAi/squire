@@ -33,6 +33,7 @@ import { syncAllAccounts } from '../services/google/sync.js';
 import { startTelegramPoller, stopTelegramPoller } from '../services/telegram/index.js';
 import { startCourier, stopCourier } from '../services/courier/index.js';
 import { initCommuneScheduler, shutdownCommuneScheduler } from '../services/commune/index.js';
+import { closePool } from '../db/pool.js';
 
 // Google Calendar sync interval (configurable, default 15 minutes)
 const CALENDAR_SYNC_INTERVAL_MS = parseInt(process.env['CALENDAR_SYNC_INTERVAL_MS'] || '900000', 10);
@@ -165,9 +166,15 @@ httpServer.listen(port, async () => {
   }
 });
 
-// Graceful shutdown
-const shutdown = () => {
-  console.log('Shutting down gracefully...');
+// Graceful shutdown — drain in-flight requests, close DB pool, then exit
+let shutdownInProgress = false;
+const shutdown = async () => {
+  if (shutdownInProgress) return;
+  shutdownInProgress = true;
+
+  console.log('[Shutdown] Starting graceful shutdown...');
+
+  // 1. Stop accepting new work
   shutdownScheduler();
   stopTelegramPoller();
   stopCourier();
@@ -176,10 +183,31 @@ const shutdown = () => {
     clearInterval(calendarSyncTimer);
     calendarSyncTimer = null;
   }
-  httpServer.close(() => {
-    console.log('Server closed');
-    process.exit(0);
+
+  // 2. Close Socket.IO (stops new connections, lets in-flight finish)
+  io.close();
+  console.log('[Shutdown] Socket.IO closed');
+
+  // 3. Close HTTP server (stops new requests, waits for in-flight)
+  await new Promise<void>((resolve) => {
+    httpServer.close(() => {
+      console.log('[Shutdown] HTTP server closed');
+      resolve();
+    });
+    // If it takes too long, proceed anyway
+    setTimeout(resolve, 5000);
   });
+
+  // 4. Drain database pool (waits for in-flight queries to finish)
+  try {
+    await closePool();
+    console.log('[Shutdown] Database pool closed');
+  } catch (err) {
+    console.error('[Shutdown] Error closing database pool:', err);
+  }
+
+  console.log('[Shutdown] Clean exit');
+  process.exit(0);
 };
 
 process.on('SIGTERM', shutdown);

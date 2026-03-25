@@ -384,17 +384,7 @@ ${documentContent}
     console.log(`[Socket] Document discussion: streaming response (${tools?.length ?? 0} tools available)`);
     const streamResult = await streamWithToolLoop(socket, conversationId, messages, abortController.signal, tools);
 
-    // Step 6: Emit done + persist
-    io.to(`conversation:${conversationId}`).emit('chat:done', {
-      conversationId,
-      usage: streamResult.usage ? {
-        promptTokens: streamResult.usage.promptTokens,
-        completionTokens: streamResult.usage.completionTokens,
-        totalTokens: streamResult.usage.promptTokens + streamResult.usage.completionTokens,
-      } : undefined,
-    });
-    chatDoneEmitted = true;
-
+    // Step 6: Persist BEFORE emitting done (same pattern as main handler)
     if (streamResult.content) {
       const assistantMessage = await addMessage({
         conversationId: conversation.id,
@@ -410,6 +400,16 @@ ${documentContent}
         timestamp: assistantMessage.created_at.toISOString(),
       }, socket.id);
     }
+
+    io.to(`conversation:${conversationId}`).emit('chat:done', {
+      conversationId,
+      usage: streamResult.usage ? {
+        promptTokens: streamResult.usage.promptTokens,
+        completionTokens: streamResult.usage.completionTokens,
+        totalTokens: streamResult.usage.promptTokens + streamResult.usage.completionTokens,
+      } : undefined,
+    });
+    chatDoneEmitted = true;
   } catch (error) {
     console.error('[Socket] Document discussion error:', error);
     socket.emit('chat:error', {
@@ -675,24 +675,10 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
       }
     }
 
-    // Emit chat:done after follow-up
-    // Belt-and-suspenders: emit directly to socket AND broadcast to room
-    // Direct emit guarantees originating socket gets it; room broadcast covers reconnected sockets
-    const chatDonePayload = {
-      conversationId,
-      usage: streamResult.usage ? {
-        promptTokens: streamResult.usage.promptTokens,
-        completionTokens: streamResult.usage.completionTokens,
-        totalTokens: streamResult.usage.promptTokens + streamResult.usage.completionTokens,
-      } : undefined,
-      reportData: streamResult.reportData,
-    };
-    console.log(`[Socket] Emitting chat:done for conversation: ${conversationId}${streamResult.reportData ? ' (with report)' : ''}`);
-    socket.emit('chat:done', chatDonePayload);
-    io.to(`conversation:${conversationId}`).emit('chat:done', chatDonePayload);
-    chatDoneEmitted = true;
-
-    // Step 6: Persist assistant message (including follow-up) after streaming completes
+    // Step 6: Persist assistant message BEFORE emitting chat:done
+    // This ensures the DB write commits before the client clears its backup.
+    // If the server is killed between persist and emit, the message is safe in DB
+    // and the client will pick it up on reconnect.
     if (fullContent) {
       const assistantMessage = await addMessage({
         conversationId: conversation.id,
@@ -714,6 +700,21 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
         timestamp: assistantMessage.created_at.toISOString(),
       }, socket.id);
     }
+
+    // Emit chat:done AFTER persistence — client can safely clear backup
+    const chatDonePayload = {
+      conversationId,
+      usage: streamResult.usage ? {
+        promptTokens: streamResult.usage.promptTokens,
+        completionTokens: streamResult.usage.completionTokens,
+        totalTokens: streamResult.usage.promptTokens + streamResult.usage.completionTokens,
+      } : undefined,
+      reportData: streamResult.reportData,
+    };
+    console.log(`[Socket] Emitting chat:done for conversation: ${conversationId}${streamResult.reportData ? ' (with report)' : ''}`);
+    socket.emit('chat:done', chatDonePayload);
+    io.to(`conversation:${conversationId}`).emit('chat:done', chatDonePayload);
+    chatDoneEmitted = true;
   } catch (error) {
     console.error('[Socket] Chat error:', error);
 

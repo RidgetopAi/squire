@@ -180,11 +180,12 @@ if ! systemd-run --unit=squire-deploy-restart --no-block \
     sleep 2
     echo \"\$(date '+%Y-%m-%d %H:%M:%S') Starting restart...\" >> $DEPLOY_LOG
 
-    # Force-stop squire quickly (don't wait for graceful shutdown of agent loop)
+    # Graceful stop — SIGTERM lets in-flight DB writes finish (shutdown drains pool)
     systemctl kill -s SIGTERM squire
-    sleep 3
-    # If still alive after 3s, SIGKILL
+    sleep 15
+    # If still alive after 15s, force kill
     if systemctl is-active squire.service >/dev/null 2>&1; then
+      echo \"\$(date '+%Y-%m-%d %H:%M:%S') WARN: squire still alive after 15s, sending SIGKILL\" >> $DEPLOY_LOG
       systemctl kill -s SIGKILL squire
       sleep 1
     fi
