@@ -1,5 +1,5 @@
 import { pool } from '../db/pool.js';
-import { Memory } from './memories.js';
+import { Memory } from './knowledge/memories.js';
 import {
   Session,
   SessionStats,
@@ -9,19 +9,19 @@ import {
 import {
   processMemoryForPatterns,
   markStalePatternsDormant,
-} from './patterns.js';
+} from './knowledge/patterns.js';
 import {
   processInsightsForConsolidation,
-} from './insights.js';
+} from './knowledge/insights.js';
 import {
   processResearchForConsolidation,
 } from './research.js';
-import { extractMemoriesFromChat } from './chatExtraction.js';
+import { extractMemoriesFromChat } from './chat/chatExtraction.js';
 import { updateAllSummaries } from './summaries.js';
-import { evaluateUnevaluatedMemories } from './expressionEvaluator.js';
+import { evaluateUnevaluatedMemories } from './expression/expressionEvaluator.js';
 import { processThreadsForConsolidation } from './continuity.js';
-import { processStateSnapshot } from './stateSnapshots.js';
-import { processTrendsForConsolidation } from './trends.js';
+import { processStateSnapshot } from './analytics/stateSnapshots.js';
+import { processTrendsForConsolidation } from './analytics/trends.js';
 
 /**
  * Consolidation Configuration

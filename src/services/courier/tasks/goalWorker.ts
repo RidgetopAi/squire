@@ -6,10 +6,10 @@
  * for up to 15 turns, then logs what happened.
  */
 
-import { getNextGoal, markGoalWorkedOn, addGoalNote } from '../../goals.js';
+import { getNextGoal, markGoalWorkedOn, addGoalNote } from '../../planning/goals.js';
 import { AgentEngine } from '../../agent/index.js';
 import { notify } from '../notifier.js';
-import { createEntry } from '../../scratchpad.js';
+import { createEntry } from '../../storage/scratchpad.js';
 import type { CourierTask, TaskResult } from './index.js';
 import { config } from '../../../config/index.js';
 

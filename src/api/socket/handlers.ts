@@ -6,19 +6,19 @@
 
 import { Server, Socket } from 'socket.io';
 import { config } from '../../config/index.js';
-import { generateContext } from '../../services/context.js';
-import { detectStoryIntent, isStoryIntent, describeIntent } from '../../services/storyIntent.js';
-import { generateStory, type StoryResult } from '../../services/storyEngine.js';
-import { getOrCreateConversation, addMessage } from '../../services/conversations.js';
+import { generateContext } from '../../services/chat/context.js';
+import { detectStoryIntent, isStoryIntent, describeIntent } from '../../services/story/storyIntent.js';
+import { generateStory, type StoryResult } from '../../services/story/storyEngine.js';
+import { getOrCreateConversation, addMessage } from '../../services/chat/conversations.js';
 import { consolidateAll } from '../../services/consolidation.js';
-import { processMessageRealTime } from '../../services/chatExtraction.js';
+import { processMessageRealTime } from '../../services/chat/chatExtraction.js';
 import { getUserIdentity } from '../../services/identity.js';
 import {
   markConfirmationOffered,
   confirmCandidate,
   dismissCandidate,
   getLastOfferedCandidate,
-} from '../../services/commitments.js';
+} from '../../services/planning/commitments.js';
 import {
   getToolDefinitions,
   hasTools,
@@ -29,7 +29,7 @@ import {
 import { streamLLM } from '../../services/llm/index.js';
 import { buildMemoryContext } from '../../services/memory/index.js';
 import { SQUIRE_SYSTEM_PROMPT_BASE, TOOL_CALLING_INSTRUCTIONS } from '../../constants/prompts.js';
-import { getObjectById } from '../../services/objects.js';
+import { getObjectById } from '../../services/storage/objects.js';
 import { getSummary } from '../../services/summaries.js';
 import { searchForContext } from '../../services/documents/search.js';
 import type {
@@ -148,7 +148,7 @@ async function checkCandidateResponse(
   io.to(`conversation:${conversationId}`).emit('chat:done', { conversationId });
 
   // Persist the assistant message
-  const { addMessage: addChatMessage } = await import('../../services/conversations.js');
+  const { addMessage: addChatMessage } = await import('../../services/chat/conversations.js');
   await addChatMessage({
     conversationId,
     role: 'assistant',

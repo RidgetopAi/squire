@@ -2,7 +2,7 @@ import type { ToolHandler, ToolSpec } from './types.js';
 import { spawn } from 'child_process';
 import { listSyncEnabledAccounts, getAuthenticatedClient } from '../services/google/auth.js';
 import { google } from 'googleapis';
-import { getObjectData } from '../services/objects.js';
+import { getObjectData } from '../services/storage/objects.js';
 
 /**
  * Call the Python PDF form fill script
