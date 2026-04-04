@@ -21,6 +21,7 @@ import { listEntries as listScratchpadEntries } from '../storage/scratchpad.js';
 import { getThreadsForContext, getDueFollowups } from '../continuity.js';
 import { getLatestSnapshotNarrative, getUnacknowledgedConcerns } from '../analytics/stateSnapshots.js';
 import { getLatestTrend } from '../analytics/trends.js';
+import { getCurrentSynthesis, SYNTHESIS_THREAD_TITLE } from '../analytics/emotionalSynthesis.js';
 // expressionFilter.ts is no longer called at runtime — safety is pre-computed
 // by expressionEvaluator.ts (local Ollama model) during consolidation.
 
@@ -533,7 +534,10 @@ async function fetchContinuityPreamble(): Promise<string> {
     const threads = await getThreadsForContext(8);
     const followups = await getDueFollowups();
 
-    if (threads.length === 0 && followups.length === 0) {
+    // Filter out the emotional synthesis thread — it renders in "Your Read" section
+    const filteredThreads = threads.filter(t => t.title !== SYNTHESIS_THREAD_TITLE);
+
+    if (filteredThreads.length === 0 && followups.length === 0) {
       // Phase 1 fallback: check scratchpad continuity entries
       return await fetchScratchpadContinuity();
     }
@@ -544,7 +548,7 @@ async function fetchContinuityPreamble(): Promise<string> {
     lines.push('*Ongoing things in their life — check in naturally when relevant.*');
     lines.push('');
 
-    for (const thread of threads) {
+    for (const thread of filteredThreads) {
       const emotionalTag = thread.emotional_weight >= 7 ? ' [emotionally significant]' : '';
       const stateTag = thread.last_state_transition ? ` (${thread.last_state_transition})` : '';
       lines.push(`- **${thread.title}**${stateTag}${emotionalTag}`);
@@ -576,15 +580,25 @@ async function fetchContinuityPreamble(): Promise<string> {
  */
 async function fetchStateContext(): Promise<string> {
   try {
-    const narrative = await getLatestSnapshotNarrative();
-    const concerns = await getUnacknowledgedConcerns();
-    const weeklyTrend = await getLatestTrend('7day');
+    const [synthesis, narrative, concerns, weeklyTrend] = await Promise.all([
+      getCurrentSynthesis(),
+      getLatestSnapshotNarrative(),
+      getUnacknowledgedConcerns(),
+      getLatestTrend('7day'),
+    ]);
 
-    if (!narrative && concerns.length === 0 && !weeklyTrend) return '';
+    if (!synthesis && !narrative && concerns.length === 0 && !weeklyTrend) return '';
 
     const lines: string[] = [];
 
-    if (narrative) {
+    // Prefer emotional synthesis (Squire's own read) over mechanical narrative
+    if (synthesis) {
+      lines.push('# Your Read');
+      lines.push('');
+      lines.push('*Your perspective from last sleep — hold this lightly, update as you learn more:*');
+      lines.push(synthesis);
+      lines.push('');
+    } else if (narrative) {
       lines.push('# Current State');
       lines.push('');
       lines.push('*How they seem to be doing lately:*');
