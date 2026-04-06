@@ -157,21 +157,19 @@ export class AgentEngine {
       // Retrieve relevant memory context
       const memoryContext = await buildMemoryContext(input);
 
-      // Build system prompt with optional context
-      let systemContent = this.systemPrompt;
+      // System prompt split into two messages for Anthropic prompt caching:
+      // Message 1 (static): personality + instructions — identical every call, gets cached
+      // Message 2 (dynamic): memory context + additional context — changes per call, uncached
+      this.messages.push({ role: 'system', content: this.systemPrompt });
 
-      // Add memory context (lessons and preferences)
-      if (memoryContext) {
-        systemContent += `\n\n---\n\n${memoryContext}`;
+      // Build dynamic context block (if any)
+      const dynamicParts: string[] = [];
+      if (memoryContext) dynamicParts.push(memoryContext);
+      if (context) dynamicParts.push(context);
+
+      if (dynamicParts.length > 0) {
+        this.messages.push({ role: 'system', content: dynamicParts.join('\n\n---\n\n') });
       }
-
-      // Add any additional context passed in
-      if (context) {
-        systemContent += `\n\n---\n\n${context}`;
-      }
-
-      // Initialize messages with system prompt and user input
-      this.messages.push({ role: 'system', content: systemContent });
       this.messages.push({ role: 'user', content: input });
 
       // Classify task for routing (once per conversation)
