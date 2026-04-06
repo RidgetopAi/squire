@@ -444,6 +444,7 @@ export async function attemptOutreach(): Promise<{
   const engine = new AgentEngine({
     conversationId: `commune-${Date.now()}`,
     maxTurns: 8,
+    tier: 'fast',
     systemPrompt: COMMUNE_SYSTEM_PROMPT,
     tools: getCommuneTools(),
   });

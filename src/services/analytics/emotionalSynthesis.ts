@@ -32,10 +32,10 @@ import { getUnacknowledgedConcerns } from './stateSnapshots.js';
 /** Title used to identify the emotional synthesis thread */
 const SYNTHESIS_THREAD_TITLE = "Squire's Emotional Read";
 
-/** Provider config — always use Claude for emotional reasoning */
+/** Provider config — use Grok for fast, cheap emotional synthesis */
 const SYNTHESIS_LLM_OPTIONS = {
-  provider: 'anthropic',
-  model: 'claude-sonnet-4-6',
+  provider: 'xai',
+  model: 'grok-4-1-fast-reasoning',
   maxTokens: 400,
   temperature: 0.6,
 };

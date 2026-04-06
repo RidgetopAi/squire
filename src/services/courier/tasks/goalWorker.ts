@@ -104,6 +104,7 @@ Begin working on your goal now.`;
       const engine = new AgentEngine({
         conversationId: `goal-worker-${goal.id}-${Date.now()}`,
         maxTurns: config.goalWorker.maxTurns,
+        tier: 'fast',
         callbacks: {
           onStateChange: (state, turn) => console.log(`[GoalWorker] State: ${state}, Turn: ${turn}`),
           onToolCall: (name) => console.log(`[GoalWorker] Tool: ${name}`),

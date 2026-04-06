@@ -71,6 +71,8 @@ export interface AgentEngineOptions {
   systemPrompt?: string;
   /** Tools to make available (defaults to all registered tools) */
   tools?: ToolDefinition[];
+  /** Force a specific model tier, bypassing task classification */
+  tier?: ModelTier;
 }
 
 // === AgentEngine Class ===
@@ -129,6 +131,9 @@ export class AgentEngine {
 
     // Use provided tools or default to all registered tools
     this.tools = options.tools ?? getToolDefinitions();
+
+    // Allow callers to force a model tier (bypasses task classification)
+    this.tier = options.tier;
   }
 
   /**
@@ -172,10 +177,12 @@ export class AgentEngine {
       }
       this.messages.push({ role: 'user', content: input });
 
-      // Classify task for routing (once per conversation)
-      if (isRoutingEnabled()) {
+      // Classify task for routing (once per conversation, skip if tier was preset)
+      if (!this.tier && isRoutingEnabled()) {
         this.tier = classifyTask(input);
         console.log(`[Routing] Task classified as "${this.tier}" tier`);
+      } else if (this.tier) {
+        console.log(`[Routing] Using preset tier: "${this.tier}"`);
       }
 
       // Track final response content
