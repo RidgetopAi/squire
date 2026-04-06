@@ -230,6 +230,7 @@ import { tools as continuityTools } from './continuity.js';
 import { tools as pdfTools } from './pdf.js';
 import { tools as scoutTools } from './scout.js';
 import { tools as sandboxTools } from './sandbox.js';
+import { tools as jobTools } from './jobs.js';
 
 const allToolSpecs: ToolSpec[] = [
   ...timeTools,
@@ -256,6 +257,7 @@ const allToolSpecs: ToolSpec[] = [
   ...pdfTools,
   ...scoutTools,
   ...sandboxTools,
+  ...jobTools,
 ];
 
 for (const spec of allToolSpecs) {

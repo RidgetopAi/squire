@@ -2,9 +2,8 @@
  * Sandbox Tool
  *
  * Ephemeral workspaces on VPS for one-off builds, scripts, and artifacts.
- * Squire dispatches Claude Code into a sandbox directory, CC does the work
- * (install deps, write scripts, generate output), and results come back
- * with a file manifest. Squire can then read files, email artifacts, etc.
+ * Supports both sync (block until done) and async (return immediately,
+ * notify via Telegram when complete) modes.
  *
  * Sandbox directories live at /tmp/squire-sandbox-[uuid]/ and are
  * explicitly cleaned up via sandbox_cleanup.
@@ -16,6 +15,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { existsSync, writeFileSync, unlinkSync } from 'fs';
 import type { ToolHandler, ToolSpec } from './types.js';
+import { createJob, completeJob, failJob } from '../services/jobs.js';
 
 const execAsync = promisify(exec);
 
@@ -46,7 +46,7 @@ async function createSandbox(): Promise<string> {
   return sandboxPath;
 }
 
-async function listSandboxFiles(sandboxPath: string): Promise<Array<{ path: string; size: number; sizeStr: string }>> {
+export async function listSandboxFiles(sandboxPath: string): Promise<Array<{ path: string; size: number; sizeStr: string }>> {
   const cmd = `find ${sandboxPath} -type f -not -name '.claude*' -printf '%P\\t%s\\n' 2>/dev/null | sort`;
 
   let stdout: string;
@@ -124,7 +124,6 @@ async function runClaudeCodeInSandbox(
   const sessionId = crypto.randomUUID();
   const tmpPromptFile = `/tmp/squire-prompt-${sessionId}`;
 
-  // Prepend sandbox context to the prompt
   const fullPrompt = `You are working in an ephemeral sandbox directory: ${sandboxPath}
 This is a temporary workspace — install dependencies, write scripts, generate any files you need.
 All output files should be written to this directory (or subdirectories within it).
@@ -176,16 +175,93 @@ ${prompt}`;
   }
 }
 
+// --- Inline file reading ---
+
+async function readInlineFiles(
+  sandboxPath: string,
+  files: Array<{ path: string; size: number; sizeStr: string }>
+): Promise<Array<{ path: string; content: string }>> {
+  const inlineFiles: Array<{ path: string; content: string }> = [];
+  const textExts = ['.txt', '.md', '.csv', '.json', '.html', '.xml', '.yaml', '.yml', '.log', '.ts', '.js', '.py', '.sh', '.sql', '.css', '.svg'];
+
+  for (const file of files) {
+    if (file.size <= MAX_INLINE_SIZE && file.size > 0) {
+      const ext = path.extname(file.path).toLowerCase();
+      if (textExts.includes(ext) || ext === '') {
+        try {
+          const content = await readRemoteFile(path.join(sandboxPath, file.path));
+          inlineFiles.push({ path: file.path, content });
+        } catch {
+          // Skip files we can't read
+        }
+      }
+    }
+  }
+
+  return inlineFiles;
+}
+
+function formatResult(
+  sandboxPath: string,
+  model: string,
+  ccResult: ClaudeCodeResult,
+  files: Array<{ path: string; size: number; sizeStr: string }>,
+  inlineFiles: Array<{ path: string; content: string }>,
+  jobId?: string
+): string {
+  const lines: string[] = [];
+  lines.push(`**Sandbox Complete** (${model})`);
+  lines.push(`Path: \`${sandboxPath}\``);
+  if (jobId) lines.push(`Job: \`${jobId}\``);
+  if (ccResult.durationMs) {
+    lines.push(`Duration: ${(ccResult.durationMs / 1000).toFixed(1)}s`);
+  }
+  lines.push('');
+
+  if (ccResult.success) {
+    lines.push('### Result');
+    lines.push(ccResult.result);
+  } else {
+    lines.push('### Error');
+    lines.push(ccResult.error || ccResult.result);
+  }
+
+  if (files.length > 0) {
+    lines.push('');
+    lines.push(`### Output Files (${files.length})`);
+    for (const file of files) {
+      lines.push(`- \`${file.path}\` (${file.sizeStr})`);
+    }
+  }
+
+  if (inlineFiles.length > 0) {
+    lines.push('');
+    lines.push('### File Contents');
+    for (const file of inlineFiles) {
+      const ext = path.extname(file.path).replace('.', '') || 'text';
+      lines.push('');
+      lines.push(`**${file.path}**`);
+      lines.push(`\`\`\`${ext}`);
+      lines.push(file.content);
+      lines.push('```');
+    }
+  }
+
+  return lines.join('\n');
+}
+
 // --- Tool handlers ---
 
 interface SandboxArgs {
   task: string;
   model?: string;
   timeout?: number;
+  async?: boolean;
 }
 
 async function sandboxRun(args: SandboxArgs): Promise<string> {
   const { task, model, timeout } = args;
+  const isAsync = args.async === true;
 
   if (!task || task.trim().length === 0) {
     return 'Error: task is required — describe what you need built.';
@@ -204,9 +280,40 @@ async function sandboxRun(args: SandboxArgs): Promise<string> {
   }
 
   console.log(`[sandbox] Created: ${sandboxPath}`);
-  console.log(`[sandbox] Dispatching Claude Code (${effectiveModel})...`);
+  console.log(`[sandbox] Mode: ${isAsync ? 'async' : 'sync'}, Model: ${effectiveModel}`);
 
-  // 2. Run Claude Code
+  // --- ASYNC MODE: fire and forget, notify on completion ---
+  if (isAsync) {
+    const job = createJob({
+      task: task.trim(),
+      sandboxPath,
+      model: effectiveModel,
+    });
+
+    // Fire in background — don't await
+    runClaudeCodeInSandbox(sandboxPath, task.trim(), effectiveModel, effectiveTimeout)
+      .then(async (ccResult) => {
+        const files = await listSandboxFiles(sandboxPath).catch(() => []);
+        await completeJob(job.id, ccResult.success ? ccResult.result : (ccResult.error || 'Unknown error'), files);
+      })
+      .catch(async (error) => {
+        const msg = error instanceof Error ? error.message : String(error);
+        await failJob(job.id, msg);
+      });
+
+    return [
+      `**Sandbox Dispatched** (async)`,
+      `Job: \`${job.id}\``,
+      `Path: \`${sandboxPath}\``,
+      `Model: ${effectiveModel}`,
+      '',
+      'Claude Code is working in the background.',
+      'You will be notified via Telegram when the job completes.',
+      'Use `job_status` tool to check progress.',
+    ].join('\n');
+  }
+
+  // --- SYNC MODE: block and return results ---
   let ccResult: ClaudeCodeResult;
   try {
     ccResult = await runClaudeCodeInSandbox(sandboxPath, task.trim(), effectiveModel, effectiveTimeout);
@@ -215,73 +322,10 @@ async function sandboxRun(args: SandboxArgs): Promise<string> {
     return `Sandbox error (Claude Code failed): ${msg}\n\nSandbox path: ${sandboxPath}`;
   }
 
-  // 3. List output files
-  let files: Array<{ path: string; size: number; sizeStr: string }> = [];
-  try {
-    files = await listSandboxFiles(sandboxPath);
-  } catch {
-    // Non-fatal — sandbox might be empty
-  }
+  const files = await listSandboxFiles(sandboxPath).catch(() => [] as Array<{ path: string; size: number; sizeStr: string }>);
+  const inlineFiles = await readInlineFiles(sandboxPath, files);
 
-  // 4. Read small text files inline
-  const inlineFiles: Array<{ path: string; content: string }> = [];
-  for (const file of files) {
-    if (file.size <= MAX_INLINE_SIZE && file.size > 0) {
-      const ext = path.extname(file.path).toLowerCase();
-      const textExts = ['.txt', '.md', '.csv', '.json', '.html', '.xml', '.yaml', '.yml', '.log', '.ts', '.js', '.py', '.sh', '.sql', '.css', '.svg'];
-      if (textExts.includes(ext) || ext === '') {
-        try {
-          const content = await readRemoteFile(path.join(sandboxPath, file.path));
-          inlineFiles.push({ path: file.path, content });
-        } catch {
-          // Skip files we can't read
-        }
-      }
-    }
-  }
-
-  // 5. Build response
-  const lines: string[] = [];
-  lines.push(`**Sandbox Complete** (${effectiveModel})`);
-  lines.push(`Path: \`${sandboxPath}\``);
-  if (ccResult.durationMs) {
-    lines.push(`Duration: ${(ccResult.durationMs / 1000).toFixed(1)}s`);
-  }
-  lines.push('');
-
-  // Claude Code result
-  if (ccResult.success) {
-    lines.push('### Result');
-    lines.push(ccResult.result);
-  } else {
-    lines.push('### Error');
-    lines.push(ccResult.error || ccResult.result);
-  }
-
-  // File manifest
-  if (files.length > 0) {
-    lines.push('');
-    lines.push(`### Output Files (${files.length})`);
-    for (const file of files) {
-      lines.push(`- \`${file.path}\` (${file.sizeStr})`);
-    }
-  }
-
-  // Inline file contents
-  if (inlineFiles.length > 0) {
-    lines.push('');
-    lines.push('### File Contents');
-    for (const file of inlineFiles) {
-      const ext = path.extname(file.path).replace('.', '') || 'text';
-      lines.push('');
-      lines.push(`**${file.path}**`);
-      lines.push(`\`\`\`${ext}`);
-      lines.push(file.content);
-      lines.push('```');
-    }
-  }
-
-  return lines.join('\n');
+  return formatResult(sandboxPath, effectiveModel, ccResult, files, inlineFiles);
 }
 
 interface SandboxCleanupArgs {
@@ -321,13 +365,14 @@ The sandbox is a temporary directory on VPS where Claude Code can:
 - Generate output files (PDFs, CSVs, reports, images, etc.)
 - Run builds, tests, or any one-off task
 
-After Claude Code finishes, you get back:
+Two modes:
+- **sync** (default): Blocks until Claude Code finishes, returns results + file manifest inline
+- **async** (async: true): Returns immediately with a job ID, notifies via Telegram when done
+
+After completion you get:
 - Claude Code's response/summary
 - A manifest of all output files with sizes
 - Small text files read back inline for immediate use
-
-Use this for one-off requests: generating reports, building scripts, data transformations,
-creating documents, or any task that needs a clean workspace.
 
 The sandbox path is returned so you can read specific files or email artifacts afterward.
 Call sandbox_cleanup when done to wipe the workspace.
@@ -335,7 +380,8 @@ Call sandbox_cleanup when done to wipe the workspace.
 Parameters:
 - task: What to build (be specific about desired output files/format)
 - model: Claude Code model (default: sonnet)
-- timeout: Max time in ms (default: 600000 = 10 min, max: 15 min)`,
+- timeout: Max time in ms (default: 600000 = 10 min, max: 15 min)
+- async: Set true to run in background and get notified when done`,
     parameters: {
       type: 'object',
       properties: {
@@ -351,6 +397,10 @@ Parameters:
         timeout: {
           type: 'number',
           description: 'Timeout in milliseconds (default: 600000 = 10 min, max: 900000 = 15 min)',
+        },
+        async: {
+          type: 'boolean',
+          description: 'Run in background and notify via Telegram when done (default: false)',
         },
       },
       required: ['task'],
