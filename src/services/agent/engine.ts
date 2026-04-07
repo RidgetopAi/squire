@@ -118,7 +118,7 @@ export class AgentEngine {
    */
   constructor(options: AgentEngineOptions) {
     this.conversationId = options.conversationId;
-    this.maxTurns = options.maxTurns ?? 50;
+    this.maxTurns = options.maxTurns ?? 200;
     this.callbacks = options.callbacks ?? {};
     this.abortController = new AbortController();
 
