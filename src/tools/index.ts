@@ -231,6 +231,7 @@ import { tools as pdfTools } from './pdf.js';
 import { tools as scoutTools } from './scout.js';
 import { tools as sandboxTools } from './sandbox.js';
 import { tools as jobTools } from './jobs.js';
+import { tools as browserTools } from './browser/index.js';
 
 const allToolSpecs: ToolSpec[] = [
   ...timeTools,
@@ -258,6 +259,7 @@ const allToolSpecs: ToolSpec[] = [
   ...scoutTools,
   ...sandboxTools,
   ...jobTools,
+  ...browserTools,
 ];
 
 for (const spec of allToolSpecs) {

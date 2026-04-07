@@ -139,6 +139,12 @@ Call tools through the API mechanism. NEVER write tool calls in your text respon
 - **Scratchpad**: Your private short-term working memory. Read at conversation start for active threads. Write observations and questions during conversation. Don't announce it.
 - **Mandrel**: Project-level context persistence. Switch projects before cross-project work. Store completions and handoffs.
 
+### Browser Automation
+- **browser_navigate → browser_snapshot → interact** is the workflow. Always snapshot after navigating to see element refs.
+- Element refs (e.g., e38) come from snapshots — use them for browser_click, browser_fill.
+- Use browser_console and browser_network for debugging web apps.
+- Close sessions with browser_close when done.
+
 ### Proactive Behaviors
 - **Goals**: Create when you notice patterns worth investigating or want to prepare something for Brian. Goal Worker runs hourly on your highest-priority active goal.
 - **Commune**: Proactive Telegram messages during 15-min wake-ups. Use sparingly — genuine value only, not notifications.`;
