@@ -1,8 +1,11 @@
 import express from 'express';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { config } from '../config/index.js';
 import { registerSocketHandlers, setSocketServer } from './socket/index.js';
+import { apiKeyAuth } from './middleware/auth.js';
 import memoriesRouter from './routes/memories.js';
 import healthRouter from './routes/health.js';
 import contextRouter from './routes/context.js';
@@ -61,11 +64,45 @@ registerSocketHandlers(io);
 // Register io for broadcast functions (used by services)
 setSocketServer(io);
 
+// Security middleware
+app.use(helmet({
+  // Disable CSP for API-only server (frontend handles CSP)
+  contentSecurityPolicy: false,
+}));
+
+// General rate limiter (100 req / 15 min per IP)
+const generalLimiter = rateLimit({
+  windowMs: config.security.rateLimitWindowMs,
+  max: config.security.rateLimitMax,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later' },
+});
+
+// Stricter rate limiter for chat endpoint (20 req / min per IP)
+const chatLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: config.security.chatRateLimitMax,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many chat requests, please try again later' },
+});
+
+// Apply general rate limit to all API routes
+app.use('/api', generalLimiter);
+
 // Middleware
 app.use(express.json({ limit: '5mb' }));
 
-// Routes
+// Health check - no auth required (for monitoring)
 app.use('/api/health', healthRouter);
+
+// API key authentication for all other routes
+app.use('/api', apiKeyAuth);
+
+// Chat route with stricter rate limit
+app.use('/api/chat', chatLimiter, chatRouter);
+
 app.use('/api/memories', memoriesRouter);
 app.use('/api/context', contextRouter);
 app.use('/api/entities', entitiesRouter);
@@ -77,7 +114,7 @@ app.use('/api/insights', insightsRouter);
 app.use('/api/research', researchRouter);
 app.use('/api/graph', graphRouter);
 app.use('/api/objects', objectsRouter);
-app.use('/api/chat', chatRouter);
+// Note: /api/chat is registered above with stricter rate limit
 app.use('/api/commitments', commitmentsRouter);
 app.use('/api/reminders', remindersRouter);
 app.use('/api/notifications', notificationsRouter);

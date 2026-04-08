@@ -132,6 +132,12 @@ export const config = {
     rerankerModel: optional('RECALL_RERANKER_MODEL', 'grok-4-1-fast-reasoning'),
     maxRerankerCandidates: parseInt(optional('RECALL_RERANKER_POOL', '15'), 10),
   },
+  security: {
+    apiKey: process.env['SQUIRE_API_KEY'] ?? '',
+    rateLimitWindowMs: parseInt(optional('RATE_LIMIT_WINDOW_MS', '900000'), 10), // 15 min
+    rateLimitMax: parseInt(optional('RATE_LIMIT_MAX', '100'), 10),
+    chatRateLimitMax: parseInt(optional('CHAT_RATE_LIMIT_MAX', '20'), 10),
+  },
 } as const;
 
 export type Config = typeof config;

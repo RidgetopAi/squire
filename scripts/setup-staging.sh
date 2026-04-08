@@ -24,7 +24,7 @@ fi
 log "Syncing from production..."
 rsync -a --delete \
   --exclude='.env' \
-  --exclude='storage' \
+  --exclude='/storage' \
   --exclude='.git' \
   --exclude='node_modules' \
   --exclude='web/node_modules' \
