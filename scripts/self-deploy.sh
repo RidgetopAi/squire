@@ -40,6 +40,24 @@ done
 log() { echo "[deploy] $(date '+%H:%M:%S') $1"; }
 die() { log "ERROR: $1"; exit 1; }
 
+# --- Step 0a: Git pre-flight ---
+# The auto-commit block runs under systemd-run as root, which triggers git's
+# "dubious ownership" safety check and makes `git status` print to stderr and
+# return empty stdout. If we don't catch that here, the deploy proceeds and
+# silently skips committing live changes — which is exactly how two days of
+# uncommitted tool-call fixes lived in /opt/squire on 2026-04-16 → 2026-04-18.
+#
+# Fail fast: probe the repo the same way the systemd-run block will.
+log "[0/5] Git pre-flight..."
+GIT_PROBE_OUT=$(cd "$PRODUCTION" && git status --porcelain 2>&1) || true
+if echo "$GIT_PROBE_OUT" | grep -q "dubious ownership"; then
+  die "git refuses to read $PRODUCTION (dubious ownership). Fix: git config --global --add safe.directory $PRODUCTION && git config --global --add safe.directory $STAGING"
+fi
+if ! (cd "$PRODUCTION" && git rev-parse --is-inside-work-tree >/dev/null 2>&1); then
+  die "$PRODUCTION is not a git working tree — auto-commit cannot run"
+fi
+log "✓ Git pre-flight passed"
+
 # --- Step 0: Deploy lock ---
 # Prevent concurrent deploys. Lock auto-expires after 5 minutes (stale protection).
 if [ -f "$LOCK_FILE" ]; then
@@ -205,22 +223,38 @@ if ! systemd-run --unit=squire-deploy-restart --no-block \
     if [ \"\$HEALTHY\" = \"true\" ]; then
       echo \"\$(date '+%Y-%m-%d %H:%M:%S') ✓ Deploy verified healthy\" >> $DEPLOY_LOG
 
-      # Auto-commit and push changes to git
+      # Auto-commit and push changes to git.
+      # Must work under systemd-run's environment — git's 'dubious ownership'
+      # check used to silently return empty here, which caused two days of
+      # fixes to go unversioned (2026-04-16 → 2026-04-18). Now we:
+      #   (a) surface any git error to the deploy log rather than swallowing
+      #       it via \$(...)
+      #   (b) use 'git diff HEAD --quiet' to detect changes (exit code, not
+      #       stdout — avoids dubious-ownership silent-empty failure)
+      #   (c) if git can't read the repo at all, log a loud WARN
       cd $PRODUCTION
-      if [ -n \"\$(git status --porcelain 2>/dev/null)\" ]; then
+      GIT_PROBE=\$(git status --porcelain 2>&1)
+      GIT_RC=\$?
+      if [ \$GIT_RC -ne 0 ] || echo \"\$GIT_PROBE\" | grep -q 'dubious ownership'; then
+        echo \"\$(date '+%Y-%m-%d %H:%M:%S') ✗ WARN Git unreadable from deploy unit: \$GIT_PROBE\" >> $DEPLOY_LOG
+        echo \"\$(date '+%Y-%m-%d %H:%M:%S')   Fix: git config --global --add safe.directory $PRODUCTION\" >> $DEPLOY_LOG
+      elif ! git diff HEAD --quiet 2>>$DEPLOY_LOG; then
         echo \"\$(date '+%Y-%m-%d %H:%M:%S') Git: committing deploy changes...\" >> $DEPLOY_LOG
-        git add -A
+        git add -u 2>>$DEPLOY_LOG
         SUMMARY=\$(git diff --cached --stat | tail -1)
-        git commit -m \"auto-deploy: \$(date '+%Y-%m-%d %H:%M:%S')
+        if git commit -m \"auto-deploy: \$(date '+%Y-%m-%d %H:%M:%S')
 
 \$SUMMARY
 
-Deployed by Squire self-deploy pipeline.\" 2>> $DEPLOY_LOG
-        git push origin main 2>> $DEPLOY_LOG && \
-          echo \"\$(date '+%Y-%m-%d %H:%M:%S') Git: pushed to origin\" >> $DEPLOY_LOG || \
-          echo \"\$(date '+%Y-%m-%d %H:%M:%S') Git: push failed (non-fatal)\" >> $DEPLOY_LOG
+Deployed by Squire self-deploy pipeline.\" >>$DEPLOY_LOG 2>&1; then
+          git push origin main >>$DEPLOY_LOG 2>&1 && \
+            echo \"\$(date '+%Y-%m-%d %H:%M:%S') Git: pushed to origin\" >> $DEPLOY_LOG || \
+            echo \"\$(date '+%Y-%m-%d %H:%M:%S') ✗ WARN Git push failed (commit landed locally)\" >> $DEPLOY_LOG
+        else
+          echo \"\$(date '+%Y-%m-%d %H:%M:%S') ✗ WARN Git commit failed\" >> $DEPLOY_LOG
+        fi
       else
-        echo \"\$(date '+%Y-%m-%d %H:%M:%S') Git: no changes to commit\" >> $DEPLOY_LOG
+        echo \"\$(date '+%Y-%m-%d %H:%M:%S') Git: working tree matches HEAD — nothing to commit\" >> $DEPLOY_LOG
       fi
     else
       echo \"\$(date '+%Y-%m-%d %H:%M:%S') ✗ UNHEALTHY - rolling back\" >> $DEPLOY_LOG
