@@ -9,7 +9,12 @@ import { config } from '../../config/index.js';
 import { generateContext } from '../../services/chat/context.js';
 import { detectStoryIntent, isStoryIntent, describeIntent } from '../../services/story/storyIntent.js';
 import { generateStory, type StoryResult } from '../../services/story/storyEngine.js';
-import { getOrCreateConversation, addMessage } from '../../services/chat/conversations.js';
+import {
+  getOrCreateConversation,
+  addMessage,
+  persistToolTurn,
+  getRecentMessagesForContext,
+} from '../../services/chat/conversations.js';
 import { consolidateAll } from '../../services/consolidation.js';
 import { processMessageRealTime } from '../../services/chat/chatExtraction.js';
 import { getUserIdentity } from '../../services/identity.js';
@@ -382,21 +387,26 @@ ${documentContent}
     // Step 5: Stream LLM response
     const tools = hasTools() ? getToolDefinitions() : undefined;
     console.log(`[Socket] Document discussion: streaming response (${tools?.length ?? 0} tools available)`);
-    const streamResult = await streamWithToolLoop(socket, conversationId, messages, abortController.signal, tools);
+    const streamResult = await streamWithToolLoop(socket, conversationId, messages, abortController.signal, tools, undefined, conversation.id);
 
-    // Step 6: Persist BEFORE emitting done (same pattern as main handler)
-    if (streamResult.content) {
+    // Step 6: Persist BEFORE emitting done.
+    // Only persist the final (post-tool-loop) assistant text — intermediate
+    // assistant narration between tool calls is already persisted by
+    // persistToolTurn inside the loop. Writing streamResult.content here
+    // would double-record that narration and bloat history.
+    const docFinalContent = streamResult.finalAssistantContent;
+    if (docFinalContent) {
       const assistantMessage = await addMessage({
         conversationId: conversation.id,
         role: 'assistant',
-        content: streamResult.content,
+        content: docFinalContent,
         promptTokens: streamResult.usage?.promptTokens,
         completionTokens: streamResult.usage?.completionTokens,
       });
       broadcastMessageSynced(io, conversationId, {
         id: assistantMessage.id,
         role: 'assistant',
-        content: streamResult.content,
+        content: docFinalContent,
         timestamp: assistantMessage.created_at.toISOString(),
       }, socket.id);
     }
@@ -433,7 +443,7 @@ async function handleChatMessage(
   io: TypedIO,
   payload: ChatMessagePayload
 ): Promise<void> {
-  const { conversationId, message, images, history = [], includeContext = true, contextProfile, documentId } = payload;
+  const { conversationId, message, images, includeContext = true, contextProfile, documentId } = payload;
 
   console.log(`[Socket] chat:message from ${socket.id} - conversation: ${conversationId}`);
 
@@ -614,9 +624,20 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
     }
     messages.push({ role: 'system', content: dynamicContent });
 
-    // Add conversation history
-    for (const msg of history.slice(-10)) {
-      messages.push({ role: msg.role, content: msg.content });
+    // Add conversation history — load from DB to include tool call/result messages
+    // This is the key fix: frontend history only has user/assistant text,
+    // but the DB has the full tool call chain we need for mid-session awareness
+    const dbHistory = await getRecentMessagesForContext(conversation.id, 20);
+    // Remove the last message if it's the user message we just persisted (avoid duplication)
+    const historyWithoutCurrent = dbHistory.filter((m) => !(m.role === 'user' && m.content === message));
+    for (const msg of historyWithoutCurrent) {
+      const histMsg: { role: string; content: string; tool_calls?: ToolCall[]; tool_call_id?: string } = {
+        role: msg.role,
+        content: msg.content,
+      };
+      if (msg.tool_calls) histMsg.tool_calls = msg.tool_calls as ToolCall[];
+      if (msg.tool_call_id) histMsg.tool_call_id = msg.tool_call_id;
+      messages.push(histMsg);
     }
 
     // Add current message with optional images
@@ -631,11 +652,15 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
     const providerName = providerOverride?.provider ?? config.llm.provider;
     
     console.log(`[Socket] Step 4: Starting ${providerName} stream... (${tools?.length ?? 0} tools available${hasImages ? ', with images' : ''})`);
-    const streamResult = await streamWithToolLoop(socket, conversationId, messages, abortController.signal, tools, providerOverride);
+    const streamResult = await streamWithToolLoop(socket, conversationId, messages, abortController.signal, tools, providerOverride, conversation.id);
     console.log(`[Socket] Stream complete: ${streamResult.content.length} chars`);
 
-    // Step 5: Await extraction and stream follow-up acknowledgment if needed
-    let fullContent = streamResult.content;
+    // Step 5: Await extraction and stream follow-up acknowledgment if needed.
+    // fullContent here is only the final (post-tool-loop) assistant text —
+    // intermediate narration between tool iterations was already persisted
+    // by persistToolTurn inside the loop. Double-writing it here would
+    // bloat history and break the assistant/tool_use/tool_result pairing.
+    let fullContent = streamResult.finalAssistantContent;
     const extracted = await extractionPromise;
 
     if (extracted.commitmentCreated || extracted.reminderCreated) {
@@ -753,12 +778,15 @@ async function streamWithToolLoop(
   messages: Array<{ role: string; content: string; images?: ImageContent[]; tool_calls?: ToolCall[]; tool_call_id?: string }>,
   signal: AbortSignal,
   tools?: ToolDefinition[],
-  providerOverride?: { provider: string; model: string }
-): Promise<{ content: string; usage?: { promptTokens: number; completionTokens: number }; reportData?: { title: string; summary: string; content: string; generatedAt: string } }> {
+  providerOverride?: { provider: string; model: string },
+  conversationDbId?: string
+): Promise<{ content: string; usage?: { promptTokens: number; completionTokens: number }; reportData?: { title: string; summary: string; content: string; generatedAt: string }; usedTools: boolean; finalAssistantContent: string }> {
   let fullContent = '';
   let totalPromptTokens = 0;
   let totalCompletionTokens = 0;
   let reportData: { title: string; summary: string; content: string; generatedAt: string } | undefined;
+  let usedTools = false;
+  let finalAssistantContent = '';
   const currentMessages = [...messages];
 
   for (let iteration = 0; iteration <= MAX_TOOL_ITERATIONS; iteration++) {
@@ -782,10 +810,14 @@ async function streamWithToolLoop(
     totalPromptTokens += response.usage?.promptTokens ?? 0;
     totalCompletionTokens += response.usage?.completionTokens ?? 0;
 
-    // No tool calls → we're done
+    // No tool calls → we're done. Remember this turn's text as the
+    // final assistant-visible content; the caller will persist it via
+    // addMessage so it gets memory-linkage + stats.
     if (response.toolCalls.length === 0) {
+      finalAssistantContent = response.content;
       break;
     }
+    usedTools = true;
 
     // Check iteration limit
     if (iteration >= MAX_TOOL_ITERATIONS) {
@@ -795,6 +827,9 @@ async function streamWithToolLoop(
         chunk: '\n\n[Tool execution limit reached.]',
         done: false,
       });
+      // Surface this iteration's text as the final row so the user isn't
+      // left with a blank assistant turn in history.
+      finalAssistantContent = response.content || '[Tool execution limit reached.]';
       break;
     }
 
@@ -839,6 +874,28 @@ async function streamWithToolLoop(
       });
     }
 
+    // Persist the assistant(tool_calls) row + all tool_result rows as one
+    // atomic transaction so sequence numbers stay contiguous even if the
+    // user fires another message concurrently. Awaited (not fire-and-forget)
+    // so the next loop iteration and the post-loop addMessage see the rows
+    // in the right order — but this is fast: one BEGIN/COMMIT on one client.
+    if (conversationDbId) {
+      try {
+        await persistToolTurn({
+          conversationId: conversationDbId,
+          assistantContent: response.content,
+          toolCalls: response.toolCalls,
+          results: toolResults.map((r) => ({
+            toolCallId: r.toolCallId,
+            toolName: r.name,
+            content: r.result,
+          })),
+        });
+      } catch (err) {
+        console.error('[Socket] Failed to persist tool turn:', err);
+      }
+    }
+
     // Loop continues — will stream next LLM response with tool results
   }
 
@@ -846,6 +903,8 @@ async function streamWithToolLoop(
     content: fullContent,
     usage: { promptTokens: totalPromptTokens, completionTokens: totalCompletionTokens },
     reportData,
+    usedTools,
+    finalAssistantContent,
   };
 }
 

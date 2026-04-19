@@ -21,7 +21,7 @@ export interface Conversation {
 export interface ChatMessageDB {
   id: string;
   conversation_id: string;
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
   context_memory_ids: string[];
   disclosure_id: string | null;
@@ -33,6 +33,8 @@ export interface ChatMessageDB {
   extraction_status: 'pending' | 'skipped' | 'extracted';
   extracted_at: Date | null;
   metadata: Record<string, unknown> | null;
+  tool_call_id: string | null;
+  tool_calls: unknown[] | null;
 }
 
 export interface CreateConversationInput {
@@ -308,3 +310,152 @@ export async function getRecentConversationWithMessages(): Promise<{
   return { conversation, messages };
 }
 
+export interface PersistToolTurnInput {
+  conversationId: string;
+  /** Assistant-turn text that preceded the tool calls (may be empty) */
+  assistantContent: string;
+  toolCalls: unknown[];
+  results: Array<{ toolCallId: string; toolName: string; content: string }>;
+}
+
+/**
+ * Persist one tool turn atomically: the assistant message with tool_calls
+ * followed by each tool result, all under one transaction on a single
+ * client connection.
+ *
+ * Why atomic: sequence numbers are computed as MAX(sequence_number)+1.
+ * If the assistant row and tool rows were written under separate pool
+ * clients, a concurrent writer (e.g. the user's next message) could steal
+ * a sequence number in the middle and land a 'user' row between the
+ * assistant's tool_use and the corresponding tool_results. Anthropic's
+ * API rejects that shape. Taking one client and holding BEGIN/COMMIT
+ * guarantees contiguous sequence numbers.
+ */
+export async function persistToolTurn(input: PersistToolTurnInput): Promise<void> {
+  const { conversationId, assistantContent, toolCalls, results } = input;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const seqResult = await client.query(
+      `SELECT COALESCE(MAX(sequence_number), 0) + 1 as next_seq
+       FROM chat_messages WHERE conversation_id = $1`,
+      [conversationId]
+    );
+    let sequenceNumber: number = seqResult.rows[0].next_seq;
+
+    await client.query(
+      `INSERT INTO chat_messages (
+        conversation_id, role, content, sequence_number,
+        tool_calls, extraction_status
+      ) VALUES ($1, 'assistant', $2, $3, $4, 'skipped')`,
+      [conversationId, assistantContent, sequenceNumber, JSON.stringify(toolCalls)]
+    );
+    sequenceNumber += 1;
+
+    for (const result of results) {
+      await client.query(
+        `INSERT INTO chat_messages (
+          conversation_id, role, content, sequence_number,
+          tool_call_id, extraction_status, metadata
+        ) VALUES ($1, 'tool', $2, $3, $4, 'skipped', $5)`,
+        [
+          conversationId,
+          result.content,
+          sequenceNumber,
+          result.toolCallId,
+          JSON.stringify({ tool_name: result.toolName }),
+        ]
+      );
+      sequenceNumber += 1;
+    }
+
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+type ContextMessage = { role: string; content: string; tool_calls?: unknown[]; tool_call_id?: string };
+
+/**
+ * Get recent messages for a conversation including tool messages,
+ * formatted for injection into the LLM message array.
+ *
+ * Returns the last N messages ordered chronologically, and — critically —
+ * trims the leading edge so it never starts with an orphan tool_result or
+ * an assistant(tool_calls) whose results were truncated off by the LIMIT.
+ *
+ * Anthropic's Messages API requires every tool_result to be immediately
+ * preceded by an assistant message whose tool_use ids match. If we hand
+ * it a history that starts mid-tool-turn, it returns a 400 on the first
+ * call. The trim below guarantees the first message returned is a safe
+ * boundary: either a user message, or a plain assistant message (no
+ * tool_calls), or a complete assistant(tool_calls) with all of its
+ * tool_result messages present in the window.
+ */
+export async function getRecentMessagesForContext(
+  conversationId: string,
+  limit = 60
+): Promise<ContextMessage[]> {
+  const result = await pool.query(
+    `SELECT role, content, tool_calls, tool_call_id
+     FROM chat_messages
+     WHERE conversation_id = $1
+     ORDER BY sequence_number DESC
+     LIMIT $2`,
+    [conversationId, limit]
+  );
+
+  // Back to chronological order
+  const rows = (result.rows as Array<{
+    role: string;
+    content: string;
+    tool_calls: unknown[] | null;
+    tool_call_id: string | null;
+  }>).reverse();
+
+  const msgs: ContextMessage[] = rows.map((row) => {
+    const m: ContextMessage = { role: row.role, content: row.content };
+    if (row.tool_calls) m.tool_calls = row.tool_calls;
+    if (row.tool_call_id) m.tool_call_id = row.tool_call_id;
+    return m;
+  });
+
+  // Find the first safe starting index. Walk forward and stop at a row
+  // that can legally be the first message sent to the provider.
+  let start = 0;
+  while (start < msgs.length) {
+    const m = msgs[start]!;
+    if (m.role === 'tool') {
+      start += 1;
+      continue;
+    }
+    if (m.role === 'assistant' && m.tool_calls && Array.isArray(m.tool_calls) && m.tool_calls.length > 0) {
+      const expectedIds = new Set(
+        (m.tool_calls as Array<{ id?: string }>).map((tc) => tc?.id).filter((id): id is string => Boolean(id))
+      );
+      // Gather tool_call_ids from the immediately following run of tool messages
+      const presentIds = new Set<string>();
+      let j = start + 1;
+      while (j < msgs.length && msgs[j]!.role === 'tool') {
+        const tcid = msgs[j]!.tool_call_id;
+        if (tcid) presentIds.add(tcid);
+        j += 1;
+      }
+      const allPresent = [...expectedIds].every((id) => presentIds.has(id));
+      if (allPresent) break;
+      // tool_results were sliced off — skip this orphan assistant and its dangling tool rows, if any
+      start = j;
+      continue;
+    }
+    // role === 'user' or plain 'assistant' → safe boundary
+    break;
+  }
+
+  return start === 0 ? msgs : msgs.slice(start);
+}
