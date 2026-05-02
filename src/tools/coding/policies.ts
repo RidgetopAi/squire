@@ -78,6 +78,9 @@ export function isBlockedCommand(command: string): boolean {
     />\s*\/dev\/[sh]d[a-z]/, // overwrite disk devices
     /mkfs\./, // format filesystems
     /dd\s+if=\/dev\/(zero|random|urandom).*of=\/dev/, // dd to devices
+    // Block direct systemctl ops on squire — agent must use self-deploy.sh
+    // (sawing-off-branch protection: agent runs inside squire's cgroup)
+    /systemctl\s+(restart|stop|kill|reload|disable|mask)\s+(squire|squire-web)(\.service)?\b/,
   ];
 
   for (const pattern of dangerousPatterns) {
