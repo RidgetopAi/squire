@@ -5,6 +5,7 @@
  */
 
 import { Server, Socket } from 'socket.io';
+import sharp from 'sharp';
 import { config } from '../../config/index.js';
 import { generateContext } from '../../services/chat/context.js';
 import { detectStoryIntent, isStoryIntent, describeIntent } from '../../services/story/storyIntent.js';
@@ -254,6 +255,51 @@ function getCurrentTimeContext(): string {
   };
   const formatted = now.toLocaleString('en-US', options);
   return `\n\nCurrent date and time: ${formatted}`;
+}
+
+// === IMAGE COMPRESSION ===
+
+/**
+ * Compress images that exceed Anthropic's 5MB limit.
+ * Resizes to max 2000px and converts to JPEG at quality 85.
+ * Target: keep images under 4MB to stay safely below the 5MB API limit.
+ */
+async function compressImages(images: ImageContent[]): Promise<ImageContent[]> {
+  const MAX_BYTES = 4 * 1024 * 1024; // 4MB target (under 5MB Anthropic limit)
+  const results: ImageContent[] = [];
+
+  for (const img of images) {
+    const rawBytes = Buffer.byteLength(img.data, 'base64');
+
+    if (rawBytes <= MAX_BYTES) {
+      // Image is fine, pass through unchanged
+      results.push(img);
+      continue;
+    }
+
+    console.log(`[Socket] Compressing image: ${(rawBytes / 1024 / 1024).toFixed(2)}MB → target <4MB`);
+
+    try {
+      const inputBuffer = Buffer.from(img.data, 'base64');
+      const compressedBuffer = await sharp(inputBuffer)
+        .resize(2000, 2000, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 85 })
+        .toBuffer();
+
+      const compressedBytes = compressedBuffer.byteLength;
+      console.log(`[Socket] Image compressed: ${(rawBytes / 1024 / 1024).toFixed(2)}MB → ${(compressedBytes / 1024 / 1024).toFixed(2)}MB`);
+
+      results.push({
+        data: compressedBuffer.toString('base64'),
+        mediaType: 'image/jpeg',
+      });
+    } catch (err) {
+      console.error('[Socket] Image compression failed, using original:', err);
+      results.push(img); // Fall back to original if compression fails
+    }
+  }
+
+  return results;
 }
 
 // === DOCUMENT DISCUSSION MODE ===
@@ -640,8 +686,11 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
       messages.push(histMsg);
     }
 
+    // Compress images if needed (Anthropic has a 5MB per-image limit)
+    const processedImages = images ? await compressImages(images) : undefined;
+
     // Add current message with optional images
-    messages.push({ role: 'user', content: message, images });
+    messages.push({ role: 'user', content: message, images: processedImages });
 
     // Step 4: Stream LLM response with iterative tool loop
     const tools = hasTools() ? getToolDefinitions() : undefined;
