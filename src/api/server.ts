@@ -51,7 +51,7 @@ const io = new SocketIOServer(httpServer, {
     origin: config.server.corsOrigin || 'http://localhost:3000',
     methods: ['GET', 'POST'],
   },
-  maxHttpBufferSize: 10 * 1024 * 1024, // 10MB for image uploads
+  maxHttpBufferSize: 25 * 1024 * 1024, // 25MB for image uploads (server-side compression handles >5MB)
   // Generous timeouts to prevent disconnects during long LLM streams
   // Mobile browsers throttle JS during streaming, causing delayed pong responses
   pingTimeout: 60000,    // 60s (default 20s) — time to wait for pong
