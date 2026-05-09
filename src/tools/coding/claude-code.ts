@@ -14,6 +14,7 @@ import { promisify } from 'util';
 import { existsSync, writeFileSync, unlinkSync } from 'fs';
 import type { ToolHandler, ToolSpec } from '../types.js';
 import type { ClaudeCodeArgs, ClaudeCodeResult } from './types.js';
+import { getWorkerModel, getWorkerRuntime } from '../../services/runtime/index.js';
 
 const execAsync = promisify(exec);
 
@@ -100,7 +101,12 @@ async function claudeCode(args: ClaudeCodeArgs): Promise<string> {
   }
 
   const effectiveWorkingDir = workingDir || DEFAULTS.workingDir;
-  const effectiveModel = model || DEFAULTS.model;
+  const runtime = getWorkerRuntime('coding');
+  if (runtime.provider !== 'claude-code') {
+    return `Error: coding worker provider '${runtime.provider}' is configured but not implemented yet. Set CODING_AGENT_PROVIDER=claude-code or complete the Codex worker migration.`;
+  }
+
+  const effectiveModel = getWorkerModel('coding', model);
   const effectiveTimeout = Math.min(timeout || DEFAULTS.timeout, 900000);
   const sessionId = getSessionId(providedSessionId);
 

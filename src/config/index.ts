@@ -2,6 +2,9 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+export type LLMProviderName = 'groq' | 'xai' | 'ollama' | 'gemini' | 'anthropic' | 'openai';
+export type WorkerRuntimeProvider = 'claude-code' | 'codex';
+
 function required(name: string): string {
   const value = process.env[name];
   if (!value) {
@@ -32,16 +35,18 @@ export const config = {
     ollamaUrl: optional('OLLAMA_URL', 'http://localhost:11434'),
   },
   llm: {
-    provider: optional('LLM_PROVIDER', 'anthropic') as 'groq' | 'xai' | 'ollama' | 'gemini' | 'anthropic',
+    provider: optional('LLM_PROVIDER', 'anthropic') as LLMProviderName,
     model: optional('LLM_MODEL', 'claude-sonnet-4-6'),
     groqApiKey: process.env['GROQ_API_KEY'] ?? '',
     xaiApiKey: process.env['XAI_API_KEY'] ?? '',
     geminiApiKey: process.env['GEMINI_API_KEY'] ?? '',
     anthropicApiKey: process.env['ANTHROPIC_API_KEY'] ?? '',
+    openaiApiKey: process.env['OPENAI_API_KEY'] ?? '',
     groqUrl: optional('GROQ_URL', 'https://api.groq.com/openai/v1'),
     xaiUrl: optional('XAI_URL', 'https://api.x.ai/v1'),
     geminiUrl: optional('GEMINI_URL', 'https://generativelanguage.googleapis.com/v1beta/openai'),
     anthropicUrl: optional('ANTHROPIC_URL', 'https://api.anthropic.com'),
+    openaiUrl: optional('OPENAI_URL', 'https://api.openai.com/v1'),
     ollamaUrl: optional('OLLAMA_URL', 'http://localhost:11434'),
     maxTokens: parseInt(optional('LLM_MAX_TOKENS', '8192'), 10),
     temperature: parseFloat(optional('LLM_TEMPERATURE', '0.7')),
@@ -83,11 +88,11 @@ export const config = {
     enabled: optional('ROUTING_ENABLED', 'true') === 'true',
     defaultTier: optional('ROUTING_DEFAULT_TIER', 'smart') as 'smart' | 'fast',
     smart: {
-      provider: optional('ROUTING_SMART_PROVIDER', 'anthropic') as 'anthropic' | 'xai' | 'groq' | 'gemini' | 'ollama',
+      provider: optional('ROUTING_SMART_PROVIDER', 'anthropic') as LLMProviderName,
       model: optional('ROUTING_SMART_MODEL', 'claude-sonnet-4-6'),
     },
     fast: {
-      provider: optional('ROUTING_FAST_PROVIDER', 'xai') as 'anthropic' | 'xai' | 'groq' | 'gemini' | 'ollama',
+      provider: optional('ROUTING_FAST_PROVIDER', 'xai') as LLMProviderName,
       model: optional('ROUTING_FAST_MODEL', 'grok-4-1-fast-reasoning'),
     },
   },
@@ -107,7 +112,7 @@ export const config = {
   },
   expressionEvaluator: {
     enabled: optional('EXPRESSION_EVALUATOR_ENABLED', 'true') === 'true',
-    provider: optional('EXPRESSION_EVALUATOR_PROVIDER', 'ollama') as 'ollama' | 'groq' | 'xai' | 'gemini' | 'anthropic',
+    provider: optional('EXPRESSION_EVALUATOR_PROVIDER', 'ollama') as LLMProviderName,
     model: optional('EXPRESSION_EVALUATOR_MODEL', 'qwen2.5:3b'),
     batchSize: parseInt(optional('EXPRESSION_EVALUATOR_BATCH_SIZE', '10'), 10),
   },
@@ -128,9 +133,53 @@ export const config = {
     userStopwords: (process.env['RECALL_USER_STOPWORDS'] ?? '').split(',').filter(Boolean),
     cacheTtlMs: parseInt(optional('RECALL_CACHE_TTL_MS', '300000'), 10),
     rerankerEnabled: optional('RECALL_RERANKER_ENABLED', 'true') === 'true',
-    rerankerProvider: optional('RECALL_RERANKER_PROVIDER', 'xai') as 'xai' | 'anthropic',
+    rerankerProvider: optional('RECALL_RERANKER_PROVIDER', 'xai') as LLMProviderName,
     rerankerModel: optional('RECALL_RERANKER_MODEL', 'grok-4-1-fast-reasoning'),
     maxRerankerCandidates: parseInt(optional('RECALL_RERANKER_POOL', '15'), 10),
+  },
+  runtime: {
+    llm: {
+      page: {
+        provider: optional('PAGE_AGENT_PROVIDER', 'xai') as LLMProviderName,
+        model: optional('PAGE_AGENT_MODEL', 'grok-4-1-fast-reasoning'),
+        maxTokens: parseInt(optional('PAGE_AGENT_MAX_TOKENS', '16384'), 10),
+        temperature: parseFloat(optional('PAGE_AGENT_TEMPERATURE', '0.3')),
+      },
+      scout: {
+        provider: optional('SCOUT_AGENT_PROVIDER', 'xai') as LLMProviderName,
+        model: optional('SCOUT_AGENT_MODEL', 'grok-4-1-fast-reasoning'),
+        maxTokens: parseInt(optional('SCOUT_AGENT_MAX_TOKENS', '16384'), 10),
+        temperature: parseFloat(optional('SCOUT_AGENT_TEMPERATURE', '0.3')),
+      },
+      emotionalSynthesis: {
+        provider: optional('EMOTIONAL_SYNTHESIS_PROVIDER', 'xai') as LLMProviderName,
+        model: optional('EMOTIONAL_SYNTHESIS_MODEL', 'grok-4-1-fast-reasoning'),
+        maxTokens: parseInt(optional('EMOTIONAL_SYNTHESIS_MAX_TOKENS', '400'), 10),
+        temperature: parseFloat(optional('EMOTIONAL_SYNTHESIS_TEMPERATURE', '0.6')),
+      },
+      courierSummarizer: {
+        provider: optional('COURIER_SUMMARIZER_PROVIDER', 'xai') as LLMProviderName,
+        model: optional('COURIER_SUMMARIZER_MODEL', 'grok-3-fast'),
+        maxTokens: parseInt(optional('COURIER_SUMMARIZER_MAX_TOKENS', '1000'), 10),
+        temperature: parseFloat(optional('COURIER_SUMMARIZER_TEMPERATURE', '0.3')),
+      },
+      vision: {
+        provider: optional('VISION_PROVIDER', 'anthropic') as LLMProviderName,
+        model: optional('VISION_MODEL', 'claude-sonnet-4-6'),
+      },
+    },
+    worker: {
+      coding: {
+        provider: optional('CODING_AGENT_PROVIDER', 'claude-code') as WorkerRuntimeProvider,
+        claudeModel: optional('CODING_AGENT_CLAUDE_MODEL', 'sonnet'),
+        codexModel: optional('CODING_AGENT_CODEX_MODEL', 'gpt-5.4'),
+      },
+      sandbox: {
+        provider: optional('SANDBOX_AGENT_PROVIDER', 'claude-code') as WorkerRuntimeProvider,
+        claudeModel: optional('SANDBOX_AGENT_CLAUDE_MODEL', 'sonnet'),
+        codexModel: optional('SANDBOX_AGENT_CODEX_MODEL', 'gpt-5.4'),
+      },
+    },
   },
   security: {
     apiKey: process.env['SQUIRE_API_KEY'] ?? '',

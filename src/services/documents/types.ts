@@ -33,7 +33,7 @@ export const EXTRACTABLE_MIME_TYPES = [
 
 export type ExtractableMimeType = (typeof EXTRACTABLE_MIME_TYPES)[number];
 
-const DOCUMENT_FORMATS = ['pdf', 'docx', 'doc', 'txt', 'md', 'image'] as const;
+export const DOCUMENT_FORMATS = ['pdf', 'docx', 'doc', 'txt', 'md', 'image'] as const;
 export type DocumentFormat = (typeof DOCUMENT_FORMATS)[number];
 
 // === EXTRACTION STATUS ===
@@ -209,6 +209,40 @@ export type ExtractionInput =
  */
 export function isExtractableMimeType(mimeType: string): boolean {
   return (EXTRACTABLE_MIME_TYPES as readonly string[]).includes(mimeType.toLowerCase());
+}
+
+/**
+ * Resolve a document format from a MIME type.
+ */
+export function getFormatFromMimeType(mimeType: string): DocumentFormat | null {
+  const lowerMime = mimeType.toLowerCase();
+
+  if (lowerMime === 'application/pdf') return 'pdf';
+  if (lowerMime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx';
+  if (lowerMime === 'application/msword') return 'doc';
+  if (lowerMime === 'text/plain') return 'txt';
+  if (lowerMime === 'text/markdown' || lowerMime === 'text/x-markdown') return 'md';
+  if (lowerMime.startsWith('image/')) return 'image';
+  if (lowerMime === 'text/csv' || lowerMime === 'application/csv' || lowerMime === 'text/comma-separated-values') return 'txt';
+
+  return null;
+}
+
+/**
+ * Resolve a document format from a file extension or path.
+ */
+export function getFormatFromExtension(filePath: string): DocumentFormat | null {
+  const lowerPath = filePath.toLowerCase();
+
+  if (lowerPath.endsWith('.pdf')) return 'pdf';
+  if (lowerPath.endsWith('.docx')) return 'docx';
+  if (lowerPath.endsWith('.doc')) return 'doc';
+  if (lowerPath.endsWith('.txt')) return 'txt';
+  if (lowerPath.endsWith('.md') || lowerPath.endsWith('.markdown')) return 'md';
+  if (/\.(png|jpe?g|webp|tiff?|bmp|gif)$/.test(lowerPath)) return 'image';
+  if (lowerPath.endsWith('.csv')) return 'txt';
+
+  return null;
 }
 
 /**

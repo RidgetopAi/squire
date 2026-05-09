@@ -16,6 +16,7 @@ import * as path from 'path';
 import { existsSync, writeFileSync, unlinkSync } from 'fs';
 import type { ToolHandler, ToolSpec } from './types.js';
 import { createJob, completeJob, failJob } from '../services/jobs.js';
+import { getWorkerModel, getWorkerRuntime } from '../services/runtime/index.js';
 
 const execAsync = promisify(exec);
 
@@ -267,7 +268,12 @@ async function sandboxRun(args: SandboxArgs): Promise<string> {
     return 'Error: task is required — describe what you need built.';
   }
 
-  const effectiveModel = model || 'sonnet';
+  const runtime = getWorkerRuntime('sandbox');
+  if (runtime.provider !== 'claude-code') {
+    return `Error: sandbox worker provider '${runtime.provider}' is configured but not implemented yet. Set SANDBOX_AGENT_PROVIDER=claude-code or complete the Codex worker migration.`;
+  }
+
+  const effectiveModel = getWorkerModel('sandbox', model);
   const effectiveTimeout = Math.min(timeout || DEFAULT_TIMEOUT, MAX_TIMEOUT);
 
   // 1. Create sandbox

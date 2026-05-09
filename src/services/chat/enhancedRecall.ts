@@ -12,6 +12,7 @@ import { pool } from '../../db/pool.js';
 import { config } from '../../config/index.js';
 import { callLLM } from '../llm/call.js';
 import type { LLMMessage } from '../llm/types.js';
+import { getLLMRuntime } from '../runtime/index.js';
 
 // ---------------------------------------------------------------------------
 // Interfaces
@@ -577,11 +578,12 @@ async function rerankerJudge(
   try {
     const prompt = `User message: '${query}'\n\nMemory: '${memoryContent}'\n\nIs this memory relevant to the user's message? Answer only 'yes' or 'no'.`;
     const messages: LLMMessage[] = [{ role: 'user', content: prompt }];
+    const runtime = getLLMRuntime('reranker');
     const response = await callLLM(messages, undefined, {
-      provider: config.recall.rerankerProvider,
-      model: config.recall.rerankerModel,
-      maxTokens: 10,
-      temperature: 0,
+      provider: runtime.provider,
+      model: runtime.model,
+      maxTokens: runtime.maxTokens,
+      temperature: runtime.temperature,
       signal: AbortSignal.timeout(5000),
     });
     return response.content.toLowerCase().trim().startsWith('yes');

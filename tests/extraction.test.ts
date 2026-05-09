@@ -21,14 +21,18 @@ import {
   extractFromBuffer,
   isSupported,
   getSupportedMimeTypes,
+} from '../src/services/documents/extractor.js';
+import {
   textExtractor,
+} from '../src/services/documents/textExtractor.js';
+import {
   getFormatFromMimeType,
   getFormatFromExtension,
   isExtractableMimeType,
   countWords,
   EXTRACTABLE_MIME_TYPES,
   DOCUMENT_FORMATS,
-} from '../src/services/documents/index.js';
+} from '../src/services/documents/types.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

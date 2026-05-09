@@ -7,9 +7,40 @@
  * Note: Full LLM tests require API keys and are marked for integration testing.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as path from 'path';
+import crypto from 'crypto';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+function expect<T>(actual: T) {
+  return {
+    toBe(expected: T) {
+      assert.equal(actual, expected);
+    },
+    toBeUndefined() {
+      assert.equal(actual, undefined);
+    },
+    toBeGreaterThan(expected: number) {
+      assert.ok(Number(actual) > expected);
+    },
+    toBeLessThan(expected: number) {
+      assert.ok(Number(actual) < expected);
+    },
+    toContain(expected: string) {
+      assert.ok(String(actual).includes(expected));
+    },
+    not: {
+      toBe(expected: T) {
+        assert.notEqual(actual, expected);
+      },
+    },
+  };
+}
 
 // Import the ephemeral functions (will be available after build)
 // For unit tests, we test the cache logic and extraction flow
@@ -93,7 +124,6 @@ describe('Ephemeral Document Processing', () => {
 
   describe('Cache Key Generation', () => {
     // Test cache key generation patterns
-    const crypto = require('crypto');
 
     function hashBuffer(buffer: Buffer): string {
       return crypto.createHash('sha256').update(buffer).digest('hex').slice(0, 16);

@@ -19,16 +19,18 @@ import { fileURLToPath } from 'url';
 
 import {
   fixedChunker,
-  semanticChunker,
-  hybridChunker,
   countTokens,
   truncateToTokens,
+} from '../src/services/documents/chunker/fixedChunker.js';
+import { semanticChunker } from '../src/services/documents/chunker/semanticChunker.js';
+import { hybridChunker } from '../src/services/documents/chunker/hybridChunker.js';
+import {
   DEFAULT_CHUNKING_OPTIONS,
   CHUNKING_STRATEGIES,
   type ChunkingOptions,
   type DocumentChunk,
   type ChunkingResult,
-} from '../src/services/documents/index.js';
+} from '../src/services/documents/chunker/types.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

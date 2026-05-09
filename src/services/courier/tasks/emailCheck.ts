@@ -31,7 +31,7 @@ export const emailCheckTask: CourierTask = {
 
       console.log(`[EmailCheck] Found ${emails.length} unread emails`);
 
-      // Summarize via Grok
+      // Summarize via configured courier summarizer runtime
       const summaries = await summarizeEmails(emails);
 
       // Cache emails locally (before marking read so we never lose them)

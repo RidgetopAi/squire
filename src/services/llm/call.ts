@@ -40,6 +40,8 @@ export function resolveProvider(options?: CallOptions): ProviderConfig {
       return { provider, model, apiKey: config.llm.xaiApiKey, baseUrl: config.llm.xaiUrl };
     case 'gemini':
       return { provider, model, apiKey: config.llm.geminiApiKey, baseUrl: config.llm.geminiUrl };
+    case 'openai':
+      return { provider, model, apiKey: config.llm.openaiApiKey, baseUrl: config.llm.openaiUrl };
     case 'ollama':
       return { provider, model, apiKey: 'ollama', baseUrl: `${config.llm.ollamaUrl}/v1` };
     default:
