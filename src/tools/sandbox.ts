@@ -13,10 +13,11 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { existsSync, writeFileSync, unlinkSync } from 'fs';
+import { existsSync } from 'fs';
 import type { ToolHandler, ToolSpec } from './types.js';
 import { createJob, completeJob, failJob } from '../services/jobs.js';
 import { getWorkerModel, getWorkerRuntime } from '../services/runtime/index.js';
+import { runWorkerAgent, type WorkerAgentResult } from '../services/runtime/worker.js';
 
 const execAsync = promisify(exec);
 
@@ -88,43 +89,14 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
-// --- Claude Code dispatch (adapted from claude-code.ts) ---
-
-interface ClaudeCodeResult {
-  result: string;
-  sessionId: string;
-  success: boolean;
-  durationMs?: number;
-  error?: string;
-}
-
-function parseOutput(output: string): ClaudeCodeResult {
-  try {
-    const json = JSON.parse(output);
-    if (json.type === 'result') {
-      return {
-        result: json.result || '',
-        sessionId: json.session_id || '',
-        success: !json.is_error,
-        durationMs: json.duration_ms,
-        error: json.is_error ? json.result : undefined,
-      };
-    }
-    return { result: output, sessionId: '', success: true };
-  } catch {
-    return { result: output, sessionId: '', success: true };
-  }
-}
+// --- Worker dispatch ---
 
 async function runClaudeCodeInSandbox(
   sandboxPath: string,
   prompt: string,
   model: string,
   timeout: number
-): Promise<ClaudeCodeResult> {
-  const sessionId = crypto.randomUUID();
-  const tmpPromptFile = `/tmp/squire-prompt-${sessionId}`;
-
+): Promise<WorkerAgentResult> {
   const fullPrompt = `You are working in an ephemeral sandbox directory: ${sandboxPath}
 This is a temporary workspace — install dependencies, write scripts, generate any files you need.
 All output files should be written to this directory (or subdirectories within it).
@@ -133,47 +105,14 @@ All output files should be written to this directory (or subdirectories within i
 
 ${prompt}`;
 
-  const claudeCommand = [
-    'claude',
-    '-p',
-    '--dangerously-skip-permissions',
-    '--output-format json',
-    `--session-id ${sessionId}`,
-    `--model ${model}`,
-  ].join(' ');
-
-  const onVPS = isRunningOnVPS();
-
-  if (onVPS) {
-    writeFileSync(tmpPromptFile, fullPrompt, { mode: 0o644 });
-    const innerCommand = `cd ${sandboxPath} && ${claudeCommand} < ${tmpPromptFile}`;
-    const command = `script -q -c "sudo -u ridgetop bash -c '${innerCommand}'" /dev/null`;
-
-    try {
-      const { stdout } = await execAsync(command, {
-        timeout,
-        maxBuffer: 10 * 1024 * 1024,
-      });
-      return parseOutput(stdout.trim());
-    } finally {
-      try { unlinkSync(tmpPromptFile); } catch { /* ignore */ }
-    }
-  } else {
-    writeFileSync(tmpPromptFile, fullPrompt, { mode: 0o644 });
-    await execAsync(`scp ${tmpPromptFile} hetzner:${tmpPromptFile}`);
-    const command = `ssh hetzner 'sudo -u ridgetop bash -c "cd ${sandboxPath} && ${claudeCommand} < ${tmpPromptFile} ; rm -f ${tmpPromptFile}"'`;
-
-    try {
-      const { stdout } = await execAsync(command, {
-        timeout,
-        maxBuffer: 10 * 1024 * 1024,
-        env: { ...process.env, SSH_ASKPASS: '', GIT_ASKPASS: '' },
-      });
-      return parseOutput(stdout.trim());
-    } finally {
-      try { unlinkSync(tmpPromptFile); } catch { /* ignore */ }
-    }
-  }
+  return runWorkerAgent({
+    runtimeId: 'sandbox',
+    prompt: fullPrompt,
+    workingDir: sandboxPath,
+    model,
+    timeout,
+    sandboxMode: 'workspace-write',
+  });
 }
 
 // --- Inline file reading ---
@@ -205,7 +144,7 @@ async function readInlineFiles(
 function formatResult(
   sandboxPath: string,
   model: string,
-  ccResult: ClaudeCodeResult,
+  ccResult: WorkerAgentResult,
   files: Array<{ path: string; size: number; sizeStr: string }>,
   inlineFiles: Array<{ path: string; content: string }>,
   jobId?: string
@@ -214,6 +153,7 @@ function formatResult(
   lines.push(`**Sandbox Complete** (${model})`);
   lines.push(`Path: \`${sandboxPath}\``);
   if (jobId) lines.push(`Job: \`${jobId}\``);
+  lines.push(`Provider: ${ccResult.provider}`);
   if (ccResult.durationMs) {
     lines.push(`Duration: ${(ccResult.durationMs / 1000).toFixed(1)}s`);
   }
@@ -269,10 +209,6 @@ async function sandboxRun(args: SandboxArgs): Promise<string> {
   }
 
   const runtime = getWorkerRuntime('sandbox');
-  if (runtime.provider !== 'claude-code') {
-    return `Error: sandbox worker provider '${runtime.provider}' is configured but not implemented yet. Set SANDBOX_AGENT_PROVIDER=claude-code or complete the Codex worker migration.`;
-  }
-
   const effectiveModel = getWorkerModel('sandbox', model);
   const effectiveTimeout = Math.min(timeout || DEFAULT_TIMEOUT, MAX_TIMEOUT);
 
@@ -286,7 +222,7 @@ async function sandboxRun(args: SandboxArgs): Promise<string> {
   }
 
   console.log(`[sandbox] Created: ${sandboxPath}`);
-  console.log(`[sandbox] Mode: ${isAsync ? 'async' : 'sync'}, Model: ${effectiveModel}`);
+  console.log(`[sandbox] Mode: ${isAsync ? 'async' : 'sync'}, Provider: ${runtime.provider}, Model: ${effectiveModel}`);
 
   // --- ASYNC MODE: fire and forget, notify on completion ---
   if (isAsync) {
@@ -311,21 +247,22 @@ async function sandboxRun(args: SandboxArgs): Promise<string> {
       `**Sandbox Dispatched** (async)`,
       `Job: \`${job.id}\``,
       `Path: \`${sandboxPath}\``,
+      `Provider: ${runtime.provider}`,
       `Model: ${effectiveModel}`,
       '',
-      'Claude Code is working in the background.',
+      'The configured worker agent is running in the background.',
       'You will be notified via Telegram when the job completes.',
       'Use `job_status` tool to check progress.',
     ].join('\n');
   }
 
   // --- SYNC MODE: block and return results ---
-  let ccResult: ClaudeCodeResult;
+  let ccResult: WorkerAgentResult;
   try {
     ccResult = await runClaudeCodeInSandbox(sandboxPath, task.trim(), effectiveModel, effectiveTimeout);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    return `Sandbox error (Claude Code failed): ${msg}\n\nSandbox path: ${sandboxPath}`;
+    return `Sandbox error (${runtime.provider} failed): ${msg}\n\nSandbox path: ${sandboxPath}`;
   }
 
   const files = await listSandboxFiles(sandboxPath).catch(() => [] as Array<{ path: string; size: number; sizeStr: string }>);
@@ -363,20 +300,20 @@ async function sandboxCleanup(args: SandboxCleanupArgs): Promise<string> {
 export const tools: ToolSpec[] = [
   {
     name: 'sandbox',
-    description: `Create an ephemeral sandbox workspace and dispatch Claude Code to build something.
+    description: `Create an ephemeral sandbox workspace and dispatch the configured worker agent to build something.
 
-The sandbox is a temporary directory on VPS where Claude Code can:
+The sandbox is a temporary directory on VPS where the worker agent can:
 - Install packages and dependencies
 - Write scripts, tools, or applications
 - Generate output files (PDFs, CSVs, reports, images, etc.)
 - Run builds, tests, or any one-off task
 
 Two modes:
-- **sync** (default): Blocks until Claude Code finishes, returns results + file manifest inline
+- **sync** (default): Blocks until the worker finishes, returns results + file manifest inline
 - **async** (async: true): Returns immediately with a job ID, notifies via Telegram when done
 
 After completion you get:
-- Claude Code's response/summary
+- The worker agent's response/summary
 - A manifest of all output files with sizes
 - Small text files read back inline for immediate use
 
@@ -385,7 +322,7 @@ Call sandbox_cleanup when done to wipe the workspace.
 
 Parameters:
 - task: What to build (be specific about desired output files/format)
-- model: Claude Code model (default: sonnet)
+- model: Worker model override (defaults to runtime config)
 - timeout: Max time in ms (default: 600000 = 10 min, max: 15 min)
 - async: Set true to run in background and get notified when done`,
     parameters: {
@@ -397,8 +334,7 @@ Parameters:
         },
         model: {
           type: 'string',
-          enum: ['opus', 'sonnet', 'haiku'],
-          description: 'Claude Code model (default: sonnet). Use opus for complex tasks.',
+          description: 'Worker model override (defaults to runtime config).',
         },
         timeout: {
           type: 'number',
