@@ -221,10 +221,16 @@ async function streamOpenAICompatible(
   const requestBody: Record<string, unknown> = {
     model: pc.model,
     messages: openaiMessages,
-    max_tokens: options?.maxTokens ?? config.llm.maxTokens,
     temperature: options?.temperature ?? config.llm.temperature,
     stream: true,
   };
+
+  const maxTokens = options?.maxTokens ?? config.llm.maxTokens;
+  if (pc.provider === 'openai') {
+    requestBody.max_completion_tokens = maxTokens;
+  } else {
+    requestBody.max_tokens = maxTokens;
+  }
 
   if (tools && tools.length > 0) {
     requestBody.tools = tools;

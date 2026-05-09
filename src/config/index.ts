@@ -36,7 +36,7 @@ export const config = {
   },
   llm: {
     provider: optional('LLM_PROVIDER', 'openai') as LLMProviderName,
-    model: optional('LLM_MODEL', 'gpt-5.4-mini'),
+    model: optional('LLM_MODEL', 'gpt-5.5'),
     groqApiKey: process.env['GROQ_API_KEY'] ?? '',
     xaiApiKey: process.env['XAI_API_KEY'] ?? '',
     geminiApiKey: process.env['GEMINI_API_KEY'] ?? '',
@@ -89,7 +89,7 @@ export const config = {
     defaultTier: optional('ROUTING_DEFAULT_TIER', 'smart') as 'smart' | 'fast',
     smart: {
       provider: optional('ROUTING_SMART_PROVIDER', 'openai') as LLMProviderName,
-      model: optional('ROUTING_SMART_MODEL', 'gpt-5.4-mini'),
+      model: optional('ROUTING_SMART_MODEL', 'gpt-5.5'),
     },
     fast: {
       provider: optional('ROUTING_FAST_PROVIDER', 'openai') as LLMProviderName,
