@@ -49,6 +49,10 @@ export function resolveProvider(options?: CallOptions): ProviderConfig {
   }
 }
 
+export function supportsCustomTemperature(provider: string, model: string): boolean {
+  return !(provider === 'openai' && /^gpt-5\.5(?:-|$)/.test(model));
+}
+
 /**
  * Make a non-streaming LLM call to any supported provider.
  */
@@ -130,9 +134,12 @@ async function callOpenAICompatible(
   const requestBody: Record<string, unknown> = {
     model: pc.model,
     messages: openaiMessages,
-    temperature: options?.temperature ?? config.llm.temperature,
     stream: false,
   };
+
+  if (supportsCustomTemperature(pc.provider, pc.model)) {
+    requestBody.temperature = options?.temperature ?? config.llm.temperature;
+  }
 
   const maxTokens = options?.maxTokens ?? config.llm.maxTokens;
   if (pc.provider === 'openai') {
