@@ -107,6 +107,36 @@ interface SendMessageOptions {
   useStreaming?: boolean; // Default: true when WebSocket connected
 }
 
+function shouldIncludeContextByDefault(
+  content: string,
+  images?: { data: string; mediaType: ImageContent['mediaType'] }[],
+  contextProfile?: string
+): boolean {
+  if (contextProfile || (images && images.length > 0)) {
+    return true;
+  }
+
+  const normalized = content.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  const simpleChatPattern =
+    /^(hi|hey|hello|thanks|thank you|ok|okay|yes|no|yep|nope|cool|got it|nice|test|testing|ping)\b[!.?\s]*$/i;
+  if (simpleChatPattern.test(normalized)) {
+    return false;
+  }
+
+  const memoryIntentPattern =
+    /\b(remember|recall|memory|memories|preference|lesson|context|summary|summaries|history|earlier|before|last time|talked about|discussed|what did we|what do you know|about me|who am i|my|our|squire|project)\b/i;
+  if (memoryIntentPattern.test(normalized)) {
+    return true;
+  }
+
+  // Longer, specific requests usually benefit from the living context package.
+  return normalized.length > 180;
+}
+
 export const useChatStore = create<ChatState>((set, get) => ({
   // Initial state
   messages: [],
@@ -314,7 +344,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       setError,
     } = get();
 
-    const { includeContext = true, contextProfile } = options;
+    const { contextProfile } = options;
+    const includeContext =
+      options.includeContext ?? shouldIncludeContextByDefault(content, images, contextProfile);
     
     // Convert images to API format
     const apiImages: ImageContent[] | undefined = images?.map((img) => ({
