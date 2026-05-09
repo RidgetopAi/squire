@@ -231,6 +231,9 @@ async function streamOpenAICompatible(
   const maxTokens = options?.maxTokens ?? config.llm.maxTokens;
   if (pc.provider === 'openai') {
     requestBody.max_completion_tokens = maxTokens;
+    if (config.llm.openaiStreamServiceTier) {
+      requestBody.service_tier = config.llm.openaiStreamServiceTier;
+    }
   } else {
     requestBody.max_tokens = maxTokens;
   }
