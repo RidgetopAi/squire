@@ -5,13 +5,14 @@
  */
 
 import { config } from '../../config/index.js';
+import type { LLMProviderName } from '../../config/index.js';
 
 // === Types ===
 
 /**
  * Available model tiers
- * - smart: High capability model for complex tasks (Sonnet)
- * - fast: Quick/cheap model for search and retrieval (Grok)
+ * - smart: High capability model for complex tasks
+ * - fast: Quick/cheap model for search and retrieval
  */
 export type ModelTier = 'smart' | 'fast';
 
@@ -19,7 +20,7 @@ export type ModelTier = 'smart' | 'fast';
  * Configuration for a model tier
  */
 export interface TierConfig {
-  provider: 'anthropic' | 'xai' | 'groq' | 'gemini' | 'ollama';
+  provider: LLMProviderName;
   model: string;
 }
 

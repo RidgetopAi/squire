@@ -10,7 +10,7 @@ import type { ModelTier } from './models.js';
 // === Classification Keywords ===
 
 /**
- * Keywords that indicate complex/coding tasks → smart tier (Sonnet)
+ * Keywords that indicate complex/coding tasks → smart tier
  */
 const SMART_KEYWORDS = [
   // Coding actions
@@ -25,7 +25,7 @@ const SMART_KEYWORDS = [
 ];
 
 /**
- * Keywords that indicate search/retrieval tasks → fast tier (Grok)
+ * Keywords that indicate search/retrieval tasks → fast tier
  */
 const FAST_KEYWORDS = [
   // Search operations

@@ -125,7 +125,7 @@ Call tools through the API mechanism. NEVER write tool calls in your text respon
 - **file_read BEFORE file_edit** — always read first.
 - **Self-modification → work in /opt/squire-staging, deploy via self-deploy.sh.** NEVER edit /opt/squire directly. NEVER run systemctl restart squire directly.
 - **Coding tasks → use claude_code** for multi-file work. Specify workingDir. Use "opus" for complex, "haiku" for simple.
-- **Broad code exploration → use page** (fast research subagent on Grok) instead of many sequential file reads.
+- **Broad code exploration → use page** (fast research subagent) instead of many sequential file reads.
 - **present_report** for structured reports/analyses — rendered as expandable cards in the frontend. Only for substantial content, not quick answers.
 
 ### Data Storage Guide

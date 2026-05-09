@@ -1,7 +1,7 @@
 /**
  * Scout Tool
  *
- * On-demand fast reasoning subagent powered by Grok.
+ * On-demand fast reasoning subagent.
  * Multi-turn agentic loop with read-only file tools.
  * Squire can invoke Scout mid-conversation for:
  * - Reading and analyzing files
@@ -16,6 +16,7 @@ import type { ToolHandler, ToolSpec } from './types.js';
 import { callLLM } from '../services/llm/call.js';
 import type { LLMMessage, ToolDefinition } from '../services/llm/types.js';
 import { getPageTools, type PageTool } from '../services/page/tools.js';
+import { getLLMRuntime } from '../services/runtime/index.js';
 
 interface ScoutArgs {
   task: string;
@@ -64,11 +65,12 @@ async function scoutCall(args: ScoutArgs): Promise<string> {
     while (turns < maxTurns) {
       turns++;
 
+      const runtime = getLLMRuntime('scout');
       const response = await callLLM(messages, toolDefs, {
-        provider: 'xai',
-        model: 'grok-4-1-fast-reasoning',
-        maxTokens: 16384,
-        temperature: 0.3,
+        provider: runtime.provider,
+        model: runtime.model,
+        maxTokens: runtime.maxTokens,
+        temperature: runtime.temperature,
       });
 
       lastContent = response.content || '';
@@ -130,9 +132,9 @@ async function scoutCall(args: ScoutArgs): Promise<string> {
 
 export const tools: ToolSpec[] = [{
   name: 'scout',
-  description: `Invoke Scout, a fast reasoning subagent (Grok) with read-only file access.
+  description: `Invoke Scout, a fast reasoning subagent with read-only file access.
 
-Scout is cheap and fast — use it to offload work that doesn't need the primary model:
+Scout is configured for cheaper/faster work — use it to offload work that doesn't need the primary model:
 - Read and analyze files, code, configs, logs, data
 - Search across a codebase with grep and glob
 - Data wrangling, reformatting, transforming structured data

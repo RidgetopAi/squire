@@ -133,7 +133,14 @@ router.get('/events', async (req: Request, res: Response): Promise<void> => {
 router.get('/week', async (req: Request, res: Response): Promise<void> => {
   try {
     const dateParam = req.query.date as string | undefined;
-    const baseDate = dateParam ? new Date(dateParam) : new Date();
+    // Parse date-only strings (YYYY-MM-DD) in local time to avoid UTC offset shifting the day
+    let baseDate: Date;
+    if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+      const parts = dateParam.split('-').map(Number);
+      baseDate = new Date(parts[0]!, parts[1]! - 1, parts[2]!);
+    } else {
+      baseDate = dateParam ? new Date(dateParam) : new Date();
+    }
 
     // Get start of week (Sunday)
     const start = new Date(baseDate);

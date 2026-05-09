@@ -34,6 +34,7 @@ import {
 } from '../../tools/index.js';
 import { streamLLM } from '../../services/llm/index.js';
 import { buildMemoryContext } from '../../services/memory/index.js';
+import { getLLMRuntime } from '../../services/runtime/index.js';
 import { SQUIRE_SYSTEM_PROMPT_BASE, TOOL_CALLING_INSTRUCTIONS } from '../../constants/prompts.js';
 import { getObjectById } from '../../services/storage/objects.js';
 import { getSummary } from '../../services/summaries.js';
@@ -695,9 +696,9 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
     // Step 4: Stream LLM response with iterative tool loop
     const tools = hasTools() ? getToolDefinitions() : undefined;
     
-    // Force Anthropic for vision - xAI/Grok doesn't support images
+    // Use the configured vision runtime when images are attached.
     const hasImages = images && images.length > 0;
-    const providerOverride = hasImages ? { provider: 'anthropic', model: 'claude-sonnet-4-6' } : undefined;
+    const providerOverride = hasImages ? getLLMRuntime('vision') : undefined;
     const providerName = providerOverride?.provider ?? config.llm.provider;
     
     console.log(`[Socket] Step 4: Starting ${providerName} stream... (${tools?.length ?? 0} tools available${hasImages ? ', with images' : ''})`);

@@ -24,6 +24,7 @@ import {
 } from '../continuity.js';
 import { listEntries as listScratchpadEntries } from '../storage/scratchpad.js';
 import { getUnacknowledgedConcerns } from './stateSnapshots.js';
+import { getLLMRuntime } from '../runtime/index.js';
 
 // =============================================================================
 // CONSTANTS
@@ -31,14 +32,6 @@ import { getUnacknowledgedConcerns } from './stateSnapshots.js';
 
 /** Title used to identify the emotional synthesis thread */
 const SYNTHESIS_THREAD_TITLE = "Squire's Emotional Read";
-
-/** Provider config — use Grok for fast, cheap emotional synthesis */
-const SYNTHESIS_LLM_OPTIONS = {
-  provider: 'xai',
-  model: 'grok-4-1-fast-reasoning',
-  maxTokens: 400,
-  temperature: 0.6,
-};
 
 // =============================================================================
 // SYNTHESIS PROMPT
@@ -190,7 +183,7 @@ export async function generateEmotionalSynthesis(): Promise<EmotionalSynthesisRe
     { role: 'user', content: contextText },
   ];
 
-  const response = await callLLM(messages, undefined, SYNTHESIS_LLM_OPTIONS);
+  const response = await callLLM(messages, undefined, getLLMRuntime('emotional-synthesis'));
   const synthesis = response.content.trim();
 
   // 5. Store in continuity thread

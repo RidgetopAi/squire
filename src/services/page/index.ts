@@ -5,12 +5,13 @@
  * Uses the pi-mono style loop: call model → execute tool_calls → loop.
  * When the model stops making tool_calls, return findings.
  *
- * Model: xAI grok-4-1-fast-reasoning (fast tier)
+ * Model: configurable via PAGE_AGENT_PROVIDER / PAGE_AGENT_MODEL.
  */
 
 import { callLLM } from '../llm/call.js';
 import type { LLMMessage, ToolDefinition } from '../llm/types.js';
 import { getPageTools, type PageTool } from './tools.js';
+import { getLLMRuntime } from '../runtime/index.js';
 
 // === TYPES ===
 
@@ -80,12 +81,12 @@ export async function page(request: PageRequest): Promise<PageResult> {
 
       turns++;
 
-      // Call xAI API
+      const runtime = getLLMRuntime('page');
       const response = await callLLM(messages, toolDefs, {
-        provider: 'xai',
-        model: 'grok-4-1-fast-reasoning',
-        maxTokens: 16384,
-        temperature: 0.3,
+        provider: runtime.provider,
+        model: runtime.model,
+        maxTokens: runtime.maxTokens,
+        temperature: runtime.temperature,
         signal,
       });
 

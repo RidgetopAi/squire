@@ -40,11 +40,17 @@ export function resolveProvider(options?: CallOptions): ProviderConfig {
       return { provider, model, apiKey: config.llm.xaiApiKey, baseUrl: config.llm.xaiUrl };
     case 'gemini':
       return { provider, model, apiKey: config.llm.geminiApiKey, baseUrl: config.llm.geminiUrl };
+    case 'openai':
+      return { provider, model, apiKey: config.llm.openaiApiKey, baseUrl: config.llm.openaiUrl };
     case 'ollama':
       return { provider, model, apiKey: 'ollama', baseUrl: `${config.llm.ollamaUrl}/v1` };
     default:
       throw new Error(`Unsupported LLM provider: ${provider}`);
   }
+}
+
+export function supportsCustomTemperature(provider: string, model: string): boolean {
+  return !(provider === 'openai' && /^gpt-5\.5(?:-|$)/.test(model));
 }
 
 /**
@@ -128,10 +134,19 @@ async function callOpenAICompatible(
   const requestBody: Record<string, unknown> = {
     model: pc.model,
     messages: openaiMessages,
-    max_tokens: options?.maxTokens ?? config.llm.maxTokens,
-    temperature: options?.temperature ?? config.llm.temperature,
     stream: false,
   };
+
+  if (supportsCustomTemperature(pc.provider, pc.model)) {
+    requestBody.temperature = options?.temperature ?? config.llm.temperature;
+  }
+
+  const maxTokens = options?.maxTokens ?? config.llm.maxTokens;
+  if (pc.provider === 'openai') {
+    requestBody.max_completion_tokens = maxTokens;
+  } else {
+    requestBody.max_tokens = maxTokens;
+  }
 
   if (tools && tools.length > 0) {
     requestBody.tools = tools;

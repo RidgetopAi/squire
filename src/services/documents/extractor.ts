@@ -20,7 +20,6 @@ import { docxExtractor } from './docxExtractor.js';
 import { textExtractor } from './textExtractor.js';
 import { csvExtractor } from './csvExtractor.js';
 import { ocrExtractor } from './ocrExtractor.js';
-import { getObjectById, getObjectData } from '../storage/objects.js';
 
 /**
  * Registry of all available extractors
@@ -135,6 +134,8 @@ export async function extractDocument(
       }
 
       case 'objectId': {
+        const { getObjectById, getObjectData } = await import('../storage/objects.js');
+
         // Fetch object metadata from objects service
         const obj = await getObjectById(input.objectId);
         if (!obj) {

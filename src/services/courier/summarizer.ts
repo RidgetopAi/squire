@@ -1,5 +1,6 @@
 import { callLLM } from '../llm/index.js';
 import type { Email } from '../google/gmail.js';
+import { getLLMRuntime } from '../runtime/index.js';
 
 export interface EmailSummary {
   id: string;
@@ -23,10 +24,16 @@ export async function summarizeEmails(emails: Email[]): Promise<EmailSummary[]> 
   ).join('\n\n---\n\n');
 
   try {
+    const runtime = getLLMRuntime('courier-summarizer');
     const response = await callLLM(
       [{ role: 'user', content: SUMMARIZE_PROMPT.replace('{emails}', formatted) }],
       undefined,
-      { provider: 'xai', model: 'grok-3-fast', maxTokens: 1000, temperature: 0.3 }
+      {
+        provider: runtime.provider,
+        model: runtime.model,
+        maxTokens: runtime.maxTokens,
+        temperature: runtime.temperature,
+      }
     );
 
     const summaryText = response.content || '';
