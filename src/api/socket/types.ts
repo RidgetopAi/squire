@@ -47,6 +47,14 @@ export interface ChatChunkPayload {
   conversationId: string;
   chunk: string;
   done: boolean;
+  trace?: {
+    seq: number;
+    chunkChars: number;
+    providerChunkAtMs: number;
+    serverEmitAtMs: number;
+    sincePreviousChunkMs: number | null;
+    elapsedSinceFirstChunkMs: number;
+  };
 }
 
 export interface ChatContextPayload {

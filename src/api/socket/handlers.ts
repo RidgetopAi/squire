@@ -868,6 +868,10 @@ async function streamWithToolLoop(
   let finalAssistantContent = '';
   const currentMessages = [...messages];
   let firstChunkEmitted = false;
+  const traceStreaming = process.env.SQUIRE_STREAM_TRACE === '1';
+  let traceChunkSeq = 0;
+  let traceFirstChunkAtMs: number | null = null;
+  let tracePreviousChunkAtMs: number | null = null;
 
   for (let iteration = 0; iteration <= MAX_TOOL_ITERATIONS; iteration++) {
     // Stream one LLM response
@@ -876,14 +880,44 @@ async function streamWithToolLoop(
       tools,
       {
         onChunk: (chunk) => {
+          const providerChunkAtMs = Date.now();
           if (!firstChunkEmitted) {
             firstChunkEmitted = true;
             markLatency?.('first_llm_chunk_emitted');
+          }
+          traceChunkSeq += 1;
+          traceFirstChunkAtMs ??= providerChunkAtMs;
+          const sincePreviousChunkMs = tracePreviousChunkAtMs === null
+            ? null
+            : providerChunkAtMs - tracePreviousChunkAtMs;
+          tracePreviousChunkAtMs = providerChunkAtMs;
+          const serverEmitAtMs = Date.now();
+          if (
+            traceStreaming &&
+            (traceChunkSeq <= 5 || traceChunkSeq % 20 === 0 || (sincePreviousChunkMs ?? 0) > 250)
+          ) {
+            console.log('[Socket][StreamTrace] emit chat:chunk', {
+              conversationId,
+              seq: traceChunkSeq,
+              chars: chunk.length,
+              sincePreviousChunkMs,
+              elapsedSinceFirstChunkMs: providerChunkAtMs - traceFirstChunkAtMs,
+            });
           }
           socket.emit('chat:chunk', {
             conversationId,
             chunk,
             done: false,
+            trace: traceStreaming
+              ? {
+                  seq: traceChunkSeq,
+                  chunkChars: chunk.length,
+                  providerChunkAtMs,
+                  serverEmitAtMs,
+                  sincePreviousChunkMs,
+                  elapsedSinceFirstChunkMs: providerChunkAtMs - traceFirstChunkAtMs,
+                }
+              : undefined,
           });
         },
       },

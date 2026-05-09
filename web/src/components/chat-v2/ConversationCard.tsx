@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -18,8 +18,45 @@ export function ConversationCard({ pair, index, onBookmark, isBookmarked = false
   const { userMessage, assistantMessage, isStreaming } = pair;
   const [isHovered, setIsHovered] = useState(false);
   const [isReaderOpen, setIsReaderOpen] = useState(false);
+  const renderCountRef = useRef(0);
+  const previousContentLengthRef = useRef(assistantMessage?.content.length ?? 0);
+  const previousCommitAtRef = useRef<number | null>(null);
 
   const hasReport = assistantMessage?.reportData;
+
+  useEffect(() => {
+    const streamTraceEnabled =
+      process.env.NEXT_PUBLIC_SQUIRE_STREAM_TRACE === '1' ||
+      (typeof window !== 'undefined' &&
+        (window as unknown as Record<string, boolean>).__SQUIRE_STREAM_TRACE_ACTIVE__ === true);
+    if (!streamTraceEnabled || !isStreaming || !assistantMessage) return;
+
+    const committedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    renderCountRef.current += 1;
+    const contentLength = assistantMessage.content.length;
+    const deltaChars = contentLength - previousContentLengthRef.current;
+    const sincePreviousCommitMs = previousCommitAtRef.current === null
+      ? null
+      : committedAt - previousCommitAtRef.current;
+    previousContentLengthRef.current = contentLength;
+    previousCommitAtRef.current = committedAt;
+
+    if (
+      renderCountRef.current <= 5 ||
+      renderCountRef.current % 20 === 0 ||
+      (sincePreviousCommitMs ?? 0) > 250
+    ) {
+      console.log('[ConversationCard][StreamTrace] streaming render committed', {
+        pairId: pair.id,
+        render: renderCountRef.current,
+        contentLength,
+        deltaChars,
+        sincePreviousCommitMs: sincePreviousCommitMs === null
+          ? null
+          : Number(sincePreviousCommitMs.toFixed(2)),
+      });
+    }
+  }, [assistantMessage, isStreaming, pair.id]);
 
   const handleOpenReader = useCallback(() => {
     setIsReaderOpen(true);

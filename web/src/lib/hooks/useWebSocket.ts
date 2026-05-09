@@ -15,6 +15,14 @@ export interface ChatChunkPayload {
   conversationId: string;
   chunk: string;
   done: boolean;
+  trace?: {
+    seq: number;
+    chunkChars: number;
+    providerChunkAtMs: number;
+    serverEmitAtMs: number;
+    sincePreviousChunkMs: number | null;
+    elapsedSinceFirstChunkMs: number;
+  };
 }
 
 export interface ChatContextPayload {
@@ -449,4 +457,3 @@ export function leaveConversationRoom(conversationId: string): void {
     console.log('[WebSocket] Left conversation room:', conversationId);
   }
 }
-

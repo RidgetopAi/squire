@@ -217,6 +217,8 @@ async function streamOpenAICompatible(
   options?: CallOptions
 ): Promise<LLMResponse> {
   const openaiMessages = toOpenAIMessages(messages);
+  const traceStreaming = process.env.SQUIRE_STREAM_TRACE === '1';
+  const traceStartedAtMs = Date.now();
 
   const requestBody: Record<string, unknown> = {
     model: pc.model,
@@ -275,12 +277,25 @@ async function streamOpenAICompatible(
     const decoder = new TextDecoder();
     let buffer = '';
     let fullContent = '';
+    let rawReadCount = 0;
+    let textChunkCount = 0;
+    let lastTextChunkAtMs: number | null = null;
     const accumulatedToolCalls: Map<number, StreamingToolCall> = new Map();
 
     try {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+        rawReadCount += 1;
+        if (traceStreaming && (rawReadCount <= 5 || rawReadCount % 20 === 0)) {
+          console.log('[LLM Stream][Trace] raw SSE read', {
+            provider: pc.provider,
+            model: pc.model,
+            read: rawReadCount,
+            bytes: value.byteLength,
+            elapsedMs: Date.now() - traceStartedAtMs,
+          });
+        }
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
@@ -345,6 +360,25 @@ async function streamOpenAICompatible(
 
             // Handle text content
             if (delta?.content) {
+              const textChunkAtMs = Date.now();
+              textChunkCount += 1;
+              const sincePreviousTextChunkMs = lastTextChunkAtMs === null
+                ? null
+                : textChunkAtMs - lastTextChunkAtMs;
+              lastTextChunkAtMs = textChunkAtMs;
+              if (
+                traceStreaming &&
+                (textChunkCount <= 5 || textChunkCount % 20 === 0 || (sincePreviousTextChunkMs ?? 0) > 250)
+              ) {
+                console.log('[LLM Stream][Trace] text delta', {
+                  provider: pc.provider,
+                  model: pc.model,
+                  seq: textChunkCount,
+                  chars: delta.content.length,
+                  sincePreviousTextChunkMs,
+                  elapsedMs: textChunkAtMs - traceStartedAtMs,
+                });
+              }
               fullContent += delta.content;
               callbacks?.onChunk?.(delta.content);
             }

@@ -45,6 +45,30 @@ function generateMessageId(): string {
 // Primary conversation ID - shared across all interfaces (Telegram, web UI)
 // Using a fixed ID ensures chat history is unified regardless of interface
 const PRIMARY_CONVERSATION_ID = 'primary';
+const STREAM_TRACE_ENABLED = process.env.NEXT_PUBLIC_SQUIRE_STREAM_TRACE === '1';
+const STREAM_TRACE_RUNTIME_KEY = '__SQUIRE_STREAM_TRACE_ACTIVE__';
+
+function nowMs(): number {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now();
+}
+
+function setRuntimeStreamTraceEnabled(): void {
+  if (typeof window !== 'undefined') {
+    (window as unknown as Record<string, boolean>)[STREAM_TRACE_RUNTIME_KEY] = true;
+  }
+}
+
+function isRuntimeStreamTraceEnabled(): boolean {
+  return (
+    STREAM_TRACE_ENABLED ||
+    (typeof window !== 'undefined' &&
+      (window as unknown as Record<string, boolean>)[STREAM_TRACE_RUNTIME_KEY] === true)
+  );
+}
+
+function shouldLogStreamTrace(seq?: number): boolean {
+  return isRuntimeStreamTraceEnabled() && (!seq || seq <= 5 || seq % 20 === 0);
+}
 
 // Generate conversation ID - now returns the shared primary ID
 function generateConversationId(): string {
@@ -83,7 +107,7 @@ interface ChatState {
   startNewConversation: () => string;
 
   // Streaming actions
-  appendToStreamingMessage: (chunk: string) => void;
+  appendToStreamingMessage: (chunk: string, trace?: ChatChunkPayload['trace']) => void;
   finishStreaming: (usage?: ChatDonePayload['usage'], reportData?: ChatDonePayload['reportData']) => void;
   handleStreamError: (error: string) => void;
 
@@ -261,17 +285,36 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   // Append chunk to streaming message
-  appendToStreamingMessage: (chunk: string) => {
+  appendToStreamingMessage: (chunk: string, trace?: ChatChunkPayload['trace']) => {
     const { streamingMessageId } = get();
     if (!streamingMessageId) return;
+
+    const updateStartedAt = nowMs();
+    let previousLength = 0;
+    let nextLength = 0;
 
     set((state) => ({
       messages: state.messages.map((msg) =>
         msg.id === streamingMessageId
-          ? { ...msg, content: msg.content + chunk }
+          ? (() => {
+              previousLength = msg.content.length;
+              nextLength = previousLength + chunk.length;
+              return { ...msg, content: msg.content + chunk };
+            })()
           : msg
       ),
     }));
+
+    const updateDurationMs = nowMs() - updateStartedAt;
+    if (shouldLogStreamTrace(trace?.seq) || (isRuntimeStreamTraceEnabled() && updateDurationMs > 16)) {
+      console.log('[ChatStore][StreamTrace] appendToStreamingMessage', {
+        seq: trace?.seq,
+        chunkChars: chunk.length,
+        previousLength,
+        nextLength,
+        updateDurationMs: Number(updateDurationMs.toFixed(2)),
+      });
+    }
   },
 
   // Finish streaming
@@ -585,8 +628,30 @@ export function initWebSocketListeners(): () => void {
   function handleChatChunk(payload: ChatChunkPayload) {
     const { conversationId, streamingMessageId } = store();
     if (payload.conversationId === conversationId && streamingMessageId) {
+      const receivedAtMs = Date.now();
+      const dispatchStartedAt = nowMs();
+      if (payload.trace) {
+        setRuntimeStreamTraceEnabled();
+      }
+      if (shouldLogStreamTrace(payload.trace?.seq)) {
+        console.log('[ChatStore][StreamTrace] received chat:chunk', {
+          seq: payload.trace?.seq,
+          chunkChars: payload.chunk.length,
+          serverToClientWallMs: payload.trace ? receivedAtMs - payload.trace.serverEmitAtMs : undefined,
+          providerToClientWallMs: payload.trace ? receivedAtMs - payload.trace.providerChunkAtMs : undefined,
+          providerSincePreviousChunkMs: payload.trace?.sincePreviousChunkMs,
+          providerElapsedSinceFirstChunkMs: payload.trace?.elapsedSinceFirstChunkMs,
+        });
+      }
       store().setLoadingContext(false);
-      store().appendToStreamingMessage(payload.chunk);
+      store().appendToStreamingMessage(payload.chunk, payload.trace);
+      const dispatchDurationMs = nowMs() - dispatchStartedAt;
+      if (shouldLogStreamTrace(payload.trace?.seq) || (isRuntimeStreamTraceEnabled() && dispatchDurationMs > 16)) {
+        console.log('[ChatStore][StreamTrace] dispatched chat:chunk', {
+          seq: payload.trace?.seq,
+          dispatchDurationMs: Number(dispatchDurationMs.toFixed(2)),
+        });
+      }
     }
   }
 
