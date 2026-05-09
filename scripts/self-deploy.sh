@@ -229,8 +229,8 @@ if ! systemd-run --unit=squire-deploy-restart --no-block \
       # fixes to go unversioned (2026-04-16 → 2026-04-18). Now we:
       #   (a) surface any git error to the deploy log rather than swallowing
       #       it via \$(...)
-      #   (b) use 'git diff HEAD --quiet' to detect changes (exit code, not
-      #       stdout — avoids dubious-ownership silent-empty failure)
+      #   (b) use 'git status --porcelain -- <managed paths>' so new source
+      #       files are included without sweeping up env backups/secrets
       #   (c) if git can't read the repo at all, log a loud WARN
       cd $PRODUCTION
       GIT_PROBE=\$(git status --porcelain 2>&1)
@@ -238,9 +238,15 @@ if ! systemd-run --unit=squire-deploy-restart --no-block \
       if [ \$GIT_RC -ne 0 ] || echo \"\$GIT_PROBE\" | grep -q 'dubious ownership'; then
         echo \"\$(date '+%Y-%m-%d %H:%M:%S') ✗ WARN Git unreadable from deploy unit: \$GIT_PROBE\" >> $DEPLOY_LOG
         echo \"\$(date '+%Y-%m-%d %H:%M:%S')   Fix: git config --global --add safe.directory $PRODUCTION\" >> $DEPLOY_LOG
-      elif ! git diff HEAD --quiet 2>>$DEPLOY_LOG; then
+      else
+        DEPLOY_CHANGES=\$(git status --porcelain -- src package.json package-lock.json tsconfig.json web .env.example 2>>$DEPLOY_LOG)
+      fi
+
+      if [ \$GIT_RC -ne 0 ] || echo \"\$GIT_PROBE\" | grep -q 'dubious ownership'; then
+        :
+      elif [ -n \"\$DEPLOY_CHANGES\" ]; then
         echo \"\$(date '+%Y-%m-%d %H:%M:%S') Git: committing deploy changes...\" >> $DEPLOY_LOG
-        git add -u 2>>$DEPLOY_LOG
+        git add -A -- src package.json package-lock.json tsconfig.json web .env.example 2>>$DEPLOY_LOG
         SUMMARY=\$(git diff --cached --stat | tail -1)
         if git commit -m \"auto-deploy: \$(date '+%Y-%m-%d %H:%M:%S')
 
