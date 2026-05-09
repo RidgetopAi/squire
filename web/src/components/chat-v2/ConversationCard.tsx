@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { memo, useEffect, useRef, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -14,7 +14,7 @@ interface ConversationCardProps {
   isBookmarked?: boolean;
 }
 
-export function ConversationCard({ pair, index, onBookmark, isBookmarked = false }: ConversationCardProps) {
+function ConversationCardComponent({ pair, index, onBookmark, isBookmarked = false }: ConversationCardProps) {
   const { userMessage, assistantMessage, isStreaming } = pair;
   const [isHovered, setIsHovered] = useState(false);
   const [isReaderOpen, setIsReaderOpen] = useState(false);
@@ -163,7 +163,11 @@ export function ConversationCard({ pair, index, onBookmark, isBookmarked = false
               [&_td]:px-3 [&_td]:py-2 [&_td]:border-b [&_td]:border-[var(--card-border)] [&_td]:text-foreground
               [&_tr:last-child_td]:border-b-0
             ">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{assistantMessage.content}</ReactMarkdown>
+              {isStreaming ? (
+                <div className="whitespace-pre-wrap">{assistantMessage.content}</div>
+              ) : (
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{assistantMessage.content}</ReactMarkdown>
+              )}
             </div>
           </div>
         ) : isStreaming ? (
@@ -188,3 +192,14 @@ export function ConversationCard({ pair, index, onBookmark, isBookmarked = false
     </>
   );
 }
+
+export const ConversationCard = memo(
+  ConversationCardComponent,
+  (prev, next) =>
+    prev.index === next.index &&
+    prev.pair.userMessage === next.pair.userMessage &&
+    prev.pair.assistantMessage === next.pair.assistantMessage &&
+    prev.pair.isStreaming === next.pair.isStreaming &&
+    prev.isBookmarked === next.isBookmarked &&
+    prev.onBookmark === next.onBookmark
+);
