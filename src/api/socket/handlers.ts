@@ -62,6 +62,17 @@ const activeStreams = new Map<string, AbortController>();
 const CONSOLIDATION_DELAY_MS = 15 * 60 * 1000; // 15 minutes
 let consolidationTimer: ReturnType<typeof setTimeout> | null = null;
 
+function createChatTimer(conversationId: string) {
+  const started = Date.now();
+  let last = started;
+
+  return (label: string): void => {
+    const now = Date.now();
+    console.log(`[Socket][Latency] ${conversationId} ${label}: +${now - last}ms (${now - started}ms total)`);
+    last = now;
+  };
+}
+
 /**
  * Schedule consolidation to run after inactivity period
  * Resets the timer on each call (debounce pattern)
@@ -491,6 +502,7 @@ async function handleChatMessage(
   payload: ChatMessagePayload
 ): Promise<void> {
   const { conversationId, message, images, includeContext = true, contextProfile, documentId } = payload;
+  const markLatency = createChatTimer(conversationId);
 
   console.log(`[Socket] chat:message from ${socket.id} - conversation: ${conversationId}`);
 
@@ -519,6 +531,7 @@ async function handleChatMessage(
     // Step 0: Ensure conversation exists in database
     const conversation = await getOrCreateConversation(conversationId);
     console.log(`[Socket] Conversation ready: ${conversation.id}`);
+    markLatency('conversation_ready');
 
     // Step 1: Persist user message immediately
     const userMessage = await addMessage({
@@ -526,6 +539,7 @@ async function handleChatMessage(
       role: 'user',
       content: message,
     });
+    markLatency('user_message_persisted');
 
     // Broadcast user message to all devices in this conversation room
     broadcastMessageSynced(io, conversationId, {
@@ -538,6 +552,7 @@ async function handleChatMessage(
     // Phase 4: Check for commitment confirmation/dismissal response
     // If user just said yes/no to a candidate prompt, handle it immediately
     const candidateResponse = await checkCandidateResponse(message, socket, io, conversationId);
+    markLatency('candidate_response_checked');
     if (candidateResponse) {
       // User confirmed/dismissed - we've already sent a response, skip LLM
       return;
@@ -566,6 +581,7 @@ async function handleChatMessage(
         // Phase 1: Story Engine - detect if this is a biographical/narrative query
         console.log(`[Socket] Step 2a: Detecting story intent...`);
         const intent = await detectStoryIntent(message);
+        markLatency('story_intent_detected');
 
         if (isStoryIntent(intent)) {
           // This is a story query - use Story Engine instead of RAG
@@ -574,6 +590,7 @@ async function handleChatMessage(
           try {
             storyResult = await generateStory({ query: message, intent });
             console.log(`[Socket] Story generated with ${storyResult.evidence.length} evidence nodes`);
+            markLatency('story_generated');
 
             // Use story narrative as context for the LLM
             contextMarkdown = `## Personal Story Context
@@ -623,6 +640,7 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
             profile: contextProfile,
           });
           console.log(`[Socket] Context generated: ${contextPackage.memories.length} memories`);
+          markLatency('rag_context_generated');
 
           contextMarkdown = contextPackage.markdown;
           memoryIds = contextPackage.memories.map((m) => m.id);
@@ -657,6 +675,7 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
       systemPromptPromise,
       memoryContextPromise,
     ]);
+    markLatency('system_and_memory_context_ready');
 
     // Static system prompt (cacheable — identical across calls)
     messages.push({ role: 'system', content: systemPromptBase });
@@ -675,6 +694,7 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
     // This is the key fix: frontend history only has user/assistant text,
     // but the DB has the full tool call chain we need for mid-session awareness
     const dbHistory = await getRecentMessagesForContext(conversation.id, 20);
+    markLatency('db_history_loaded');
     // Remove the last message if it's the user message we just persisted (avoid duplication)
     const historyWithoutCurrent = dbHistory.filter((m) => !(m.role === 'user' && m.content === message));
     for (const msg of historyWithoutCurrent) {
@@ -689,6 +709,9 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
 
     // Compress images if needed (Anthropic has a 5MB per-image limit)
     const processedImages = images ? await compressImages(images) : undefined;
+    if (images) {
+      markLatency('images_processed');
+    }
 
     // Add current message with optional images
     messages.push({ role: 'user', content: message, images: processedImages });
@@ -702,8 +725,10 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
     const providerName = providerOverride?.provider ?? config.llm.provider;
     
     console.log(`[Socket] Step 4: Starting ${providerName} stream... (${tools?.length ?? 0} tools available${hasImages ? ', with images' : ''})`);
-    const streamResult = await streamWithToolLoop(socket, conversationId, messages, abortController.signal, tools, providerOverride, conversation.id);
+    markLatency('starting_llm_stream');
+    const streamResult = await streamWithToolLoop(socket, conversationId, messages, abortController.signal, tools, providerOverride, conversation.id, markLatency);
     console.log(`[Socket] Stream complete: ${streamResult.content.length} chars`);
+    markLatency('llm_stream_complete');
 
     // Step 5: Await extraction and stream follow-up acknowledgment if needed.
     // fullContent here is only the final (post-tool-loop) assistant text —
@@ -712,6 +737,7 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
     // bloat history and break the assistant/tool_use/tool_result pairing.
     let fullContent = streamResult.finalAssistantContent;
     const extracted = await extractionPromise;
+    markLatency('realtime_extraction_ready');
 
     if (extracted.commitmentCreated || extracted.reminderCreated) {
       let followUp = '';
@@ -766,6 +792,7 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
         completionTokens: streamResult.usage?.completionTokens,
         metadata: streamResult.reportData ? { reportData: streamResult.reportData } : null,
       });
+      markLatency('assistant_message_persisted');
 
       // Broadcast assistant message to all devices in this conversation room
       broadcastMessageSynced(io, conversationId, {
@@ -788,6 +815,7 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
     };
     console.log(`[Socket] Emitting chat:done for conversation: ${conversationId}${streamResult.reportData ? ' (with report)' : ''}`);
     socket.emit('chat:done', chatDonePayload);
+    markLatency('chat_done_emitted');
     io.to(`conversation:${conversationId}`).emit('chat:done', chatDonePayload);
     chatDoneEmitted = true;
   } catch (error) {
@@ -829,7 +857,8 @@ async function streamWithToolLoop(
   signal: AbortSignal,
   tools?: ToolDefinition[],
   providerOverride?: { provider: string; model: string },
-  conversationDbId?: string
+  conversationDbId?: string,
+  markLatency?: (label: string) => void
 ): Promise<{ content: string; usage?: { promptTokens: number; completionTokens: number }; reportData?: { title: string; summary: string; content: string; generatedAt: string }; usedTools: boolean; finalAssistantContent: string }> {
   let fullContent = '';
   let totalPromptTokens = 0;
@@ -838,6 +867,7 @@ async function streamWithToolLoop(
   let usedTools = false;
   let finalAssistantContent = '';
   const currentMessages = [...messages];
+  let firstChunkEmitted = false;
 
   for (let iteration = 0; iteration <= MAX_TOOL_ITERATIONS; iteration++) {
     // Stream one LLM response
@@ -846,6 +876,10 @@ async function streamWithToolLoop(
       tools,
       {
         onChunk: (chunk) => {
+          if (!firstChunkEmitted) {
+            firstChunkEmitted = true;
+            markLatency?.('first_llm_chunk_emitted');
+          }
           socket.emit('chat:chunk', {
             conversationId,
             chunk,

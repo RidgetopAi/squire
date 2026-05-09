@@ -355,9 +355,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
     setError(null);
 
     try {
-      // Fetch context first if enabled (same for both streaming and HTTP)
       let contextPackage: ContextPackage | undefined;
-      if (includeContext) {
+      if (includeContext && useStreaming && connected) {
+        // The WebSocket server generates context and emits chat:context.
+        // Avoid pre-fetching it here; that duplicates backend work and delays first token.
+        setLoadingContext(true);
+      } else if (includeContext) {
         setLoadingContext(true);
         try {
           contextPackage = await fetchContext({
@@ -550,6 +553,7 @@ export function initWebSocketListeners(): () => void {
   function handleChatChunk(payload: ChatChunkPayload) {
     const { conversationId, streamingMessageId } = store();
     if (payload.conversationId === conversationId && streamingMessageId) {
+      store().setLoadingContext(false);
       store().appendToStreamingMessage(payload.chunk);
     }
   }
@@ -558,6 +562,7 @@ export function initWebSocketListeners(): () => void {
   function handleChatContext(payload: ChatContextPayload) {
     const { conversationId } = store();
     if (payload.conversationId !== conversationId) return;
+    store().setLoadingContext(false);
 
     // Convert to ScoredMemory format for overlay
     const memories: ScoredMemory[] = payload.memories.map((m) => ({
@@ -595,6 +600,7 @@ export function initWebSocketListeners(): () => void {
       hasReport: !!payload.reportData,
     });
     if (payload.conversationId === conversationId) {
+      store().setLoadingContext(false);
       console.log('[ChatStore] Calling finishStreaming');
       store().finishStreaming(payload.usage, payload.reportData);
     }
@@ -604,6 +610,7 @@ export function initWebSocketListeners(): () => void {
   function handleChatError(payload: ChatErrorPayload) {
     const { conversationId } = store();
     if (payload.conversationId === conversationId) {
+      store().setLoadingContext(false);
       store().handleStreamError(payload.error);
     }
   }
