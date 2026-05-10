@@ -134,8 +134,8 @@ fi
 
 # --- Step 3: Backup production ---
 log "[3/5] Backing up current production..."
-rm -rf "$BACKUP"
 mkdir -p "$BACKUP"
+find "$BACKUP" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
 cp -a "$PRODUCTION/dist" "$BACKUP/dist"
 cp "$PRODUCTION/package.json" "$BACKUP/package.json"
 cp "$PRODUCTION/tsconfig.json" "$BACKUP/tsconfig.json"
