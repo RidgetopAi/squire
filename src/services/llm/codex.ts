@@ -1,5 +1,6 @@
 import { exec } from 'child_process';
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
+import { userInfo } from 'os';
 import { config } from '../../config/index.js';
 import type { CallOptions, LLMMessage, LLMResponse, StreamCallbacks, ToolDefinition } from './types.js';
 
@@ -12,6 +13,14 @@ const DEFAULTS = {
 function isRunningOnVPS(): boolean {
   const hostname = process.env.HOSTNAME || '';
   return hostname.includes('ubuntu') || existsSync('/opt/squire') || existsSync('/etc/systemd/system/squire.service');
+}
+
+function isRunningAsVpsUser(): boolean {
+  try {
+    return userInfo().username === DEFAULTS.vpsUser;
+  } catch {
+    return process.env.USER === DEFAULTS.vpsUser;
+  }
 }
 
 function shellQuote(value: string): string {
@@ -137,7 +146,9 @@ export async function callCodex(
   ].map((part) => ['<', '>'].includes(part) ? part : shellQuote(part)).join(' ');
 
   const command = isRunningOnVPS()
-    ? `sudo -u ${DEFAULTS.vpsUser} -H bash -lc ${shellQuote(codexCommand)}`
+    ? isRunningAsVpsUser()
+      ? `bash -lc ${shellQuote(codexCommand)}`
+      : `sudo -u ${DEFAULTS.vpsUser} -H bash -lc ${shellQuote(codexCommand)}`
     : `scp ${shellQuote(promptFile)} ${DEFAULTS.sshHost}:${shellQuote(promptFile)} && ssh ${DEFAULTS.sshHost} ${shellQuote(`sudo -u ${DEFAULTS.vpsUser} -H bash -lc ${shellQuote(codexCommand)}`)}`;
 
   try {
