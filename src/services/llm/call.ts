@@ -23,6 +23,7 @@ import {
   fromAnthropicResponse,
   fromOpenAIResponse,
 } from './format.js';
+import { callCodex } from './codex.js';
 
 /**
  * Resolve provider configuration from options + config defaults.
@@ -42,6 +43,8 @@ export function resolveProvider(options?: CallOptions): ProviderConfig {
       return { provider, model, apiKey: config.llm.geminiApiKey, baseUrl: config.llm.geminiUrl };
     case 'openai':
       return { provider, model, apiKey: config.llm.openaiApiKey, baseUrl: config.llm.openaiUrl };
+    case 'codex':
+      return { provider, model, apiKey: 'codex', baseUrl: '' };
     case 'ollama':
       return { provider, model, apiKey: 'ollama', baseUrl: `${config.llm.ollamaUrl}/v1` };
     default:
@@ -69,6 +72,10 @@ export async function callLLM(
 
   if (pc.provider === 'anthropic') {
     return callAnthropic(messages, tools, pc, options);
+  }
+
+  if (pc.provider === 'codex') {
+    return callCodex(messages, tools, undefined, options);
   }
 
   return callOpenAICompatible(messages, tools, pc, options);

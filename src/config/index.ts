@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-export type LLMProviderName = 'groq' | 'xai' | 'ollama' | 'gemini' | 'anthropic' | 'openai';
+export type LLMProviderName = 'groq' | 'xai' | 'ollama' | 'gemini' | 'anthropic' | 'openai' | 'codex';
 export type WorkerRuntimeProvider = 'claude-code' | 'codex';
 
 function required(name: string): string {
@@ -52,6 +52,7 @@ export const config = {
     temperature: parseFloat(optional('LLM_TEMPERATURE', '0.7')),
     apiTimeoutMs: parseInt(optional('LLM_API_TIMEOUT_MS', '60000'), 10),
     openaiStreamServiceTier: optional('OPENAI_STREAM_SERVICE_TIER', ''),
+    codexChatTimeoutMs: parseInt(optional('CODEX_CHAT_TIMEOUT_MS', '900000'), 10),
   },
   search: {
     documentThreshold: parseFloat(optional('SEARCH_DOCUMENT_THRESHOLD', '0.55')),

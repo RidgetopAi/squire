@@ -25,6 +25,7 @@ import {
   toOpenAIMessages,
 } from './format.js';
 import { resolveProvider, supportsCustomTemperature } from './call.js';
+import { callCodex } from './codex.js';
 
 /**
  * Stream an LLM response from any supported provider.
@@ -46,6 +47,10 @@ export async function streamLLM(
 
   if (pc.provider === 'anthropic') {
     return streamAnthropic(messages, tools, callbacks, pc, options);
+  }
+
+  if (pc.provider === 'codex') {
+    return callCodex(messages, tools, callbacks, options);
   }
 
   return streamOpenAICompatible(messages, tools, callbacks, pc, options);
