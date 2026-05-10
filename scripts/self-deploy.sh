@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # self-deploy.sh - Blue-green self-deployment for Squire
 #
-# Usage: sudo bash /opt/squire/scripts/self-deploy.sh [--skip-web] [--dry-run]
+# Usage: bash /opt/squire/scripts/self-deploy.sh [--skip-web] [--dry-run]
 #
 # Called by Squire's agent after making changes in /opt/squire-staging.
 #
@@ -39,6 +39,15 @@ done
 
 log() { echo "[deploy] $(date '+%H:%M:%S') $1"; }
 die() { log "ERROR: $1"; exit 1; }
+
+SYSTEMD_RUN=(systemd-run)
+if [ "${EUID:-$(id -u)}" -ne 0 ]; then
+  if sudo -n /usr/bin/systemd-run --version >/dev/null 2>&1; then
+    SYSTEMD_RUN=(sudo -n /usr/bin/systemd-run)
+  else
+    die "systemd-run requires root or passwordless sudo for the restart handoff"
+  fi
+fi
 
 # --- Step 0a: Git pre-flight ---
 # The auto-commit block runs under systemd-run as root, which triggers git's
@@ -193,7 +202,7 @@ systemctl reset-failed squire-deploy-restart.service 2>/dev/null || true
 # The restart + verify + rollback all happen in a separate systemd transient unit.
 # This survives Squire's own process being killed during restart.
 # Uses --on-active=1 to start after 1 second delay.
-if ! systemd-run --unit=squire-deploy-restart --no-block \
+if ! "${SYSTEMD_RUN[@]}" --unit=squire-deploy-restart --no-block \
   bash -c "
     sleep 2
     echo \"\$(date '+%Y-%m-%d %H:%M:%S') Starting restart...\" >> $DEPLOY_LOG
