@@ -18,10 +18,6 @@ export interface ImageContent {
   data: string;
   /** MIME type (e.g., 'image/jpeg', 'image/png', 'image/gif', 'image/webp') */
   mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
-  /** Original filename, when the image came from a user upload */
-  name?: string;
-  /** Stored object ID, when the image is available to tools */
-  objectId?: string;
 }
 
 /**

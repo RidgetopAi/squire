@@ -27,10 +27,6 @@ export interface ModuleResult {
   alerts?: string[];
 }
 
-/**
- * Database row types for Memory Health queries
- */
-
 export interface ThreadRow {
   title: string;
   thread_type: string;
@@ -45,6 +41,7 @@ export interface ThreadRow {
 
 export interface StateSnapshotRow {
   period_end: Date;
+  created_at: Date;
   stress_level: number | null;
   energy_level: number | null;
   motivation_level: number | null;
@@ -52,6 +49,9 @@ export interface StateSnapshotRow {
   narrative_summary: string | null;
   dominant_pressures: string[] | null;
   dominant_energizers: string[] | null;
+  memories_analyzed: number | null;
+  open_loop_count: number | null;
+  threads_active: number | null;
 }
 
 export interface TrendSummaryRow {
@@ -69,37 +69,72 @@ export interface TrendSummaryRow {
   threads_stagnant: number | null;
 }
 
-export interface CheckpointStats {
-  continuityThreads: {
-    total: number;
-    active: number;
-    resolved: number;
-    dormant: number;
-    lastUpdated: Date | null;
-  };
-  stateSnapshots: {
-    total: number;
-    latestSnapshot: Date | null;
-    last7Days: number;
-  };
-  trendSummaries: {
-    total: number;
-    latest: Date | null;
-  };
-  beliefs: {
-    total: number;
-    lastUpdated: Date | null;
-  };
-  continuityEvents: {
-    total: number;
-    latest: Date | null;
-  };
+export interface PipelineTableStat {
+  key: string;
+  label: string;
+  total: number;
+  recent24h: number;
+  recent7d: number;
+  lastActivity: Date | null;
+  staleThresholdHours: number;
+  detail: string;
+}
+
+export interface PipelineStats {
+  tables: PipelineTableStat[];
+}
+
+export interface SupportBeliefBreakdownRow {
+  beliefType: string;
+  status: string;
+  count: number;
+  avgConfidence: number | null;
+  surfaceable: number;
+  lastUpdated: Date | null;
+}
+
+export interface SupportBeliefStats {
+  total: number;
+  active: number;
+  surfaceable: number;
+  lastUpdated: Date | null;
+  breakdown: SupportBeliefBreakdownRow[];
+}
+
+export interface ContinuityEventBreakdownRow {
+  eventType: string;
+  count: number;
+}
+
+export interface ContinuityPerformanceStats {
+  total: number;
+  active: number;
+  watching: number;
+  dormant: number;
+  resolved: number;
+  archived: number;
+  updated24h: number;
+  updated7d: number;
+  followupDue: number;
+  staleActive: number;
+  resolved7d: number;
+  events24h: number;
+  events7d: number;
+  lastEventAt: Date | null;
+  eventBreakdown: ContinuityEventBreakdownRow[];
 }
 
 export interface SystemHealthStats {
   totalMemories: number;
   last7Days: number;
   last24Hours: number;
-  recentEvents: number;
-  latestEvent: Date | null;
+  latestMemoryAt: Date | null;
+  pendingProcessing: number;
+  snapshotsCreated24h: number;
+  latestSnapshotAt: Date | null;
+  trendsCreated7d: number;
+  latestTrendAt: Date | null;
+  avgMemoriesAnalyzed: number | null;
+  avgOpenLoops: number | null;
+  avgThreadsActive: number | null;
 }

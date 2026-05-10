@@ -1,12 +1,13 @@
 /**
  * Memory Health Module for Daily Brief
  *
- * Queries PostgreSQL to generate a comprehensive report on:
- * - Checkpoint status (continuity tables health)
- * - Active threads (the heart of Squire's memory)
- * - State snapshots (stress/energy/motivation over time)
- * - Trend intelligence (7/30/90 day trends)
- * - System health (memory volume, consolidation activity)
+ * Operator-facing report on memory/continuity health:
+ * - table freshness and pipeline activity
+ * - continuity performance and follow-up backlog
+ * - support-belief diagnostics
+ * - current active threads
+ * - recent state snapshots and trends
+ * - broader memory pipeline health
  */
 
 import { pool } from '../../../db/pool.js';
@@ -16,11 +17,15 @@ import type {
   ThreadRow,
   StateSnapshotRow,
   TrendSummaryRow,
-  CheckpointStats,
+  PipelineStats,
+  PipelineTableStat,
+  SupportBeliefStats,
+  SupportBeliefBreakdownRow,
+  ContinuityPerformanceStats,
+  ContinuityEventBreakdownRow,
   SystemHealthStats,
 } from '../types.js';
 
-// Color palette
 const COLORS = {
   headerBg: '#1a1a2e',
   accent: '#4f8ef7',
@@ -32,11 +37,10 @@ const COLORS = {
   cardBg: '#f9fafb',
   white: '#ffffff',
   border: '#e5e7eb',
+  info: '#0ea5e9',
+  pink: '#ec4899',
 };
 
-/**
- * Helper to format dates nicely
- */
 function formatDate(date: Date | null): string {
   if (!date) return 'Never';
   const now = new Date();
@@ -50,9 +54,6 @@ function formatDate(date: Date | null): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-/**
- * Helper to format dates with time
- */
 function formatDateTime(date: Date | null): string {
   if (!date) return 'Never';
   return date.toLocaleDateString('en-US', {
@@ -64,13 +65,33 @@ function formatDateTime(date: Date | null): string {
   });
 }
 
-/**
- * Get status indicator based on freshness
- */
+function formatDecimal(value: number | null): string {
+  if (value === null || Number.isNaN(value)) return '—';
+  return value.toFixed(1);
+}
+
+function toInt(value: unknown): number {
+  if (typeof value === 'number') return value;
+  const parsed = parseInt(String(value ?? '0'), 10);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function toFloat(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const parsed = parseFloat(String(value));
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function toDate(value: unknown): Date | null {
+  if (!value) return null;
+  const date = new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 function getStatusIndicator(
   hasData: boolean,
   lastActivity: Date | null,
-  staleThresholdHours = 48
+  staleThresholdHours: number
 ): { icon: string; color: string; status: string } {
   if (!hasData) {
     return { icon: '✗', color: COLORS.danger, status: 'Empty' };
@@ -81,116 +102,359 @@ function getStatusIndicator(
   }
 
   const hoursAgo = (Date.now() - lastActivity.getTime()) / (1000 * 60 * 60);
-
-  if (hoursAgo < staleThresholdHours) {
-    return { icon: '✓', color: COLORS.success, status: 'Active' };
+  if (hoursAgo <= staleThresholdHours) {
+    return { icon: '✓', color: COLORS.success, status: 'Fresh' };
   }
 
   return { icon: '⚠', color: COLORS.warning, status: 'Stale' };
 }
 
-/**
- * Get trend arrow
- * Accepts either a numeric trend value (-1, 0, 1) or a descriptive string
- */
-function getTrendArrow(trend: number | string | null | unknown): { arrow: string; color: string } {
+function getTrendArrow(
+  trend: number | string | null | unknown,
+  positiveIsGood = true
+): { arrow: string; color: string } {
   if (trend === null || trend === undefined) return { arrow: '—', color: COLORS.muted };
 
-  // Handle numeric values (-1 = declining, 0 = stable, 1 = improving)
   if (typeof trend === 'number') {
-    if (trend > 0) return { arrow: '↑', color: COLORS.success };
-    if (trend < 0) return { arrow: '↓', color: COLORS.danger };
-    return { arrow: '→', color: COLORS.muted };
+    if (trend === 0) return { arrow: '→', color: COLORS.muted };
+    if (trend > 0) {
+      return positiveIsGood
+        ? { arrow: '↑', color: COLORS.success }
+        : { arrow: '↑', color: COLORS.danger };
+    }
+    return positiveIsGood
+      ? { arrow: '↓', color: COLORS.danger }
+      : { arrow: '↓', color: COLORS.success };
   }
 
-  // Guard: if not a string (e.g. object, array from DB), return stable
   if (typeof trend !== 'string') return { arrow: '→', color: COLORS.muted };
 
-  // Handle string values — coerce to string defensively in case DB returns unexpected type
-  const normalized = String(trend).toLowerCase();
-  if (normalized.includes('improv') || normalized.includes('up') || normalized.includes('increas')) {
-    return { arrow: '↑', color: COLORS.success };
+  const normalized = trend.toLowerCase();
+  if (normalized.includes('stable')) return { arrow: '→', color: COLORS.muted };
+  if (normalized.includes('improv') || normalized.includes('down')) {
+    return positiveIsGood
+      ? { arrow: '↑', color: COLORS.success }
+      : { arrow: '↓', color: COLORS.success };
   }
-  if (normalized.includes('declin') || normalized.includes('down') || normalized.includes('decreas') || normalized.includes('worsen')) {
-    return { arrow: '↓', color: COLORS.danger };
+  if (normalized.includes('worsen') || normalized.includes('up') || normalized.includes('declin')) {
+    return positiveIsGood
+      ? { arrow: '↓', color: COLORS.danger }
+      : { arrow: '↑', color: COLORS.danger };
   }
   return { arrow: '→', color: COLORS.muted };
 }
 
-/**
- * Query checkpoint statistics from all continuity tables
- */
-async function getCheckpointStats(): Promise<CheckpointStats> {
-  const [threadsResult, snapshotsResult, trendsResult, beliefsResult, eventsResult] =
+function buildMetricCard(
+  label: string,
+  value: string,
+  sublabel: string,
+  color: string = COLORS.text
+): string {
+  return `
+    <div style="flex: 1; min-width: 140px; text-align: center; padding: 12px; background: ${COLORS.cardBg}; border-radius: 8px; border: 1px solid ${COLORS.border};">
+      <div style="font-size: 26px; font-weight: bold; color: ${color};">${value}</div>
+      <div style="font-size: 12px; color: ${COLORS.text}; font-weight: 600; margin-top: 4px;">${label}</div>
+      <div style="font-size: 11px; color: ${COLORS.muted}; margin-top: 2px;">${sublabel}</div>
+    </div>
+  `;
+}
+
+function buildSectionShell(title: string, subtitle: string, body: string): string {
+  return `
+    <div style="background: ${COLORS.white}; border-radius: 8px; overflow: hidden; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+      <div style="background: ${COLORS.cardBg}; padding: 12px 16px; border-bottom: 1px solid ${COLORS.border};">
+        <h3 style="margin: 0; font-size: 16px; color: ${COLORS.text};">${title}</h3>
+        <p style="margin: 4px 0 0 0; font-size: 12px; color: ${COLORS.muted};">${subtitle}</p>
+      </div>
+      <div style="padding: 16px;">
+        ${body}
+      </div>
+    </div>
+  `;
+}
+
+function formatBeliefType(type: string): string {
+  return type
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function formatThreadType(type: string): string {
+  return type
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function getThreadTypeColor(type: string): string {
+  const colors: Record<string, string> = {
+    project: '#3b82f6',
+    work_pressure: '#6366f1',
+    family: '#f97316',
+    health: '#22c55e',
+    relationship: '#8b5cf6',
+    identity: '#0ea5e9',
+    emotional_load: '#ec4899',
+    logistics: '#64748b',
+    goal: '#f59e0b',
+  };
+  return colors[type] || COLORS.muted;
+}
+
+function formatRecentActivity(row: PipelineTableStat): string {
+  if (row.recent24h > 0) return `${row.recent24h} in 24h`;
+  if (row.recent7d > 0) return `${row.recent7d} in 7d`;
+  return '0 recent';
+}
+
+async function getPipelineStats(): Promise<PipelineStats> {
+  const [threadsResult, snapshotsResult, trendsResult, beliefsResult, eventsResult, memoriesResult] =
     await Promise.all([
       pool.query(`
         SELECT
-          COUNT(*) as total,
-          COUNT(*) FILTER (WHERE status = 'active') as active,
-          COUNT(*) FILTER (WHERE status = 'resolved') as resolved,
-          COUNT(*) FILTER (WHERE status = 'dormant') as dormant,
-          MAX(updated_at) as last_updated
+          COUNT(*)::int AS total,
+          COUNT(*) FILTER (WHERE status = 'active')::int AS active,
+          COUNT(*) FILTER (WHERE status = 'watching')::int AS watching,
+          COUNT(*) FILTER (WHERE status = 'dormant')::int AS dormant,
+          COUNT(*) FILTER (WHERE status = 'resolved')::int AS resolved,
+          MAX(updated_at) AS last_activity,
+          COUNT(*) FILTER (WHERE updated_at > NOW() - INTERVAL '24 hours')::int AS recent_24h,
+          COUNT(*) FILTER (WHERE updated_at > NOW() - INTERVAL '7 days')::int AS recent_7d
         FROM continuity_threads
       `),
       pool.query(`
         SELECT
-          COUNT(*) as total,
-          MAX(period_end) as latest_snapshot,
-          COUNT(*) FILTER (WHERE period_end > NOW() - INTERVAL '7 days') as last_7_days
+          COUNT(*)::int AS total,
+          MAX(created_at) AS last_activity,
+          MAX(period_end) AS latest_period_end,
+          COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours')::int AS recent_24h,
+          COUNT(*) FILTER (WHERE period_end > NOW() - INTERVAL '7 days')::int AS recent_7d
         FROM state_snapshots
       `),
       pool.query(`
-        SELECT COUNT(*) as total, MAX(period_end) as latest
+        SELECT
+          COUNT(*)::int AS total,
+          MAX(created_at) AS last_activity,
+          MAX(period_end) AS latest_period_end,
+          COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours')::int AS recent_24h,
+          COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days')::int AS recent_7d
         FROM trend_summaries
       `),
       pool.query(`
-        SELECT COUNT(*) as total, MAX(updated_at) as last_updated
+        SELECT
+          COUNT(*)::int AS total,
+          COUNT(*) FILTER (WHERE status = 'active' AND confidence >= 0.6)::int AS surfaceable,
+          MAX(updated_at) AS last_activity,
+          COUNT(*) FILTER (WHERE updated_at > NOW() - INTERVAL '24 hours')::int AS recent_24h,
+          COUNT(*) FILTER (WHERE updated_at > NOW() - INTERVAL '7 days')::int AS recent_7d
         FROM beliefs
         WHERE belief_type IN ('support_preference','trigger_sensitivity','protective_priority','vulnerability_theme')
       `),
       pool.query(`
-        SELECT COUNT(*) as total, MAX(created_at) as latest
+        SELECT
+          COUNT(*)::int AS total,
+          MAX(created_at) AS last_activity,
+          COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours')::int AS recent_24h,
+          COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days')::int AS recent_7d
         FROM continuity_events
+      `),
+      pool.query(`
+        SELECT
+          COUNT(*)::int AS total,
+          MAX(created_at) AS last_activity,
+          COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours')::int AS recent_24h,
+          COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days')::int AS recent_7d,
+          COUNT(*) FILTER (WHERE processing_status = 'pending')::int AS pending_processing
+        FROM memories
       `),
     ]);
 
-  const threads = threadsResult.rows[0];
-  const snapshots = snapshotsResult.rows[0];
-  const trends = trendsResult.rows[0];
-  const beliefs = beliefsResult.rows[0];
-  const events = eventsResult.rows[0];
+  const threads = threadsResult.rows[0] || {};
+  const snapshots = snapshotsResult.rows[0] || {};
+  const trends = trendsResult.rows[0] || {};
+  const beliefs = beliefsResult.rows[0] || {};
+  const events = eventsResult.rows[0] || {};
+  const memories = memoriesResult.rows[0] || {};
+
+  const tables: PipelineTableStat[] = [
+    {
+      key: 'continuity_threads',
+      label: 'Continuity Threads',
+      total: toInt(threads.total),
+      recent24h: toInt(threads.recent_24h),
+      recent7d: toInt(threads.recent_7d),
+      lastActivity: toDate(threads.last_activity),
+      staleThresholdHours: 72,
+      detail: `${toInt(threads.active)} active, ${toInt(threads.watching)} watching, ${toInt(threads.dormant)} dormant, ${toInt(threads.resolved)} resolved`,
+    },
+    {
+      key: 'state_snapshots',
+      label: 'State Snapshots',
+      total: toInt(snapshots.total),
+      recent24h: toInt(snapshots.recent_24h),
+      recent7d: toInt(snapshots.recent_7d),
+      lastActivity: toDate(snapshots.last_activity),
+      staleThresholdHours: 36,
+      detail: `Latest period end ${formatDateTime(toDate(snapshots.latest_period_end))}`,
+    },
+    {
+      key: 'trend_summaries',
+      label: 'Trend Summaries',
+      total: toInt(trends.total),
+      recent24h: toInt(trends.recent_24h),
+      recent7d: toInt(trends.recent_7d),
+      lastActivity: toDate(trends.last_activity),
+      staleThresholdHours: 24 * 8,
+      detail: `Latest period end ${formatDateTime(toDate(trends.latest_period_end))}`,
+    },
+    {
+      key: 'support_beliefs',
+      label: 'Support Beliefs',
+      total: toInt(beliefs.total),
+      recent24h: toInt(beliefs.recent_24h),
+      recent7d: toInt(beliefs.recent_7d),
+      lastActivity: toDate(beliefs.last_activity),
+      staleThresholdHours: 24 * 14,
+      detail: `${toInt(beliefs.surfaceable)} surfaceable at active + confidence ≥ 0.6`,
+    },
+    {
+      key: 'continuity_events',
+      label: 'Continuity Events',
+      total: toInt(events.total),
+      recent24h: toInt(events.recent_24h),
+      recent7d: toInt(events.recent_7d),
+      lastActivity: toDate(events.last_activity),
+      staleThresholdHours: 48,
+      detail: 'Thread change and follow-up audit trail',
+    },
+    {
+      key: 'memories',
+      label: 'Memories',
+      total: toInt(memories.total),
+      recent24h: toInt(memories.recent_24h),
+      recent7d: toInt(memories.recent_7d),
+      lastActivity: toDate(memories.last_activity),
+      staleThresholdHours: 48,
+      detail: `${toInt(memories.pending_processing)} pending processing`,
+    },
+  ];
+
+  return { tables };
+}
+
+async function getSupportBeliefStats(): Promise<SupportBeliefStats> {
+  const [summaryResult, breakdownResult] = await Promise.all([
+    pool.query(`
+      SELECT
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE status = 'active')::int AS active_total,
+        COUNT(*) FILTER (WHERE status = 'active' AND confidence >= 0.6)::int AS surfaceable_total,
+        MAX(updated_at) AS last_updated
+      FROM beliefs
+      WHERE belief_type IN ('support_preference','trigger_sensitivity','protective_priority','vulnerability_theme')
+    `),
+    pool.query(`
+      SELECT
+        belief_type,
+        status,
+        COUNT(*)::int AS count,
+        ROUND(AVG(confidence)::numeric, 2) AS avg_confidence,
+        COUNT(*) FILTER (WHERE status = 'active' AND confidence >= 0.6)::int AS surfaceable,
+        MAX(updated_at) AS last_updated
+      FROM beliefs
+      WHERE belief_type IN ('support_preference','trigger_sensitivity','protective_priority','vulnerability_theme')
+      GROUP BY belief_type, status
+      ORDER BY belief_type, status
+    `),
+  ]);
+
+  const summary = summaryResult.rows[0] || {};
+  const breakdown: SupportBeliefBreakdownRow[] = breakdownResult.rows.map((row) => ({
+    beliefType: String(row.belief_type),
+    status: String(row.status),
+    count: toInt(row.count),
+    avgConfidence: toFloat(row.avg_confidence),
+    surfaceable: toInt(row.surfaceable),
+    lastUpdated: toDate(row.last_updated),
+  }));
 
   return {
-    continuityThreads: {
-      total: parseInt(threads.total) || 0,
-      active: parseInt(threads.active) || 0,
-      resolved: parseInt(threads.resolved) || 0,
-      dormant: parseInt(threads.dormant) || 0,
-      lastUpdated: threads.last_updated ? new Date(threads.last_updated) : null,
-    },
-    stateSnapshots: {
-      total: parseInt(snapshots.total) || 0,
-      latestSnapshot: snapshots.latest_snapshot ? new Date(snapshots.latest_snapshot) : null,
-      last7Days: parseInt(snapshots.last_7_days) || 0,
-    },
-    trendSummaries: {
-      total: parseInt(trends.total) || 0,
-      latest: trends.latest ? new Date(trends.latest) : null,
-    },
-    beliefs: {
-      total: parseInt(beliefs.total) || 0,
-      lastUpdated: beliefs.last_updated ? new Date(beliefs.last_updated) : null,
-    },
-    continuityEvents: {
-      total: parseInt(events.total) || 0,
-      latest: events.latest ? new Date(events.latest) : null,
-    },
+    total: toInt(summary.total),
+    active: toInt(summary.active_total),
+    surfaceable: toInt(summary.surfaceable_total),
+    lastUpdated: toDate(summary.last_updated),
+    breakdown,
   };
 }
 
-/**
- * Query active threads
- */
+async function getContinuityPerformance(): Promise<ContinuityPerformanceStats> {
+  const [threadsResult, eventsResult, breakdownResult] = await Promise.all([
+    pool.query(`
+      SELECT
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE status = 'active')::int AS active,
+        COUNT(*) FILTER (WHERE status = 'watching')::int AS watching,
+        COUNT(*) FILTER (WHERE status = 'dormant')::int AS dormant,
+        COUNT(*) FILTER (WHERE status = 'resolved')::int AS resolved,
+        COUNT(*) FILTER (WHERE status = 'archived')::int AS archived,
+        COUNT(*) FILTER (WHERE updated_at > NOW() - INTERVAL '24 hours')::int AS updated_24h,
+        COUNT(*) FILTER (WHERE updated_at > NOW() - INTERVAL '7 days')::int AS updated_7d,
+        COUNT(*) FILTER (
+          WHERE status IN ('active','watching')
+            AND followup_after IS NOT NULL
+            AND followup_after <= NOW()
+        )::int AS followup_due,
+        COUNT(*) FILTER (
+          WHERE status IN ('active','watching')
+            AND COALESCE(last_discussed_at, updated_at, created_at) < NOW() - INTERVAL '14 days'
+        )::int AS stale_active,
+        COUNT(*) FILTER (WHERE resolved_at > NOW() - INTERVAL '7 days')::int AS resolved_7d
+      FROM continuity_threads
+    `),
+    pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours')::int AS events_24h,
+        COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days')::int AS events_7d,
+        MAX(created_at) AS last_event_at
+      FROM continuity_events
+    `),
+    pool.query(`
+      SELECT event_type, COUNT(*)::int AS count
+      FROM continuity_events
+      WHERE created_at > NOW() - INTERVAL '7 days'
+      GROUP BY event_type
+      ORDER BY count DESC, event_type ASC
+      LIMIT 6
+    `),
+  ]);
+
+  const threads = threadsResult.rows[0] || {};
+  const events = eventsResult.rows[0] || {};
+  const eventBreakdown: ContinuityEventBreakdownRow[] = breakdownResult.rows.map((row) => ({
+    eventType: String(row.event_type),
+    count: toInt(row.count),
+  }));
+
+  return {
+    total: toInt(threads.total),
+    active: toInt(threads.active),
+    watching: toInt(threads.watching),
+    dormant: toInt(threads.dormant),
+    resolved: toInt(threads.resolved),
+    archived: toInt(threads.archived),
+    updated24h: toInt(threads.updated_24h),
+    updated7d: toInt(threads.updated_7d),
+    followupDue: toInt(threads.followup_due),
+    staleActive: toInt(threads.stale_active),
+    resolved7d: toInt(threads.resolved_7d),
+    events24h: toInt(events.events_24h),
+    events7d: toInt(events.events_7d),
+    lastEventAt: toDate(events.last_event_at),
+    eventBreakdown,
+  };
+}
+
 async function getActiveThreads(): Promise<ThreadRow[]> {
   const result = await pool.query<ThreadRow>(`
     SELECT title, thread_type, status, importance, emotional_weight,
@@ -204,13 +468,11 @@ async function getActiveThreads(): Promise<ThreadRow[]> {
   return result.rows;
 }
 
-/**
- * Query recent state snapshots
- */
 async function getStateSnapshots(): Promise<StateSnapshotRow[]> {
   const result = await pool.query<StateSnapshotRow>(`
-    SELECT period_end, stress_level, energy_level, motivation_level,
-           emotional_tone, narrative_summary, dominant_pressures, dominant_energizers
+    SELECT period_end, created_at, stress_level, energy_level, motivation_level,
+           emotional_tone, narrative_summary, dominant_pressures, dominant_energizers,
+           memories_analyzed, open_loop_count, threads_active
     FROM state_snapshots
     WHERE period_type = 'daily'
     ORDER BY period_end DESC
@@ -219,9 +481,6 @@ async function getStateSnapshots(): Promise<StateSnapshotRow[]> {
   return result.rows;
 }
 
-/**
- * Query trend summaries
- */
 async function getTrendSummaries(): Promise<TrendSummaryRow[]> {
   const result = await pool.query<TrendSummaryRow>(`
     SELECT period_type, period_end, stress_trend, energy_trend, motivation_trend,
@@ -234,39 +493,54 @@ async function getTrendSummaries(): Promise<TrendSummaryRow[]> {
   return result.rows;
 }
 
-/**
- * Query system health stats
- */
 async function getSystemHealth(): Promise<SystemHealthStats> {
-  const [memoriesResult, eventsResult] = await Promise.all([
+  const [memoriesResult, snapshotsResult, trendsResult] = await Promise.all([
     pool.query(`
-      SELECT COUNT(*) as total_memories,
-             COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days') as last_7_days,
-             COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours') as last_24_hours
+      SELECT
+        COUNT(*)::int AS total_memories,
+        COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days')::int AS last_7_days,
+        COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours')::int AS last_24_hours,
+        MAX(created_at) AS latest_memory_at,
+        COUNT(*) FILTER (WHERE processing_status = 'pending')::int AS pending_processing
       FROM memories
     `),
     pool.query(`
-      SELECT COUNT(*) as total, MAX(created_at) as latest
-      FROM continuity_events
-      WHERE created_at > NOW() - INTERVAL '24 hours'
+      SELECT
+        COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours')::int AS snapshots_created_24h,
+        MAX(created_at) AS latest_snapshot_at,
+        AVG(memories_analyzed)::numeric(10,2) AS avg_memories_analyzed,
+        AVG(open_loop_count)::numeric(10,2) AS avg_open_loops,
+        AVG(threads_active)::numeric(10,2) AS avg_threads_active
+      FROM state_snapshots
+    `),
+    pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days')::int AS trends_created_7d,
+        MAX(created_at) AS latest_trend_at
+      FROM trend_summaries
     `),
   ]);
 
-  const memories = memoriesResult.rows[0];
-  const events = eventsResult.rows[0];
+  const memories = memoriesResult.rows[0] || {};
+  const snapshots = snapshotsResult.rows[0] || {};
+  const trends = trendsResult.rows[0] || {};
 
   return {
-    totalMemories: parseInt(memories.total_memories) || 0,
-    last7Days: parseInt(memories.last_7_days) || 0,
-    last24Hours: parseInt(memories.last_24_hours) || 0,
-    recentEvents: parseInt(events.total) || 0,
-    latestEvent: events.latest ? new Date(events.latest) : null,
+    totalMemories: toInt(memories.total_memories),
+    last7Days: toInt(memories.last_7_days),
+    last24Hours: toInt(memories.last_24_hours),
+    latestMemoryAt: toDate(memories.latest_memory_at),
+    pendingProcessing: toInt(memories.pending_processing),
+    snapshotsCreated24h: toInt(snapshots.snapshots_created_24h),
+    latestSnapshotAt: toDate(snapshots.latest_snapshot_at),
+    trendsCreated7d: toInt(trends.trends_created_7d),
+    latestTrendAt: toDate(trends.latest_trend_at),
+    avgMemoriesAnalyzed: toFloat(snapshots.avg_memories_analyzed),
+    avgOpenLoops: toFloat(snapshots.avg_open_loops),
+    avgThreadsActive: toFloat(snapshots.avg_threads_active),
   };
 }
 
-/**
- * Generate sparkline SVG for state metrics
- */
 function generateSparklineSvg(snapshots: StateSnapshotRow[]): string {
   if (snapshots.length === 0) {
     return `
@@ -276,7 +550,6 @@ function generateSparklineSvg(snapshots: StateSnapshotRow[]): string {
     `;
   }
 
-  // Reverse to get chronological order
   const data = [...snapshots].reverse();
   const width = 400;
   const height = 80;
@@ -284,7 +557,6 @@ function generateSparklineSvg(snapshots: StateSnapshotRow[]): string {
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
 
-  // Get values (default to 5 if null)
   const stressValues = data.map((d) => d.stress_level ?? 5);
   const energyValues = data.map((d) => d.energy_level ?? 5);
   const motivationValues = data.map((d) => d.motivation_level ?? 5);
@@ -292,7 +564,6 @@ function generateSparklineSvg(snapshots: StateSnapshotRow[]): string {
   const minVal = 1;
   const maxVal = 10;
 
-  // Helper to generate path
   const generatePath = (values: number[]): string => {
     const points = values.map((v, i) => {
       const x = padding.left + (i / Math.max(values.length - 1, 1)) * chartWidth;
@@ -302,7 +573,6 @@ function generateSparklineSvg(snapshots: StateSnapshotRow[]): string {
     return `M ${points.join(' L ')}`;
   };
 
-  // Generate dots
   const generateDots = (values: number[], color: string): string => {
     return values
       .map((v, i) => {
@@ -313,7 +583,6 @@ function generateSparklineSvg(snapshots: StateSnapshotRow[]): string {
       .join('');
   };
 
-  // Generate day labels
   const dayLabels = data
     .map((d, i) => {
       const x = padding.left + (i / Math.max(data.length - 1, 1)) * chartWidth;
@@ -324,33 +593,21 @@ function generateSparklineSvg(snapshots: StateSnapshotRow[]): string {
 
   return `
     <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" style="display: block; margin: 0 auto;">
-      <!-- Grid lines -->
       <line x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${padding.top + chartHeight}" stroke="${COLORS.border}" stroke-width="1"/>
       <line x1="${padding.left}" y1="${padding.top + chartHeight}" x2="${width - padding.right}" y2="${padding.top + chartHeight}" stroke="${COLORS.border}" stroke-width="1"/>
-
-      <!-- Horizontal grid lines -->
       <line x1="${padding.left}" y1="${padding.top}" x2="${width - padding.right}" y2="${padding.top}" stroke="${COLORS.border}" stroke-width="0.5" stroke-dasharray="2"/>
       <line x1="${padding.left}" y1="${padding.top + chartHeight / 2}" x2="${width - padding.right}" y2="${padding.top + chartHeight / 2}" stroke="${COLORS.border}" stroke-width="0.5" stroke-dasharray="2"/>
-
-      <!-- Y-axis labels -->
       <text x="${padding.left - 5}" y="${padding.top + 4}" text-anchor="end" font-size="9" fill="${COLORS.muted}">10</text>
       <text x="${padding.left - 5}" y="${padding.top + chartHeight / 2 + 3}" text-anchor="end" font-size="9" fill="${COLORS.muted}">5</text>
       <text x="${padding.left - 5}" y="${padding.top + chartHeight + 3}" text-anchor="end" font-size="9" fill="${COLORS.muted}">1</text>
-
-      <!-- Lines -->
       <path d="${generatePath(stressValues)}" fill="none" stroke="${COLORS.danger}" stroke-width="2" opacity="0.8"/>
       <path d="${generatePath(energyValues)}" fill="none" stroke="${COLORS.success}" stroke-width="2" opacity="0.8"/>
       <path d="${generatePath(motivationValues)}" fill="none" stroke="${COLORS.accent}" stroke-width="2" opacity="0.8"/>
-
-      <!-- Dots -->
       ${generateDots(stressValues, COLORS.danger)}
       ${generateDots(energyValues, COLORS.success)}
       ${generateDots(motivationValues, COLORS.accent)}
-
-      <!-- Day labels -->
       ${dayLabels}
     </svg>
-
     <div style="display: flex; justify-content: center; gap: 20px; margin-top: 8px; font-size: 11px;">
       <span><span style="color: ${COLORS.danger};">●</span> Stress</span>
       <span><span style="color: ${COLORS.success};">●</span> Energy</span>
@@ -359,131 +616,194 @@ function generateSparklineSvg(snapshots: StateSnapshotRow[]): string {
   `;
 }
 
-/**
- * Render Section A: Checkpoint Status
- */
-function renderCheckpointStatus(stats: CheckpointStats): string {
-  const rows = [
-    {
-      name: 'Continuity Threads',
-      count: stats.continuityThreads.total,
-      detail: `${stats.continuityThreads.active} active, ${stats.continuityThreads.resolved} resolved`,
-      lastActivity: stats.continuityThreads.lastUpdated,
-    },
-    {
-      name: 'State Snapshots',
-      count: stats.stateSnapshots.total,
-      detail: `${stats.stateSnapshots.last7Days} in last 7 days`,
-      lastActivity: stats.stateSnapshots.latestSnapshot,
-    },
-    {
-      name: 'Trend Summaries',
-      count: stats.trendSummaries.total,
-      detail: '',
-      lastActivity: stats.trendSummaries.latest,
-    },
-    {
-      name: 'Support Beliefs',
-      count: stats.beliefs.total,
-      detail: 'preferences, sensitivities, priorities',
-      lastActivity: stats.beliefs.lastUpdated,
-    },
-    {
-      name: 'Continuity Events',
-      count: stats.continuityEvents.total,
-      detail: '',
-      lastActivity: stats.continuityEvents.latest,
-    },
-  ];
-
-  const tableRows = rows
+function renderPipelineStatus(stats: PipelineStats): string {
+  const rows = stats.tables
     .map((row) => {
-      const status = getStatusIndicator(row.count > 0, row.lastActivity);
+      const status = getStatusIndicator(row.total > 0, row.lastActivity, row.staleThresholdHours);
       return `
         <tr>
-          <td style="padding: 8px 12px; border-bottom: 1px solid ${COLORS.border};">
+          <td style="padding: 10px 12px; border-bottom: 1px solid ${COLORS.border}; vertical-align: top;">
             <span style="color: ${status.color}; font-weight: bold; margin-right: 8px;">${status.icon}</span>
-            ${row.name}
+            <strong>${row.label}</strong>
+            <div style="font-size: 11px; color: ${COLORS.muted}; margin-top: 2px;">${status.status}</div>
           </td>
-          <td style="padding: 8px 12px; border-bottom: 1px solid ${COLORS.border}; text-align: center; font-weight: 600;">
-            ${row.count}
-          </td>
-          <td style="padding: 8px 12px; border-bottom: 1px solid ${COLORS.border}; color: ${COLORS.muted}; font-size: 13px;">
-            ${row.detail}
-          </td>
-          <td style="padding: 8px 12px; border-bottom: 1px solid ${COLORS.border}; color: ${COLORS.muted}; font-size: 13px;">
-            ${formatDate(row.lastActivity)}
-          </td>
+          <td style="padding: 10px 12px; border-bottom: 1px solid ${COLORS.border}; text-align: center; font-weight: 600;">${row.total}</td>
+          <td style="padding: 10px 12px; border-bottom: 1px solid ${COLORS.border}; color: ${COLORS.text}; font-size: 13px;">${formatRecentActivity(row)}</td>
+          <td style="padding: 10px 12px; border-bottom: 1px solid ${COLORS.border}; color: ${COLORS.text}; font-size: 13px;">${formatDate(row.lastActivity)}</td>
+          <td style="padding: 10px 12px; border-bottom: 1px solid ${COLORS.border}; color: ${COLORS.muted}; font-size: 13px;">${row.detail}</td>
         </tr>
       `;
     })
     .join('');
 
-  return `
-    <div style="background: ${COLORS.white}; border-radius: 8px; overflow: hidden; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-      <div style="background: ${COLORS.cardBg}; padding: 12px 16px; border-bottom: 1px solid ${COLORS.border};">
-        <h3 style="margin: 0; font-size: 16px; color: ${COLORS.text};">📊 Checkpoint Status</h3>
-      </div>
+  return buildSectionShell(
+    '📡 Memory Pipeline Status',
+    'Are the core tables alive, fresh, and actually moving?',
+    `
       <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
         <thead>
           <tr style="background: ${COLORS.cardBg};">
             <th style="padding: 8px 12px; text-align: left; font-weight: 600; color: ${COLORS.muted}; font-size: 12px; text-transform: uppercase;">Table</th>
-            <th style="padding: 8px 12px; text-align: center; font-weight: 600; color: ${COLORS.muted}; font-size: 12px; text-transform: uppercase;">Count</th>
-            <th style="padding: 8px 12px; text-align: left; font-weight: 600; color: ${COLORS.muted}; font-size: 12px; text-transform: uppercase;">Detail</th>
+            <th style="padding: 8px 12px; text-align: center; font-weight: 600; color: ${COLORS.muted}; font-size: 12px; text-transform: uppercase;">Rows</th>
+            <th style="padding: 8px 12px; text-align: left; font-weight: 600; color: ${COLORS.muted}; font-size: 12px; text-transform: uppercase;">Recent</th>
             <th style="padding: 8px 12px; text-align: left; font-weight: 600; color: ${COLORS.muted}; font-size: 12px; text-transform: uppercase;">Last Activity</th>
+            <th style="padding: 8px 12px; text-align: left; font-weight: 600; color: ${COLORS.muted}; font-size: 12px; text-transform: uppercase;">Notes</th>
           </tr>
         </thead>
         <tbody>
-          ${tableRows}
+          ${rows}
         </tbody>
       </table>
-    </div>
-  `;
+    `
+  );
 }
 
-/**
- * Render Section B: Active Threads
- */
+function renderContinuityPerformance(stats: ContinuityPerformanceStats): string {
+  const breakdown = stats.eventBreakdown.length
+    ? stats.eventBreakdown
+        .map(
+          (event) => `
+            <span style="display: inline-block; padding: 4px 8px; border-radius: 999px; background: ${COLORS.cardBg}; border: 1px solid ${COLORS.border}; font-size: 11px; color: ${COLORS.text}; margin: 0 6px 6px 0;">
+              ${event.eventType}: ${event.count}
+            </span>
+          `
+        )
+        .join('')
+    : `<span style="font-size: 12px; color: ${COLORS.muted};">No continuity events in the last 7 days.</span>`;
+
+  return buildSectionShell(
+    '🧵 Continuity Performance',
+    'Thread mix, backlog, and whether continuity is actively being maintained',
+    `
+      <div style="display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px;">
+        ${buildMetricCard('Active', String(stats.active), `${stats.watching} watching`, COLORS.success)}
+        ${buildMetricCard('Dormant', String(stats.dormant), `${stats.resolved} resolved`, COLORS.warning)}
+        ${buildMetricCard('Updated 24h', String(stats.updated24h), `${stats.updated7d} in 7d`, COLORS.accent)}
+        ${buildMetricCard('Follow-ups Due', String(stats.followupDue), `${stats.staleActive} stale active/watching`, stats.followupDue > 0 ? COLORS.warning : COLORS.success)}
+        ${buildMetricCard('Events 24h', String(stats.events24h), `${stats.events7d} in 7d`, stats.events24h > 0 ? COLORS.success : COLORS.muted)}
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 12px;">
+        <div style="background: ${COLORS.cardBg}; border: 1px solid ${COLORS.border}; border-radius: 8px; padding: 12px;">
+          <div style="font-size: 11px; color: ${COLORS.muted}; text-transform: uppercase; margin-bottom: 4px;">Distribution</div>
+          <div style="font-size: 13px; color: ${COLORS.text}; line-height: 1.5;">
+            ${stats.total} total threads • ${stats.active} active • ${stats.watching} watching • ${stats.dormant} dormant • ${stats.resolved} resolved • ${stats.archived} archived
+          </div>
+        </div>
+        <div style="background: ${COLORS.cardBg}; border: 1px solid ${COLORS.border}; border-radius: 8px; padding: 12px;">
+          <div style="font-size: 11px; color: ${COLORS.muted}; text-transform: uppercase; margin-bottom: 4px;">Recent Completion</div>
+          <div style="font-size: 13px; color: ${COLORS.text}; line-height: 1.5;">
+            ${stats.resolved7d} thread${stats.resolved7d === 1 ? '' : 's'} resolved in the last 7 days.
+          </div>
+        </div>
+        <div style="background: ${COLORS.cardBg}; border: 1px solid ${COLORS.border}; border-radius: 8px; padding: 12px;">
+          <div style="font-size: 11px; color: ${COLORS.muted}; text-transform: uppercase; margin-bottom: 4px;">Latest Event</div>
+          <div style="font-size: 13px; color: ${COLORS.text}; line-height: 1.5;">
+            ${formatDateTime(stats.lastEventAt)}
+          </div>
+        </div>
+      </div>
+      <div style="margin-top: 8px;">
+        <div style="font-size: 11px; color: ${COLORS.muted}; text-transform: uppercase; margin-bottom: 6px;">Event Mix, Last 7 Days</div>
+        ${breakdown}
+      </div>
+    `
+  );
+}
+
+function renderSupportBeliefDiagnostics(stats: SupportBeliefStats): string {
+  if (stats.total === 0) {
+    return buildSectionShell(
+      '🫶 Support Belief Diagnostics',
+      'Why the support-model section may look empty even when the system is otherwise active',
+      `
+        <div style="background: ${COLORS.warning}10; border: 1px solid ${COLORS.warning}30; border-radius: 8px; padding: 14px; margin-bottom: 12px;">
+          <div style="font-weight: 600; color: ${COLORS.text}; margin-bottom: 6px;">No support beliefs have been extracted yet.</div>
+          <div style="font-size: 13px; color: ${COLORS.text}; line-height: 1.6;">
+            This is not a rendering bug by itself. The support-belief extractor is intentionally conservative: these belief types start around <strong>0.4 confidence</strong> and only become surfaceable when they are <strong>active</strong> and reach <strong>0.6 confidence</strong> or higher.
+          </div>
+        </div>
+        <div style="font-size: 13px; color: ${COLORS.muted}; line-height: 1.6;">
+          Practical read: the table exists, but the pipeline is under-producing data for it right now. Either support beliefs are not being extracted often enough, or they are being extracted too cautiously to become visible.
+        </div>
+      `
+    );
+  }
+
+  const rows = stats.breakdown
+    .map(
+      (row) => `
+        <tr>
+          <td style="padding: 8px 12px; border-bottom: 1px solid ${COLORS.border};">${formatBeliefType(row.beliefType)}</td>
+          <td style="padding: 8px 12px; border-bottom: 1px solid ${COLORS.border};">${row.status}</td>
+          <td style="padding: 8px 12px; border-bottom: 1px solid ${COLORS.border}; text-align: center; font-weight: 600;">${row.count}</td>
+          <td style="padding: 8px 12px; border-bottom: 1px solid ${COLORS.border}; text-align: center;">${row.avgConfidence !== null ? row.avgConfidence.toFixed(2) : '—'}</td>
+          <td style="padding: 8px 12px; border-bottom: 1px solid ${COLORS.border}; text-align: center;">${row.surfaceable}</td>
+          <td style="padding: 8px 12px; border-bottom: 1px solid ${COLORS.border};">${formatDate(row.lastUpdated)}</td>
+        </tr>
+      `
+    )
+    .join('');
+
+  return buildSectionShell(
+    '🫶 Support Belief Diagnostics',
+    'Do we have support-model data, and is any of it actually visible to the assistant?',
+    `
+      <div style="display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px;">
+        ${buildMetricCard('Total', String(stats.total), 'support belief rows', COLORS.text)}
+        ${buildMetricCard('Active', String(stats.active), 'not superseded or conflicted', COLORS.accent)}
+        ${buildMetricCard('Surfaceable', String(stats.surfaceable), 'active + confidence ≥ 0.6', stats.surfaceable > 0 ? COLORS.success : COLORS.warning)}
+        ${buildMetricCard('Last Update', formatDate(stats.lastUpdated), 'most recent support-belief activity', COLORS.info)}
+      </div>
+      <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+        <thead>
+          <tr style="background: ${COLORS.cardBg};">
+            <th style="padding: 8px 12px; text-align: left; font-weight: 600; color: ${COLORS.muted}; font-size: 12px; text-transform: uppercase;">Belief Type</th>
+            <th style="padding: 8px 12px; text-align: left; font-weight: 600; color: ${COLORS.muted}; font-size: 12px; text-transform: uppercase;">Status</th>
+            <th style="padding: 8px 12px; text-align: center; font-weight: 600; color: ${COLORS.muted}; font-size: 12px; text-transform: uppercase;">Count</th>
+            <th style="padding: 8px 12px; text-align: center; font-weight: 600; color: ${COLORS.muted}; font-size: 12px; text-transform: uppercase;">Avg Conf.</th>
+            <th style="padding: 8px 12px; text-align: center; font-weight: 600; color: ${COLORS.muted}; font-size: 12px; text-transform: uppercase;">Surfaceable</th>
+            <th style="padding: 8px 12px; text-align: left; font-weight: 600; color: ${COLORS.muted}; font-size: 12px; text-transform: uppercase;">Last Update</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows}
+        </tbody>
+      </table>
+    `
+  );
+}
+
 function renderActiveThreads(threads: ThreadRow[]): string {
   if (threads.length === 0) {
-    return `
-      <div style="background: ${COLORS.white}; border-radius: 8px; padding: 24px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); text-align: center;">
-        <div style="background: ${COLORS.cardBg}; padding: 12px 16px; margin: -24px -24px 16px -24px; border-bottom: 1px solid ${COLORS.border};">
-          <h3 style="margin: 0; font-size: 16px; color: ${COLORS.text};">🧵 Active Threads</h3>
-        </div>
-        <p style="color: ${COLORS.muted}; margin: 0;">
-          No active threads yet — these are ongoing topics and conversations Squire tracks for continuity.
-        </p>
-      </div>
-    `;
+    return buildSectionShell(
+      '🧠 Active Threads',
+      'What Squire is currently carrying forward across conversations',
+      `<p style="color: ${COLORS.muted}; margin: 0;">No active or watching threads yet.</p>`
+    );
   }
 
   const threadCards = threads
     .map((thread) => {
       const importanceWidth = Math.min((thread.importance / 10) * 100, 100);
       const emotionalWidth = Math.min((thread.emotional_weight / 10) * 100, 100);
-
-      // Thread type badge colors
-      const typeColors: Record<string, string> = {
-        emotional: '#ec4899',
-        practical: '#3b82f6',
-        relational: '#8b5cf6',
-        creative: '#f59e0b',
-        health: '#22c55e',
-        work: '#6366f1',
-      };
-      const badgeColor = typeColors[thread.thread_type] || COLORS.muted;
+      const badgeColor = getThreadTypeColor(thread.thread_type);
+      const isFollowupDue = thread.followup_after && new Date(thread.followup_after) <= new Date();
 
       return `
         <div style="background: ${COLORS.white}; border: 1px solid ${COLORS.border}; border-radius: 8px; padding: 16px; margin-bottom: 12px;">
-          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; gap: 12px;">
             <div>
               <span style="display: inline-block; background: ${badgeColor}; color: white; font-size: 10px; padding: 2px 8px; border-radius: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-right: 8px;">
-                ${thread.thread_type}
+                ${formatThreadType(thread.thread_type)}
               </span>
               <span style="display: inline-block; background: ${thread.status === 'active' ? COLORS.success : COLORS.warning}20; color: ${thread.status === 'active' ? COLORS.success : COLORS.warning}; font-size: 10px; padding: 2px 8px; border-radius: 12px;">
                 ${thread.status}
               </span>
+              ${isFollowupDue ? `
+                <span style="display: inline-block; background: ${COLORS.warning}20; color: ${COLORS.warning}; font-size: 10px; padding: 2px 8px; border-radius: 12px; margin-left: 8px;">
+                  follow-up due
+                </span>
+              ` : ''}
             </div>
             <span style="color: ${COLORS.muted}; font-size: 12px;">${formatDate(thread.last_discussed_at)}</span>
           </div>
@@ -502,7 +822,7 @@ function renderActiveThreads(threads: ThreadRow[]): string {
             <div style="flex: 1;">
               <div style="font-size: 11px; color: ${COLORS.muted}; margin-bottom: 4px;">Emotional Weight</div>
               <div style="background: ${COLORS.cardBg}; border-radius: 4px; height: 8px; overflow: hidden;">
-                <div style="background: #ec4899; height: 100%; width: ${emotionalWidth}%;"></div>
+                <div style="background: ${COLORS.pink}; height: 100%; width: ${emotionalWidth}%;"></div>
               </div>
             </div>
           </div>
@@ -518,30 +838,25 @@ function renderActiveThreads(threads: ThreadRow[]): string {
     })
     .join('');
 
-  return `
-    <div style="margin-bottom: 24px;">
-      <div style="background: ${COLORS.cardBg}; padding: 12px 16px; border-radius: 8px 8px 0 0; border: 1px solid ${COLORS.border}; border-bottom: none;">
-        <h3 style="margin: 0; font-size: 16px; color: ${COLORS.text};">🧵 Active Threads</h3>
-        <p style="margin: 4px 0 0 0; font-size: 12px; color: ${COLORS.muted};">Ongoing conversations and topics Squire is tracking</p>
-      </div>
-      <div style="background: ${COLORS.cardBg}; padding: 16px; border-radius: 0 0 8px 8px; border: 1px solid ${COLORS.border}; border-top: none;">
-        ${threadCards}
-      </div>
-    </div>
-  `;
+  return buildSectionShell(
+    '🧠 Active Threads',
+    'The top active and watching threads Squire is currently carrying',
+    threadCards
+  );
 }
 
-/**
- * Render Section C: State This Week
- */
 function renderStateSnapshots(snapshots: StateSnapshotRow[]): string {
   const latestSnapshot = snapshots[0];
-
   const sparkline = generateSparklineSvg(snapshots);
 
   const latestSection = latestSnapshot
     ? `
       <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid ${COLORS.border};">
+        <div style="display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px;">
+          ${buildMetricCard('Memories Analyzed', String(latestSnapshot.memories_analyzed ?? '—'), 'latest daily snapshot', COLORS.accent)}
+          ${buildMetricCard('Open Loops', String(latestSnapshot.open_loop_count ?? '—'), 'latest daily snapshot', COLORS.warning)}
+          ${buildMetricCard('Threads Active', String(latestSnapshot.threads_active ?? '—'), 'captured in latest snapshot', COLORS.success)}
+        </div>
         <div style="display: flex; gap: 16px; flex-wrap: wrap;">
           ${latestSnapshot.emotional_tone ? `
             <div style="flex: 1; min-width: 200px;">
@@ -572,38 +887,22 @@ function renderStateSnapshots(snapshots: StateSnapshotRow[]): string {
     `
     : '';
 
-  return `
-    <div style="background: ${COLORS.white}; border-radius: 8px; overflow: hidden; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-      <div style="background: ${COLORS.cardBg}; padding: 12px 16px; border-bottom: 1px solid ${COLORS.border};">
-        <h3 style="margin: 0; font-size: 16px; color: ${COLORS.text};">📈 State This Week</h3>
-        <p style="margin: 4px 0 0 0; font-size: 12px; color: ${COLORS.muted};">Stress, energy, and motivation levels over the past 7 days</p>
-      </div>
-      <div style="padding: 16px;">
-        ${sparkline}
-        ${latestSection}
-      </div>
-    </div>
-  `;
+  return buildSectionShell(
+    '📈 State This Week',
+    'Stress, energy, and motivation across the last 7 daily snapshots',
+    `${sparkline}${latestSection}`
+  );
 }
 
-/**
- * Render Section D: Trend Intelligence
- */
 function renderTrendSummaries(trends: TrendSummaryRow[]): string {
   if (trends.length === 0) {
-    return `
-      <div style="background: ${COLORS.white}; border-radius: 8px; padding: 24px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); text-align: center;">
-        <div style="background: ${COLORS.cardBg}; padding: 12px 16px; margin: -24px -24px 16px -24px; border-bottom: 1px solid ${COLORS.border};">
-          <h3 style="margin: 0; font-size: 16px; color: ${COLORS.text};">📊 Trend Intelligence</h3>
-        </div>
-        <p style="color: ${COLORS.muted}; margin: 0;">
-          No trend data yet — trends will show 7-day, 30-day, and 90-day patterns as data accumulates.
-        </p>
-      </div>
-    `;
+    return buildSectionShell(
+      '📊 Trend Intelligence',
+      'Longer-range state patterns built from snapshot history',
+      `<p style="color: ${COLORS.muted}; margin: 0;">No trend summaries yet.</p>`
+    );
   }
 
-  // Group by period type
   const byPeriod: Record<string, TrendSummaryRow> = {};
   for (const trend of trends) {
     if (!byPeriod[trend.period_type]) {
@@ -612,19 +911,16 @@ function renderTrendSummaries(trends: TrendSummaryRow[]): string {
   }
 
   const periodLabels: Record<string, string> = {
-    '7d': '7 Day',
-    '30d': '30 Day',
-    '90d': '90 Day',
-    weekly: 'Weekly',
-    monthly: 'Monthly',
-    quarterly: 'Quarterly',
+    '7day': '7 Day',
+    '30day': '30 Day',
+    '90day': '90 Day',
   };
 
   const trendCards = Object.entries(byPeriod)
     .map(([periodType, trend]) => {
-      const stressTrend = getTrendArrow(trend.stress_trend);
-      const energyTrend = getTrendArrow(trend.energy_trend);
-      const motivationTrend = getTrendArrow(trend.motivation_trend);
+      const stressTrend = getTrendArrow(trend.stress_trend, false);
+      const energyTrend = getTrendArrow(trend.energy_trend, true);
+      const motivationTrend = getTrendArrow(trend.motivation_trend, true);
 
       return `
         <div style="flex: 1; min-width: 200px; background: ${COLORS.cardBg}; border-radius: 8px; padding: 16px; border: 1px solid ${COLORS.border};">
@@ -647,7 +943,7 @@ function renderTrendSummaries(trends: TrendSummaryRow[]): string {
             </div>
           </div>
 
-          <div style="border-top: 1px solid ${COLORS.border}; padding-top: 12px; display: flex; gap: 12px; font-size: 11px;">
+          <div style="border-top: 1px solid ${COLORS.border}; padding-top: 12px; display: flex; gap: 12px; font-size: 11px; flex-wrap: wrap;">
             <div>
               <span style="color: ${COLORS.success};">+${trend.threads_opened ?? 0}</span>
               <span style="color: ${COLORS.muted};"> opened</span>
@@ -666,7 +962,7 @@ function renderTrendSummaries(trends: TrendSummaryRow[]): string {
 
           ${trend.narrative ? `
             <div style="margin-top: 12px; font-size: 12px; color: ${COLORS.text}; line-height: 1.4;">
-              ${trend.narrative.substring(0, 150)}${trend.narrative.length > 150 ? '...' : ''}
+              ${trend.narrative.substring(0, 180)}${trend.narrative.length > 180 ? '...' : ''}
             </div>
           ` : ''}
         </div>
@@ -674,105 +970,118 @@ function renderTrendSummaries(trends: TrendSummaryRow[]): string {
     })
     .join('');
 
-  return `
-    <div style="margin-bottom: 24px;">
-      <div style="background: ${COLORS.cardBg}; padding: 12px 16px; border-radius: 8px 8px 0 0; border: 1px solid ${COLORS.border}; border-bottom: none;">
-        <h3 style="margin: 0; font-size: 16px; color: ${COLORS.text};">📊 Trend Intelligence</h3>
-        <p style="margin: 4px 0 0 0; font-size: 12px; color: ${COLORS.muted};">Patterns across different time periods</p>
-      </div>
-      <div style="background: ${COLORS.white}; padding: 16px; border-radius: 0 0 8px 8px; border: 1px solid ${COLORS.border}; border-top: none;">
-        <div style="display: flex; gap: 16px; flex-wrap: wrap;">
-          ${trendCards}
-        </div>
-      </div>
-    </div>
-  `;
+  return buildSectionShell(
+    '📊 Trend Intelligence',
+    'How state and thread dynamics are shifting across 7, 30, and 90 day windows',
+    `<div style="display: flex; gap: 16px; flex-wrap: wrap;">${trendCards}</div>`
+  );
 }
 
-/**
- * Render Section E: System Health
- */
 function renderSystemHealth(health: SystemHealthStats): string {
-  return `
-    <div style="background: ${COLORS.white}; border-radius: 8px; overflow: hidden; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-      <div style="background: ${COLORS.cardBg}; padding: 12px 16px; border-bottom: 1px solid ${COLORS.border};">
-        <h3 style="margin: 0; font-size: 16px; color: ${COLORS.text};">🔧 System Health</h3>
+  return buildSectionShell(
+    '🔧 System Health',
+    'Memory intake, backlog, and whether snapshot/trend generation is keeping up',
+    `
+      <div style="display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px;">
+        ${buildMetricCard('Total Memories', health.totalMemories.toLocaleString(), `${health.last7Days} in 7d`, COLORS.text)}
+        ${buildMetricCard('New Memories', String(health.last24Hours), 'created in last 24h', health.last24Hours > 0 ? COLORS.success : COLORS.muted)}
+        ${buildMetricCard('Pending Processing', String(health.pendingProcessing), 'memory backlog', health.pendingProcessing > 0 ? COLORS.warning : COLORS.success)}
+        ${buildMetricCard('Snapshots 24h', String(health.snapshotsCreated24h), 'state snapshots generated', health.snapshotsCreated24h > 0 ? COLORS.success : COLORS.warning)}
+        ${buildMetricCard('Trends 7d', String(health.trendsCreated7d), 'trend summaries generated', health.trendsCreated7d > 0 ? COLORS.success : COLORS.warning)}
       </div>
-      <div style="padding: 16px;">
-        <div style="display: flex; gap: 24px; flex-wrap: wrap;">
-          <div style="flex: 1; min-width: 140px; text-align: center; padding: 12px; background: ${COLORS.cardBg}; border-radius: 8px;">
-            <div style="font-size: 28px; font-weight: bold; color: ${COLORS.text};">${health.totalMemories.toLocaleString()}</div>
-            <div style="font-size: 12px; color: ${COLORS.muted};">Total Memories</div>
-          </div>
-          <div style="flex: 1; min-width: 140px; text-align: center; padding: 12px; background: ${COLORS.cardBg}; border-radius: 8px;">
-            <div style="font-size: 28px; font-weight: bold; color: ${COLORS.accent};">${health.last7Days}</div>
-            <div style="font-size: 12px; color: ${COLORS.muted};">Last 7 Days</div>
-          </div>
-          <div style="flex: 1; min-width: 140px; text-align: center; padding: 12px; background: ${COLORS.cardBg}; border-radius: 8px;">
-            <div style="font-size: 28px; font-weight: bold; color: ${COLORS.success};">${health.last24Hours}</div>
-            <div style="font-size: 12px; color: ${COLORS.muted};">Last 24 Hours</div>
-          </div>
-          <div style="flex: 1; min-width: 140px; text-align: center; padding: 12px; background: ${COLORS.cardBg}; border-radius: 8px;">
-            <div style="font-size: 28px; font-weight: bold; color: ${health.recentEvents > 0 ? COLORS.success : COLORS.muted};">${health.recentEvents}</div>
-            <div style="font-size: 12px; color: ${COLORS.muted};">Events (24h)</div>
-          </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;">
+        <div style="background: ${COLORS.cardBg}; border: 1px solid ${COLORS.border}; border-radius: 8px; padding: 12px;">
+          <div style="font-size: 11px; color: ${COLORS.muted}; text-transform: uppercase; margin-bottom: 4px;">Latest Memory Activity</div>
+          <div style="font-size: 13px; color: ${COLORS.text};">${formatDateTime(health.latestMemoryAt)}</div>
         </div>
-        ${health.latestEvent ? `
-          <div style="margin-top: 12px; font-size: 12px; color: ${COLORS.muted}; text-align: center;">
-            Last consolidation event: ${formatDateTime(health.latestEvent)}
-          </div>
-        ` : ''}
+        <div style="background: ${COLORS.cardBg}; border: 1px solid ${COLORS.border}; border-radius: 8px; padding: 12px;">
+          <div style="font-size: 11px; color: ${COLORS.muted}; text-transform: uppercase; margin-bottom: 4px;">Latest Snapshot</div>
+          <div style="font-size: 13px; color: ${COLORS.text};">${formatDateTime(health.latestSnapshotAt)}</div>
+        </div>
+        <div style="background: ${COLORS.cardBg}; border: 1px solid ${COLORS.border}; border-radius: 8px; padding: 12px;">
+          <div style="font-size: 11px; color: ${COLORS.muted}; text-transform: uppercase; margin-bottom: 4px;">Latest Trend Summary</div>
+          <div style="font-size: 13px; color: ${COLORS.text};">${formatDateTime(health.latestTrendAt)}</div>
+        </div>
       </div>
-    </div>
-  `;
+      <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; font-size: 12px; color: ${COLORS.text};">
+        <span style="background: ${COLORS.cardBg}; border: 1px solid ${COLORS.border}; border-radius: 999px; padding: 4px 10px;">Avg memories analyzed per snapshot: ${formatDecimal(health.avgMemoriesAnalyzed)}</span>
+        <span style="background: ${COLORS.cardBg}; border: 1px solid ${COLORS.border}; border-radius: 999px; padding: 4px 10px;">Avg open loops per snapshot: ${formatDecimal(health.avgOpenLoops)}</span>
+        <span style="background: ${COLORS.cardBg}; border: 1px solid ${COLORS.border}; border-radius: 999px; padding: 4px 10px;">Avg threads active per snapshot: ${formatDecimal(health.avgThreadsActive)}</span>
+      </div>
+    `
+  );
 }
 
-/**
- * Memory Health Module Implementation
- */
+function buildAlerts(
+  pipeline: PipelineStats,
+  support: SupportBeliefStats,
+  continuity: ContinuityPerformanceStats,
+  systemHealth: SystemHealthStats
+): string[] {
+  const alerts: string[] = [];
+
+  for (const table of pipeline.tables) {
+    const status = getStatusIndicator(table.total > 0, table.lastActivity, table.staleThresholdHours);
+    if (status.status === 'Empty' && table.key !== 'support_beliefs') {
+      alerts.push(`${table.label} table is empty`);
+    } else if (status.status === 'Stale') {
+      alerts.push(`${table.label} looks stale — last activity ${formatDate(table.lastActivity)}`);
+    }
+  }
+
+  if (support.total === 0) {
+    alerts.push('Support beliefs are still at zero — diagnostic section added to explain why');
+  } else if (support.surfaceable === 0) {
+    alerts.push('Support beliefs exist but none are surfaceable at active + confidence ≥ 0.6');
+  }
+
+  if (continuity.followupDue > 0) {
+    alerts.push(`${continuity.followupDue} continuity follow-up${continuity.followupDue === 1 ? '' : 's'} overdue`);
+  }
+
+  if (continuity.staleActive > 0) {
+    alerts.push(`${continuity.staleActive} active/watching thread${continuity.staleActive === 1 ? '' : 's'} have gone quiet for 14+ days`);
+  }
+
+  if (systemHealth.pendingProcessing > 0) {
+    alerts.push(`${systemHealth.pendingProcessing} memories still pending processing`);
+  }
+
+  if (systemHealth.trendsCreated7d === 0) {
+    alerts.push('No trend summaries generated in the last 7 days');
+  }
+
+  return alerts;
+}
+
 export const memoryHealthModule: BriefModule = {
   title: 'Memory Health',
 
   async render(): Promise<ModuleResult> {
-    const alerts: string[] = [];
-
     try {
-      // Fetch all data in parallel
-      const [checkpointStats, activeThreads, stateSnapshots, trendSummaries, systemHealth] =
+      const [pipeline, support, continuity, activeThreads, stateSnapshots, trendSummaries, systemHealth] =
         await Promise.all([
-          getCheckpointStats(),
+          getPipelineStats(),
+          getSupportBeliefStats(),
+          getContinuityPerformance(),
           getActiveThreads(),
           getStateSnapshots(),
           getTrendSummaries(),
           getSystemHealth(),
         ]);
 
-      // Check for alerts
-      if (checkpointStats.continuityThreads.total === 0) {
-        alerts.push('No continuity threads tracked yet');
-      }
+      const alerts = buildAlerts(pipeline, support, continuity, systemHealth);
 
-      if (checkpointStats.stateSnapshots.total === 0) {
-        alerts.push('No state snapshots recorded');
-      }
-
-      const staleThresholdHours = 72;
-      if (
-        checkpointStats.continuityThreads.lastUpdated &&
-        Date.now() - checkpointStats.continuityThreads.lastUpdated.getTime() > staleThresholdHours * 60 * 60 * 1000
-      ) {
-        alerts.push(`Continuity threads not updated in ${Math.round((Date.now() - checkpointStats.continuityThreads.lastUpdated.getTime()) / (1000 * 60 * 60))}+ hours`);
-      }
-
-      // Determine if we have meaningful data
       const hasData =
-        checkpointStats.continuityThreads.total > 0 ||
-        checkpointStats.stateSnapshots.total > 0 ||
-        systemHealth.totalMemories > 0;
+        pipeline.tables.some((table) => table.total > 0) ||
+        activeThreads.length > 0 ||
+        stateSnapshots.length > 0 ||
+        trendSummaries.length > 0;
 
-      // Render all sections
       const html = `
-        ${renderCheckpointStatus(checkpointStats)}
+        ${renderPipelineStatus(pipeline)}
+        ${renderContinuityPerformance(continuity)}
+        ${renderSupportBeliefDiagnostics(support)}
         ${renderActiveThreads(activeThreads)}
         ${renderStateSnapshots(stateSnapshots)}
         ${renderTrendSummaries(trendSummaries)}

@@ -49,16 +49,7 @@ function formatMessageForPrompt(message: LLMMessage, index: number): string {
 function buildCodexPrompt(messages: LLMMessage[], tools?: ToolDefinition[]): string {
   const transcript = messages.map(formatMessageForPrompt).join('\n\n---\n\n');
   const toolNote = tools && tools.length > 0
-    ? [
-        'You can request Squire app tools when you need live app state, database-backed information, files stored in Squire, image analysis, Mandrel context, email/calendar/list data, or other registered capabilities.',
-        'You do not call these tools directly. Instead, return a strict tool-call envelope and Squire will execute the tools, append the results to the transcript, and call you again.',
-        'When you need tools, return ONLY this envelope and no prose:',
-        'SQUIRE_TOOL_CALLS_JSON',
-        '{"toolCalls":[{"name":"tool_name","arguments":{"key":"value"}}]}',
-        'END_SQUIRE_TOOL_CALLS_JSON',
-        'Available Squire tools:',
-        JSON.stringify(tools.map((tool) => tool.function), null, 2),
-      ].join('\n')
+    ? 'Squire app tool schemas were available to the API runtime, but this Codex chat runtime is invoked as a read-only Codex subagent. Do not claim to call Squire app tools unless their results are already present in the transcript. If fresh app state is required, say what you need clearly.'
     : 'No Squire app tools are attached to this Codex chat call.';
 
   return [
@@ -71,46 +62,6 @@ function buildCodexPrompt(messages: LLMMessage[], tools?: ToolDefinition[]): str
     transcript,
     '=== END TRANSCRIPT ===',
   ].join('\n');
-}
-
-function parseCodexToolCalls(
-  content: string,
-  tools?: ToolDefinition[]
-): { cleanContent: string; toolCalls: LLMResponse['toolCalls'] } {
-  if (!tools || tools.length === 0) {
-    return { cleanContent: content, toolCalls: [] };
-  }
-
-  const match = content.match(/SQUIRE_TOOL_CALLS_JSON\s*([\s\S]*?)\s*END_SQUIRE_TOOL_CALLS_JSON/);
-  if (!match) {
-    return { cleanContent: content, toolCalls: [] };
-  }
-
-  const allowedTools = new Set(tools.map((tool) => tool.function.name));
-  const cleanContent = content.replace(match[0], '').trim();
-
-  try {
-    const parsed = JSON.parse(match[1]!.trim()) as {
-      toolCalls?: Array<{ name?: unknown; arguments?: unknown }>;
-    };
-    const toolCalls = (parsed.toolCalls ?? [])
-      .filter((call): call is { name: string; arguments?: unknown } => (
-        typeof call.name === 'string' && allowedTools.has(call.name)
-      ))
-      .map((call) => ({
-        id: `codex_tool_${crypto.randomUUID()}`,
-        type: 'function' as const,
-        function: {
-          name: call.name,
-          arguments: JSON.stringify(call.arguments ?? {}),
-        },
-      }));
-
-    return { cleanContent, toolCalls };
-  } catch (error) {
-    console.warn('[LLM Codex] Failed to parse tool-call envelope:', error);
-    return { cleanContent: content, toolCalls: [] };
-  }
 }
 
 function chunkText(text: string, size = 160): string[] {
@@ -206,20 +157,15 @@ export async function callCodex(
     const { stdout } = await runCommand(command, timeout, options?.signal);
     const content = existsSync(outputFile) ? readFileSync(outputFile, 'utf-8') : stdout;
     const finalContent = content.trim();
-    const parsed = parseCodexToolCalls(finalContent, tools);
 
-    if (parsed.toolCalls.length === 0) {
-      for (const chunk of chunkText(parsed.cleanContent)) {
-        callbacks?.onChunk?.(chunk);
-      }
-    } else {
-      console.log(`[LLM Codex] Requested Squire tools: ${parsed.toolCalls.map((tc) => tc.function.name).join(', ')}`);
+    for (const chunk of chunkText(finalContent)) {
+      callbacks?.onChunk?.(chunk);
     }
 
-    console.log(`[LLM Codex] Completed main chat Codex run in ${Date.now() - started}ms (${parsed.cleanContent.length} chars, ${parsed.toolCalls.length} tool calls)`);
+    console.log(`[LLM Codex] Completed main chat Codex run in ${Date.now() - started}ms (${finalContent.length} chars)`);
     return {
-      content: parsed.cleanContent,
-      toolCalls: parsed.toolCalls,
+      content: finalContent,
+      toolCalls: [],
       model,
     };
   } catch (error: unknown) {

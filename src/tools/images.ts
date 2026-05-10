@@ -8,7 +8,6 @@
 import type { ToolSpec } from './types.js';
 import { getObjectById, getObjectData } from '../services/storage/objects.js';
 import { callLLM, type ImageContent } from '../services/llm/index.js';
-import { getLLMRuntime } from '../services/runtime/index.js';
 
 /**
  * Convert mime type to valid ImageContent mediaType
@@ -60,14 +59,13 @@ async function analyzeImage(args: unknown): Promise<string> {
 
   // Call vision model
   try {
-    const visionRuntime = getLLMRuntime('vision');
     const response = await callLLM([
       {
         role: 'user',
         content: prompt,
         images: [imageContent],
       },
-    ], undefined, visionRuntime);
+    ]);
 
     return response.content || 'No description generated.';
   } catch (error) {
