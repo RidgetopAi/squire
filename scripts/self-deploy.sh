@@ -155,10 +155,10 @@ log "✓ Backup saved to $BACKUP"
 log "[4/5] Syncing staging → production..."
 
 # Sync compiled output
-rsync -a --delete "$STAGING/dist/" "$PRODUCTION/dist/"
+rsync -a --no-owner --no-group --delete "$STAGING/dist/" "$PRODUCTION/dist/"
 
 # Sync source (for future builds from production)
-rsync -a --delete "$STAGING/src/" "$PRODUCTION/src/"
+rsync -a --no-owner --no-group --delete "$STAGING/src/" "$PRODUCTION/src/"
 
 # Sync project config
 cp "$STAGING/package.json" "$PRODUCTION/package.json"
@@ -177,7 +177,7 @@ if [ "$SKIP_WEB" = "false" ] && [ -d "$STAGING/web/src" ]; then
 
   if [ "$STAGING_WEB_HASH" != "$PROD_WEB_HASH" ]; then
     log "  Web source changed - syncing and rebuilding..."
-    rsync -a --delete \
+    rsync -a --no-owner --no-group --delete \
       --exclude='node_modules' \
       --exclude='.next' \
       "$STAGING/web/" "$PRODUCTION/web/"
