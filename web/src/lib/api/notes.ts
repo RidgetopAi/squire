@@ -10,13 +10,14 @@ import type {
   ListNotesOptions,
 } from '@/lib/types';
 
-// ============================================
-// Notes API Functions
-// ============================================
+interface UploadedObject {
+  id: string;
+  name: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+}
 
-/**
- * List notes with optional filters
- */
 export async function fetchNotes(options: ListNotesOptions = {}): Promise<Note[]> {
   const params: Record<string, string | number | boolean | undefined> = {};
   if (options.category) params.category = options.category;
@@ -24,64 +25,79 @@ export async function fetchNotes(options: ListNotesOptions = {}): Promise<Note[]
   if (options.is_pinned !== undefined) params.is_pinned = options.is_pinned;
   if (options.limit) params.limit = options.limit;
   if (options.offset) params.offset = options.offset;
+  if (options.tags?.length) params.tags = options.tags.join(',');
 
   const response = await apiGet<{ notes: Note[] }>('/api/notes', { params });
   return response.notes;
 }
 
-/**
- * Get pinned notes
- */
+export async function fetchNote(id: string): Promise<Note> {
+  return apiGet<Note>(`/api/notes/${id}`);
+}
+
 export async function fetchPinnedNotes(): Promise<Note[]> {
   const response = await apiGet<{ notes: Note[] }>('/api/notes/pinned');
   return response.notes;
 }
 
-/**
- * Create a new note
- */
 export async function createNote(input: CreateNoteInput): Promise<Note> {
   return apiPost<Note, CreateNoteInput>('/api/notes', input);
 }
 
-/**
- * Update an existing note
- */
 export async function updateNote(id: string, input: UpdateNoteInput): Promise<Note> {
   return apiPatch<Note, UpdateNoteInput>(`/api/notes/${id}`, input);
 }
 
-/**
- * Archive a note (soft delete)
- */
 export async function archiveNote(id: string): Promise<void> {
   await apiPost<void>(`/api/notes/${id}/archive`);
 }
 
-/**
- * Delete a note permanently
- */
 export async function deleteNote(id: string): Promise<void> {
   await apiDelete<void>(`/api/notes/${id}`);
 }
 
-/**
- * Pin a note
- */
 export async function pinNote(id: string): Promise<Note> {
   return apiPost<Note>(`/api/notes/${id}/pin`);
 }
 
-/**
- * Unpin a note
- */
 export async function unpinNote(id: string): Promise<Note> {
   return apiPost<Note>(`/api/notes/${id}/unpin`);
 }
 
-/**
- * Export notes
- */
+export async function attachNoteImage(noteId: string, objectId: string): Promise<Note> {
+  return apiPost<Note, { object_id: string }>(`/api/notes/${noteId}/attachments`, {
+    object_id: objectId,
+  });
+}
+
+export async function detachNoteImage(noteId: string, objectId: string): Promise<Note> {
+  return apiDelete<Note>(`/api/notes/${noteId}/attachments/${objectId}`);
+}
+
+export async function uploadNoteAttachmentImage(file: File): Promise<UploadedObject> {
+  if (!file.type.startsWith('image/')) {
+    throw new Error('Only image files can be attached to notes');
+  }
+
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('name', file.name);
+  formData.append('tags', 'note-attachment');
+
+  const response = await fetch('/api/objects', {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Image upload failed' }));
+    throw new Error(error.error || 'Failed to upload image');
+  }
+
+  const data = await response.json();
+  return data.object as UploadedObject;
+}
+
 export async function exportNotes(
   format: 'json' | 'markdown' | 'csv' = 'markdown',
   options: { entity_id?: string; category?: string } = {}

@@ -113,7 +113,7 @@ interface ChatState {
   handleStreamError: (error: string) => void;
 
   // High-level action for sending messages
-  sendMessage: (content: string, images?: ImageContent[], options?: SendMessageOptions) => Promise<void>;
+  sendMessage: (content: string, images?: { data: string; mediaType: ImageContent['mediaType'] }[], options?: SendMessageOptions) => Promise<void>;
 
   // Persistence actions
   loadRecentConversation: () => Promise<void>;
@@ -134,7 +134,7 @@ interface SendMessageOptions {
 
 function shouldIncludeContextByDefault(
   content: string,
-  images?: ImageContent[],
+  images?: { data: string; mediaType: ImageContent['mediaType'] }[],
   contextProfile?: string
 ): boolean {
   if (contextProfile || (images && images.length > 0)) {
@@ -384,7 +384,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   // Send a message (handles user message + assistant response)
-  sendMessage: async (content: string, images?: ImageContent[], options: SendMessageOptions = {}) => {
+  sendMessage: async (content: string, images?: { data: string; mediaType: ImageContent['mediaType'] }[], options: SendMessageOptions = {}) => {
     const sendStartedAt = nowMs();
     const {
       addMessage,
@@ -402,8 +402,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const apiImages: ImageContent[] | undefined = images?.map((img) => ({
       data: img.data,
       mediaType: img.mediaType,
-      name: img.name,
-      objectId: img.objectId,
     }));
 
     // Determine if we should use streaming (default: use WebSocket if connected)
@@ -421,8 +419,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       content,
       images: images?.map((img) => ({
         preview: `data:${img.mediaType};base64,${img.data}`,
-        name: img.name ?? 'image',
-        objectId: img.objectId,
+        name: 'image',
       })),
     });
 
@@ -520,7 +517,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
         const history = prepareHistoryForApi(currentMessages.slice(0, -1));
 
         const response = await sendChatMessageHttp({
-          conversationId: get().conversationId ?? undefined,
           message: content,
           images: apiImages,
           history,

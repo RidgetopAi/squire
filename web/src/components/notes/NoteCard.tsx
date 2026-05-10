@@ -45,6 +45,8 @@ export function NoteCard({
       : note.content;
 
   const categoryColor = categoryColors[note.category || ''] || 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+  const attachments = note.attachments || [];
+  const previewAttachments = attachments.slice(0, compact ? 2 : 3);
 
   return (
     <motion.div
@@ -53,7 +55,7 @@ export function NoteCard({
         transition-all duration-200
         hover:border-primary/50 cursor-pointer
         ${note.is_pinned ? 'ring-1 ring-accent-gold/50' : ''}
-        ${note.color ? `border-l-4` : ''}
+        ${note.color ? 'border-l-4' : ''}
       `}
       style={note.color ? { borderLeftColor: note.color } : undefined}
       onMouseEnter={() => setShowActions(true)}
@@ -63,28 +65,29 @@ export function NoteCard({
       whileTap={{ scale: 0.99 }}
     >
       <div className={`p-4 ${compact ? 'pb-3' : ''}`}>
-        {/* Header row */}
         <div className="flex items-start justify-between gap-2 mb-2">
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Pin indicator */}
             {note.is_pinned && (
               <span className="text-accent-gold text-sm" title="Pinned">📌</span>
             )}
-            
-            {/* Category badge */}
+
             {note.category && (
               <span className={`text-xs px-2 py-0.5 rounded-full border ${categoryColor}`}>
                 {note.category}
               </span>
             )}
 
-            {/* Source icon */}
             <span className="text-sm" title={`Source: ${note.source_type}`}>
               {sourceIcons[note.source_type] || '📝'}
             </span>
+
+            {attachments.length > 0 && (
+              <span className="text-xs px-2 py-0.5 rounded-full border border-primary/30 bg-primary/10 text-primary">
+                {attachments.length} image{attachments.length === 1 ? '' : 's'}
+              </span>
+            )}
           </div>
 
-          {/* Action buttons */}
           {showActions && (
             <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
               <button
@@ -116,34 +119,47 @@ export function NoteCard({
           )}
         </div>
 
-        {/* Title */}
         {note.title && (
           <h3 className="text-sm font-medium text-foreground mb-1 line-clamp-1">
             {note.title}
           </h3>
         )}
 
-        {/* Content */}
         <p className={`text-sm text-foreground-muted leading-relaxed ${compact ? 'line-clamp-2' : 'line-clamp-4'}`}>
           {truncatedContent}
         </p>
 
-        {/* Footer */}
+        {previewAttachments.length > 0 && (
+          <div className="flex gap-2 mt-3">
+            {previewAttachments.map((attachment) => (
+              <div key={attachment.object_id} className="w-16 h-16 rounded-lg overflow-hidden border border-glass-border bg-background-tertiary shrink-0">
+                <img
+                  src={attachment.download_url}
+                  alt={attachment.filename}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            ))}
+            {attachments.length > previewAttachments.length && (
+              <div className="w-16 h-16 rounded-lg border border-dashed border-glass-border bg-background-tertiary flex items-center justify-center text-xs text-foreground-muted shrink-0">
+                +{attachments.length - previewAttachments.length}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="flex items-center justify-between mt-3 pt-2 border-t border-glass-border">
-          {/* Entity badge */}
           {note.primary_entity && (
             <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/30">
               {note.primary_entity.name}
             </span>
           )}
 
-          {/* Timestamp */}
           <span className="text-xs text-foreground-muted ml-auto">
             {formatRelativeTime(note.created_at)}
           </span>
         </div>
 
-        {/* Tags */}
         {note.tags.length > 0 && !compact && (
           <div className="flex flex-wrap gap-1 mt-2">
             {note.tags.slice(0, 5).map((tag) => (

@@ -149,6 +149,10 @@ cp -a "$PRODUCTION/dist" "$BACKUP/dist"
 cp "$PRODUCTION/package.json" "$BACKUP/package.json"
 cp "$PRODUCTION/tsconfig.json" "$BACKUP/tsconfig.json"
 [ -d "$PRODUCTION/src" ] && cp -a "$PRODUCTION/src" "$BACKUP/src"
+[ -d "$PRODUCTION/schema" ] && cp -a "$PRODUCTION/schema" "$BACKUP/schema"
+[ -d "$PRODUCTION/scripts" ] && mkdir -p "$BACKUP/scripts" && cp "$PRODUCTION/scripts/self-deploy.sh" "$BACKUP/scripts/self-deploy.sh" 2>/dev/null || true
+[ -d "$PRODUCTION/scripts" ] && cp "$PRODUCTION/scripts/setup-staging.sh" "$BACKUP/scripts/setup-staging.sh" 2>/dev/null || true
+[ -d "$PRODUCTION/scripts" ] && cp "$PRODUCTION/scripts/self-rollback.sh" "$BACKUP/scripts/self-rollback.sh" 2>/dev/null || true
 log "✓ Backup saved to $BACKUP"
 
 # --- Step 4: Sync to production ---
@@ -160,8 +164,23 @@ rsync -a --no-owner --no-group --delete "$STAGING/dist/" "$PRODUCTION/dist/"
 # Sync source (for future builds from production)
 rsync -a --no-owner --no-group --delete "$STAGING/src/" "$PRODUCTION/src/"
 
+# Sync database schema migrations. Migrations are code: deploy must copy
+# and apply them before the restarted app serves schema-dependent queries.
+rsync -a --no-owner --no-group --delete "$STAGING/schema/" "$PRODUCTION/schema/"
+
+# Sync managed deploy scripts without deleting unrelated operational helpers.
+for managed_script in self-deploy.sh setup-staging.sh self-rollback.sh; do
+  if [ -f "$STAGING/scripts/$managed_script" ]; then
+    cp "$STAGING/scripts/$managed_script" "$PRODUCTION/scripts/$managed_script"
+    chmod +x "$PRODUCTION/scripts/$managed_script" 2>/dev/null || true
+  fi
+done
+
 # Sync project config
 cp "$STAGING/package.json" "$PRODUCTION/package.json"
+if [ -f "$STAGING/package-lock.json" ]; then
+  cp "$STAGING/package-lock.json" "$PRODUCTION/package-lock.json"
+fi
 cp "$STAGING/tsconfig.json" "$PRODUCTION/tsconfig.json"
 
 # If package.json dependencies changed, install
@@ -173,10 +192,11 @@ fi
 # Sync web if applicable
 if [ "$SKIP_WEB" = "false" ] && [ -d "$STAGING/web/src" ]; then
   STAGING_WEB_HASH=$(find "$STAGING/web/src" -type f -exec md5sum {} + 2>/dev/null | sort | md5sum | cut -d' ' -f1)
-  PROD_WEB_HASH=$(find "$PRODUCTION/web/src" -type f -exec md5sum {} + 2>/dev/null | sort | md5sum | cut -d' ' -f1)
+  PROD_WEB_BUILD_HASH=""
+  [ -f "$PRODUCTION/web/.next/squire-source-hash" ] && PROD_WEB_BUILD_HASH=$(cat "$PRODUCTION/web/.next/squire-source-hash")
 
-  if [ "$STAGING_WEB_HASH" != "$PROD_WEB_HASH" ]; then
-    log "  Web source changed - syncing and rebuilding..."
+  if [ "$STAGING_WEB_HASH" != "$PROD_WEB_BUILD_HASH" ]; then
+    log "  Web build stale or changed - syncing and rebuilding..."
     rsync -a --no-owner --no-group --delete \
       --exclude='node_modules' \
       --exclude='.next' \
@@ -187,10 +207,16 @@ if [ "$SKIP_WEB" = "false" ] && [ -d "$STAGING/web/src" ]; then
     else
       npm install && npm run build
     fi
+    echo "$STAGING_WEB_HASH" > "$PRODUCTION/web/.next/squire-source-hash"
   fi
 fi
 
 log "✓ Synced to production"
+
+log "  Running production database migrations..."
+cd "$PRODUCTION"
+node dist/db/migrate.js || die "Production database migrations failed"
+log "  ✓ Production migrations applied"
 
 # --- Step 5: Schedule restart (independent of Squire's cgroup) ---
 log "[5/5] Scheduling restart with health verification..."
@@ -248,14 +274,14 @@ if ! "${SYSTEMD_RUN[@]}" --unit=squire-deploy-restart --no-block \
         echo \"\$(date '+%Y-%m-%d %H:%M:%S') ✗ WARN Git unreadable from deploy unit: \$GIT_PROBE\" >> $DEPLOY_LOG
         echo \"\$(date '+%Y-%m-%d %H:%M:%S')   Fix: git config --global --add safe.directory $PRODUCTION\" >> $DEPLOY_LOG
       else
-        DEPLOY_CHANGES=\$(git status --porcelain -- src package.json package-lock.json tsconfig.json web .env.example 2>>$DEPLOY_LOG)
+        DEPLOY_CHANGES=\$(git status --porcelain -- src schema scripts/self-deploy.sh scripts/setup-staging.sh scripts/self-rollback.sh package.json package-lock.json tsconfig.json web .env.example 2>>$DEPLOY_LOG)
       fi
 
       if [ \$GIT_RC -ne 0 ] || echo \"\$GIT_PROBE\" | grep -q 'dubious ownership'; then
         :
       elif [ -n \"\$DEPLOY_CHANGES\" ]; then
         echo \"\$(date '+%Y-%m-%d %H:%M:%S') Git: committing deploy changes...\" >> $DEPLOY_LOG
-        git add -A -- src package.json package-lock.json tsconfig.json web .env.example 2>>$DEPLOY_LOG
+        git add -A -- src schema scripts/self-deploy.sh scripts/setup-staging.sh scripts/self-rollback.sh package.json package-lock.json tsconfig.json web .env.example 2>>$DEPLOY_LOG
         SUMMARY=\$(git diff --cached --stat | tail -1)
         if git commit -m \"auto-deploy: \$(date '+%Y-%m-%d %H:%M:%S')
 
@@ -276,6 +302,10 @@ Deployed by Squire self-deploy pipeline.\" >>$DEPLOY_LOG 2>&1; then
       cp -a $BACKUP/dist/ $PRODUCTION/dist/
       cp $BACKUP/package.json $PRODUCTION/package.json
       [ -d $BACKUP/src ] && cp -a $BACKUP/src/ $PRODUCTION/src/
+      [ -d $BACKUP/schema ] && cp -a $BACKUP/schema/ $PRODUCTION/schema/
+      [ -f $BACKUP/scripts/self-deploy.sh ] && cp $BACKUP/scripts/self-deploy.sh $PRODUCTION/scripts/self-deploy.sh
+      [ -f $BACKUP/scripts/setup-staging.sh ] && cp $BACKUP/scripts/setup-staging.sh $PRODUCTION/scripts/setup-staging.sh
+      [ -f $BACKUP/scripts/self-rollback.sh ] && cp $BACKUP/scripts/self-rollback.sh $PRODUCTION/scripts/self-rollback.sh
       systemctl restart squire
       sleep 10
       if curl -sf http://localhost:$PROD_PORT/api/health > /dev/null 2>&1; then

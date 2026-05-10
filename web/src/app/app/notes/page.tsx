@@ -49,16 +49,26 @@ export default function NotesPage() {
     setEditorOpen(true);
   };
 
-  const handleSave = async (input: CreateNoteInput | UpdateNoteInput, noteId?: string) => {
-    if (noteId) {
-      const updated = await updateNote(noteId, input as UpdateNoteInput);
-      setNotes((prev) =>
-        prev.map((n) => (n.id === noteId ? updated : n))
-      );
-    } else {
-      const created = await createNote(input as CreateNoteInput);
-      setNotes((prev) => [created, ...prev]);
-    }
+  const upsertNote = useCallback((nextNote: Note) => {
+    setNotes((prev) => {
+      const existingIndex = prev.findIndex((note) => note.id === nextNote.id);
+      if (existingIndex === -1) {
+        return [nextNote, ...prev];
+      }
+
+      const updated = [...prev];
+      updated[existingIndex] = nextNote;
+      return updated;
+    });
+  }, []);
+
+  const handleSave = async (input: CreateNoteInput | UpdateNoteInput, noteId?: string): Promise<Note> => {
+    const saved = noteId
+      ? await updateNote(noteId, input as UpdateNoteInput)
+      : await createNote(input as CreateNoteInput);
+
+    upsertNote(saved);
+    return saved;
   };
 
   const handlePin = async (note: Note) => {
@@ -66,9 +76,7 @@ export default function NotesPage() {
       const updated = note.is_pinned
         ? await unpinNote(note.id)
         : await pinNote(note.id);
-      setNotes((prev) =>
-        prev.map((n) => (n.id === note.id ? updated : n))
-      );
+      upsertNote(updated);
     } catch (err) {
       console.error('Failed to toggle pin:', err);
     }
@@ -96,7 +104,6 @@ export default function NotesPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Notes</h1>
@@ -106,11 +113,7 @@ export default function NotesPage() {
         </div>
         <button
           onClick={handleCreateNew}
-          className="
-            inline-flex items-center gap-2 px-4 py-2 rounded-lg
-            bg-primary text-white
-            hover:bg-primary/90 transition-colors
-          "
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -119,7 +122,6 @@ export default function NotesPage() {
         </button>
       </div>
 
-      {/* Error state */}
       {error && (
         <div className="mb-6 p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400">
           {error}
@@ -132,7 +134,6 @@ export default function NotesPage() {
         </div>
       )}
 
-      {/* Notes list */}
       <NotesList
         notes={notes}
         isLoading={isLoading}
@@ -142,7 +143,6 @@ export default function NotesPage() {
         onDelete={handleDelete}
       />
 
-      {/* Note editor modal */}
       <NoteEditor
         note={editingNote}
         isOpen={editorOpen}
@@ -151,6 +151,7 @@ export default function NotesPage() {
           setEditingNote(null);
         }}
         onSave={handleSave}
+        onNoteUpdated={upsertNote}
       />
     </div>
   );

@@ -1,6 +1,7 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { existsSync, writeFileSync, unlinkSync, readFileSync } from 'fs';
+import { userInfo } from 'os';
 import { getWorkerModel, getWorkerRuntime, type WorkerRuntimeId } from './index.js';
 
 const execAsync = promisify(exec);
@@ -35,6 +36,14 @@ export interface WorkerAgentResult {
 function isRunningOnVPS(): boolean {
   const hostname = process.env.HOSTNAME || '';
   return hostname.includes('ubuntu') || existsSync('/opt/squire') || existsSync('/etc/systemd/system/squire.service');
+}
+
+function isRunningAsVpsUser(): boolean {
+  try {
+    return userInfo().username === DEFAULTS.vpsUser;
+  } catch {
+    return process.env.USER === DEFAULTS.vpsUser;
+  }
 }
 
 function getSessionId(providedId?: string): string {
@@ -106,7 +115,10 @@ async function runClaudeCode(options: WorkerAgentOptions, model: string, timeout
 
   if (onVPS) {
     const innerCommand = `cd ${shellQuote(workingDir)} && ${claudeCommand} < ${shellQuote(tmpPromptFile)}`;
-    command = `script -q -c ${shellQuote(`sudo -u ${DEFAULTS.vpsUser} bash -lc ${shellQuote(innerCommand)}`)} /dev/null`;
+    const userCommand = isRunningAsVpsUser()
+      ? `bash -lc ${shellQuote(innerCommand)}`
+      : `sudo -u ${DEFAULTS.vpsUser} -H bash -lc ${shellQuote(innerCommand)}`;
+    command = `script -q -c ${shellQuote(userCommand)} /dev/null`;
     console.log(`[worker:claude-code] Executing locally: ${workingDir}`);
   } else {
     await runCommand(`scp ${shellQuote(tmpPromptFile)} ${DEFAULTS.sshHost}:${shellQuote(tmpPromptFile)}`, timeout);
@@ -156,6 +168,7 @@ async function runCodex(options: WorkerAgentOptions, model: string, timeout: num
     'codex',
     'exec',
     '--json',
+    '--skip-git-repo-check',
     '--sandbox',
     sandboxMode,
     '-c',
@@ -176,7 +189,9 @@ async function runCodex(options: WorkerAgentOptions, model: string, timeout: num
   let command: string;
 
   if (onVPS) {
-    command = `sudo -u ${DEFAULTS.vpsUser} bash -lc ${shellQuote(codexCommand)}`;
+    command = isRunningAsVpsUser()
+      ? `bash -lc ${shellQuote(codexCommand)}`
+      : `sudo -u ${DEFAULTS.vpsUser} -H bash -lc ${shellQuote(codexCommand)}`;
     console.log(`[worker:codex] Executing locally: ${workingDir}`);
   } else {
     await runCommand(`scp ${shellQuote(tmpPromptFile)} ${DEFAULTS.sshHost}:${shellQuote(tmpPromptFile)}`, timeout);

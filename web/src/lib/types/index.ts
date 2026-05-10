@@ -207,7 +207,7 @@ export interface ChatMessage {
   context?: ContextPackage;
   memoryIds?: string[];
   reportData?: ReportData;
-  images?: { preview: string; name: string; objectId?: string }[];
+  images?: { preview: string; name: string }[];
 }
 
 // Report Data (from present_report tool)
@@ -518,6 +518,23 @@ export const DayOfWeekShortLabels: Record<DayOfWeek, string> = {
 export type NoteSourceType = 'manual' | 'voice' | 'chat' | 'calendar_event';
 export type NoteCategory = 'work' | 'personal' | 'health' | 'project' | string;
 
+export interface NoteAttachment {
+  id: string;
+  note_id: string;
+  object_id: string;
+  name: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  thumbnail_path: string | null;
+  description: string | null;
+  metadata: Record<string, unknown>;
+  position: number;
+  caption: string | null;
+  created_at: string;
+  download_url: string;
+}
+
 export interface Note {
   id: string;
   title: string | null;
@@ -534,6 +551,8 @@ export interface Note {
   created_at: string;
   updated_at: string;
   archived_at: string | null;
+  attachments: NoteAttachment[];
+  attachment_count: number;
   // Joined entity data (optional)
   primary_entity?: Entity;
 }

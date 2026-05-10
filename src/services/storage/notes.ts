@@ -185,34 +185,43 @@ async function getAttachmentsForNoteIds(noteIds: string[]): Promise<Map<string, 
     return attachmentsByNote;
   }
 
-  const result = await pool.query(
-    `SELECT
-       na.id AS attachment_id,
-       na.note_id,
-       na.object_id,
-       na.position,
-       na.caption,
-       na.created_at AS attached_at,
-       o.name,
-       o.filename,
-       o.mime_type,
-       o.size_bytes,
-       o.thumbnail_path,
-       o.description,
-       o.metadata
-     FROM note_attachments na
-     JOIN objects o ON o.id = na.object_id
-     WHERE na.note_id = ANY($1::uuid[])
-       AND o.status = 'active'
-     ORDER BY na.note_id, na.position ASC, na.created_at ASC`,
-    [noteIds]
-  );
+  try {
+    const result = await pool.query(
+      `SELECT
+         na.id AS attachment_id,
+         na.note_id,
+         na.object_id,
+         na.position,
+         na.caption,
+         na.created_at AS attached_at,
+         o.name,
+         o.filename,
+         o.mime_type,
+         o.size_bytes,
+         o.thumbnail_path,
+         o.description,
+         o.metadata
+       FROM note_attachments na
+       JOIN objects o ON o.id = na.object_id
+       WHERE na.note_id = ANY($1::uuid[])
+         AND o.status = 'active'
+       ORDER BY na.note_id, na.position ASC, na.created_at ASC`,
+      [noteIds]
+    );
 
-  for (const row of result.rows as NoteAttachmentRow[]) {
-    const attachment = mapAttachmentRow(row);
-    const existing = attachmentsByNote.get(attachment.note_id) || [];
-    existing.push(attachment);
-    attachmentsByNote.set(attachment.note_id, existing);
+    for (const row of result.rows as NoteAttachmentRow[]) {
+      const attachment = mapAttachmentRow(row);
+      const existing = attachmentsByNote.get(attachment.note_id) || [];
+      existing.push(attachment);
+      attachmentsByNote.set(attachment.note_id, existing);
+    }
+  } catch (error) {
+    const code = typeof error === 'object' && error && 'code' in error ? String((error as { code?: unknown }).code) : '';
+    if (code === '42P01') {
+      console.warn('[Notes] note_attachments table missing; returning notes without attachments');
+      return attachmentsByNote;
+    }
+    throw error;
   }
 
   return attachmentsByNote;
