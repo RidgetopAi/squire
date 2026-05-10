@@ -56,6 +56,7 @@ function buildCodexPrompt(messages: LLMMessage[], tools?: ToolDefinition[]): str
         'SQUIRE_TOOL_CALLS_JSON',
         '{"toolCalls":[{"name":"tool_name","arguments":{"key":"value"}}]}',
         'END_SQUIRE_TOOL_CALLS_JSON',
+        'The envelope must be valid JSON. Escape quotes inside string arguments, especially long prompt text.',
         'Available Squire tools:',
         JSON.stringify(tools.map((tool) => tool.function), null, 2),
       ].join('\n')
@@ -73,7 +74,126 @@ function buildCodexPrompt(messages: LLMMessage[], tools?: ToolDefinition[]): str
   ].join('\n');
 }
 
-function parseCodexToolCalls(
+type CodexToolCallRequest = { name: string; arguments?: unknown };
+
+function decodeLooseString(value: string): string {
+  return value
+    .replace(/\\n/g, '\n')
+    .replace(/\\t/g, '\t')
+    .replace(/\\"/g, '"')
+    .replace(/\\\\/g, '\\');
+}
+
+function extractBalancedObject(source: string, startIndex: number): string | null {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = startIndex; i < source.length; i += 1) {
+    const char = source[i];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === '"') {
+        const nextMeaningful = source.slice(i + 1).match(/^\s*([,}\]])/);
+        if (nextMeaningful) {
+          inString = false;
+        }
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+    } else if (char === '{') {
+      depth += 1;
+    } else if (char === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        return source.slice(startIndex, i + 1);
+      }
+    }
+  }
+
+  return null;
+}
+
+function parseLooseArguments(argumentsText: string): Record<string, unknown> {
+  try {
+    return JSON.parse(argumentsText) as Record<string, unknown>;
+  } catch {
+    const args: Record<string, unknown> = {};
+
+    for (const key of ['workingDir', 'model', 'sessionId']) {
+      const match = argumentsText.match(new RegExp(`"${key}"\\s*:\\s*"([^"]*)"`));
+      if (match?.[1] !== undefined) {
+        args[key] = decodeLooseString(match[1]);
+      }
+    }
+
+    const timeoutMatch = argumentsText.match(/"timeout"\s*:\s*(\d+)/);
+    if (timeoutMatch?.[1]) {
+      args.timeout = Number(timeoutMatch[1]);
+    }
+
+    const promptStart = argumentsText.search(/"prompt"\s*:\s*"/);
+    if (promptStart >= 0) {
+      const afterPromptKey = argumentsText.slice(promptStart).replace(/^"prompt"\s*:\s*"/, '');
+      const promptEnd = afterPromptKey.lastIndexOf('"');
+      if (promptEnd >= 0) {
+        args.prompt = decodeLooseString(afterPromptKey.slice(0, promptEnd).replace(/"\s*}\s*$/, ''));
+      }
+    }
+
+    return args;
+  }
+}
+
+function parseLooseToolCalls(envelopeBody: string): CodexToolCallRequest[] {
+  const calls: CodexToolCallRequest[] = [];
+  const namePattern = /"name"\s*:\s*"([^"]+)"/g;
+  let nameMatch: RegExpExecArray | null;
+
+  while ((nameMatch = namePattern.exec(envelopeBody)) !== null) {
+    const name = nameMatch[1]!;
+    const afterName = envelopeBody.slice(nameMatch.index);
+    const argumentsKey = afterName.indexOf('"arguments"');
+    if (argumentsKey < 0) {
+      calls.push({ name });
+      continue;
+    }
+
+    const objectStart = envelopeBody.indexOf('{', nameMatch.index + argumentsKey);
+    const argumentsText = objectStart >= 0 ? extractBalancedObject(envelopeBody, objectStart) : null;
+    calls.push({
+      name,
+      arguments: argumentsText ? parseLooseArguments(argumentsText) : {},
+    });
+  }
+
+  return calls;
+}
+
+function toToolCalls(
+  requests: CodexToolCallRequest[],
+  allowedTools: Set<string>
+): LLMResponse['toolCalls'] {
+  return requests
+    .filter((call) => allowedTools.has(call.name))
+    .map((call) => ({
+      id: `codex_tool_${crypto.randomUUID()}`,
+      type: 'function' as const,
+      function: {
+        name: call.name,
+        arguments: JSON.stringify(call.arguments ?? {}),
+      },
+    }));
+}
+
+export function parseCodexToolCalls(
   content: string,
   tools?: ToolDefinition[]
 ): { cleanContent: string; toolCalls: LLMResponse['toolCalls'] } {
@@ -81,36 +201,33 @@ function parseCodexToolCalls(
     return { cleanContent: content, toolCalls: [] };
   }
 
-  const match = content.match(/SQUIRE_TOOL_CALLS_JSON\s*([\s\S]*?)\s*END_SQUIRE_TOOL_CALLS_JSON/);
-  if (!match) {
+  const envelopePattern = /SQUIRE_TOOL_CALLS_JSON\s*([\s\S]*?)\s*END_SQUIRE_TOOL_CALLS_JSON/g;
+  const matches = Array.from(content.matchAll(envelopePattern));
+  if (matches.length === 0) {
     return { cleanContent: content, toolCalls: [] };
   }
 
   const allowedTools = new Set(tools.map((tool) => tool.function.name));
-  const cleanContent = content.replace(match[0], '').trim();
+  const cleanContent = content.replace(envelopePattern, '').trim();
+  const toolCalls: LLMResponse['toolCalls'] = [];
 
-  try {
-    const parsed = JSON.parse(match[1]!.trim()) as {
-      toolCalls?: Array<{ name?: unknown; arguments?: unknown }>;
-    };
-    const toolCalls = (parsed.toolCalls ?? [])
-      .filter((call): call is { name: string; arguments?: unknown } => (
-        typeof call.name === 'string' && allowedTools.has(call.name)
-      ))
-      .map((call) => ({
-        id: `codex_tool_${crypto.randomUUID()}`,
-        type: 'function' as const,
-        function: {
-          name: call.name,
-          arguments: JSON.stringify(call.arguments ?? {}),
-        },
-      }));
-
-    return { cleanContent, toolCalls };
-  } catch (error) {
-    console.warn('[LLM Codex] Failed to parse tool-call envelope:', error);
-    return { cleanContent: content, toolCalls: [] };
+  for (const match of matches) {
+    const envelopeBody = match[1]!.trim();
+    try {
+      const parsed = JSON.parse(envelopeBody) as {
+        toolCalls?: Array<{ name?: unknown; arguments?: unknown }>;
+      };
+      const requests = (parsed.toolCalls ?? []).filter((call): call is CodexToolCallRequest => (
+        typeof call.name === 'string'
+      ));
+      toolCalls.push(...toToolCalls(requests, allowedTools));
+    } catch (error) {
+      console.warn('[LLM Codex] Failed to parse tool-call envelope as strict JSON; trying loose parser:', error);
+      toolCalls.push(...toToolCalls(parseLooseToolCalls(envelopeBody), allowedTools));
+    }
   }
+
+  return { cleanContent, toolCalls };
 }
 
 function chunkText(text: string, size = 160): string[] {
