@@ -1,7 +1,4 @@
-import { Router, Request, Response } from 'express';
-
-interface IdParams { id: string }
-interface EntityParams { entityId: string }
+import { Router, type Request, type Response } from 'express';
 import {
   createNote,
   getNote,
@@ -17,19 +14,30 @@ import {
   pinNote,
   unpinNote,
   exportNotes,
-  NoteSourceType,
+  attachObjectToNote,
+  detachObjectFromNote,
+  type NoteSourceType,
 } from '../../services/storage/notes.js';
+import { getObjectById } from '../../services/storage/objects.js';
+
+interface IdParams {
+  id: string;
+}
+
+interface EntityParams {
+  entityId: string;
+}
+
+interface AttachmentParams extends IdParams {
+  objectId: string;
+}
 
 const router = Router();
 
-/**
- * GET /api/notes
- * List notes with optional filters
- */
 router.get('/', async (req: Request, res: Response): Promise<void> => {
   try {
-    const limit = parseInt(req.query.limit as string) || 50;
-    const offset = parseInt(req.query.offset as string) || 0;
+    const limit = parseInt(req.query.limit as string, 10) || 50;
+    const offset = parseInt(req.query.offset as string, 10) || 0;
     const category = req.query.category as string | undefined;
     const entity_id = req.query.entity_id as string | undefined;
     const is_pinned = req.query.is_pinned === 'true' ? true : req.query.is_pinned === 'false' ? false : undefined;
@@ -58,10 +66,6 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-/**
- * GET /api/notes/search
- * Search notes semantically
- */
 router.get('/search', async (req: Request, res: Response): Promise<void> => {
   try {
     const query = req.query.q as string;
@@ -70,7 +74,7 @@ router.get('/search', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const limit = parseInt(req.query.limit as string) || 20;
+    const limit = parseInt(req.query.limit as string, 10) || 20;
     const threshold = parseFloat(req.query.threshold as string) || 0.3;
     const entity_id = req.query.entity_id as string | undefined;
     const category = req.query.category as string | undefined;
@@ -88,10 +92,6 @@ router.get('/search', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-/**
- * GET /api/notes/pinned
- * Get all pinned notes
- */
 router.get('/pinned', async (_req: Request, res: Response): Promise<void> => {
   try {
     const notes = await getPinnedNotes();
@@ -102,10 +102,6 @@ router.get('/pinned', async (_req: Request, res: Response): Promise<void> => {
   }
 });
 
-/**
- * GET /api/notes/export
- * Export notes in various formats
- */
 router.get('/export', async (req: Request, res: Response): Promise<void> => {
   try {
     const format = (req.query.format as 'json' | 'markdown' | 'csv') || 'json';
@@ -137,14 +133,9 @@ router.get('/export', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-/**
- * GET /api/notes/entity/:entityId
- * Get all notes for a specific entity
- */
 router.get('/entity/:entityId', async (req: Request<EntityParams>, res: Response): Promise<void> => {
   try {
-    const entityId = req.params.entityId;
-    const notes = await getNotesByEntity(entityId);
+    const notes = await getNotesByEntity(req.params.entityId);
     res.json({ notes, count: notes.length });
   } catch (error) {
     console.error('Error getting entity notes:', error);
@@ -152,10 +143,6 @@ router.get('/entity/:entityId', async (req: Request<EntityParams>, res: Response
   }
 });
 
-/**
- * POST /api/notes
- * Create a new note
- */
 router.post('/', async (req: Request, res: Response): Promise<void> => {
   try {
     const {
@@ -204,14 +191,63 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-/**
- * GET /api/notes/:id
- * Get a single note by ID
- */
+router.post('/:id/attachments', async (req: Request<IdParams>, res: Response): Promise<void> => {
+  try {
+    const noteId = req.params.id;
+    const { object_id, caption, position } = req.body;
+
+    if (!object_id) {
+      res.status(400).json({ error: 'object_id is required' });
+      return;
+    }
+
+    const object = await getObjectById(object_id);
+    if (!object || object.status !== 'active') {
+      res.status(404).json({ error: 'Object not found' });
+      return;
+    }
+
+    if (object.object_type !== 'image') {
+      res.status(400).json({ error: 'Only image objects can be attached to notes' });
+      return;
+    }
+
+    const note = await attachObjectToNote(noteId, object_id, {
+      caption: caption ?? null,
+      position: typeof position === 'number' ? position : undefined,
+    });
+
+    if (!note) {
+      res.status(404).json({ error: 'Note not found' });
+      return;
+    }
+
+    res.status(201).json(note);
+  } catch (error) {
+    console.error('Error attaching object to note:', error);
+    res.status(500).json({ error: 'Failed to attach image to note' });
+  }
+});
+
+router.delete('/:id/attachments/:objectId', async (req: Request<AttachmentParams>, res: Response): Promise<void> => {
+  try {
+    const note = await detachObjectFromNote(req.params.id, req.params.objectId);
+
+    if (!note) {
+      res.status(404).json({ error: 'Note not found' });
+      return;
+    }
+
+    res.json(note);
+  } catch (error) {
+    console.error('Error removing object from note:', error);
+    res.status(500).json({ error: 'Failed to remove image from note' });
+  }
+});
+
 router.get('/:id', async (req: Request<IdParams>, res: Response): Promise<void> => {
   try {
-    const id = req.params.id;
-    const note = await getNote(id);
+    const note = await getNote(req.params.id);
 
     if (!note) {
       res.status(404).json({ error: 'Note not found' });
@@ -225,16 +261,11 @@ router.get('/:id', async (req: Request<IdParams>, res: Response): Promise<void> 
   }
 });
 
-/**
- * PATCH /api/notes/:id
- * Update a note
- */
 router.patch('/:id', async (req: Request<IdParams>, res: Response): Promise<void> => {
   try {
-    const id = req.params.id;
     const { title, content, primary_entity_id, entity_ids, category, tags, is_pinned, color } = req.body;
 
-    const note = await updateNote(id, {
+    const note = await updateNote(req.params.id, {
       title,
       content,
       primary_entity_id,
@@ -257,14 +288,9 @@ router.patch('/:id', async (req: Request<IdParams>, res: Response): Promise<void
   }
 });
 
-/**
- * POST /api/notes/:id/archive
- * Archive a note (soft delete)
- */
 router.post('/:id/archive', async (req: Request<IdParams>, res: Response): Promise<void> => {
   try {
-    const id = req.params.id;
-    await archiveNote(id);
+    await archiveNote(req.params.id);
     res.status(204).send();
   } catch (error) {
     console.error('Error archiving note:', error);
@@ -272,14 +298,9 @@ router.post('/:id/archive', async (req: Request<IdParams>, res: Response): Promi
   }
 });
 
-/**
- * DELETE /api/notes/:id
- * Hard delete a note
- */
 router.delete('/:id', async (req: Request<IdParams>, res: Response): Promise<void> => {
   try {
-    const id = req.params.id;
-    await deleteNote(id);
+    await deleteNote(req.params.id);
     res.status(204).send();
   } catch (error) {
     console.error('Error deleting note:', error);
@@ -287,14 +308,9 @@ router.delete('/:id', async (req: Request<IdParams>, res: Response): Promise<voi
   }
 });
 
-/**
- * POST /api/notes/:id/pin
- * Pin a note
- */
 router.post('/:id/pin', async (req: Request<IdParams>, res: Response): Promise<void> => {
   try {
-    const id = req.params.id;
-    const note = await pinNote(id);
+    const note = await pinNote(req.params.id);
 
     if (!note) {
       res.status(404).json({ error: 'Note not found' });
@@ -308,14 +324,9 @@ router.post('/:id/pin', async (req: Request<IdParams>, res: Response): Promise<v
   }
 });
 
-/**
- * POST /api/notes/:id/unpin
- * Unpin a note
- */
 router.post('/:id/unpin', async (req: Request<IdParams>, res: Response): Promise<void> => {
   try {
-    const id = req.params.id;
-    const note = await unpinNote(id);
+    const note = await unpinNote(req.params.id);
 
     if (!note) {
       res.status(404).json({ error: 'Note not found' });
@@ -329,13 +340,8 @@ router.post('/:id/unpin', async (req: Request<IdParams>, res: Response): Promise
   }
 });
 
-/**
- * POST /api/notes/:id/link
- * Link a note to an entity
- */
 router.post('/:id/link', async (req: Request<IdParams>, res: Response): Promise<void> => {
   try {
-    const id = req.params.id;
     const { entity_id, is_primary } = req.body;
 
     if (!entity_id) {
@@ -343,7 +349,7 @@ router.post('/:id/link', async (req: Request<IdParams>, res: Response): Promise<
       return;
     }
 
-    const note = await linkNoteToEntity(id, entity_id, is_primary === true);
+    const note = await linkNoteToEntity(req.params.id, entity_id, is_primary === true);
 
     if (!note) {
       res.status(404).json({ error: 'Note not found' });
@@ -357,13 +363,8 @@ router.post('/:id/link', async (req: Request<IdParams>, res: Response): Promise<
   }
 });
 
-/**
- * POST /api/notes/:id/unlink
- * Unlink a note from an entity
- */
 router.post('/:id/unlink', async (req: Request<IdParams>, res: Response): Promise<void> => {
   try {
-    const id = req.params.id;
     const { entity_id } = req.body;
 
     if (!entity_id) {
@@ -371,7 +372,7 @@ router.post('/:id/unlink', async (req: Request<IdParams>, res: Response): Promis
       return;
     }
 
-    const note = await unlinkNoteFromEntity(id, entity_id);
+    const note = await unlinkNoteFromEntity(req.params.id, entity_id);
 
     if (!note) {
       res.status(404).json({ error: 'Note not found' });
