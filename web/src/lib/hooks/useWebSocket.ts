@@ -111,9 +111,17 @@ export interface MessageSyncedPayload {
 }
 
 // Client → Server event payloads
+export interface ImageContent {
+  data: string;
+  mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+  name?: string;
+  objectId?: string;
+}
+
 export interface ChatMessagePayload {
   conversationId: string;
   message: string;
+  images?: ImageContent[];
   history?: Array<{ role: 'user' | 'assistant'; content: string }>;
   includeContext?: boolean;
   contextProfile?: string;

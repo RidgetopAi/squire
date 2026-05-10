@@ -10,9 +10,12 @@ import type { ChatMessage } from '@/lib/types';
 export interface ImageContent {
   data: string;
   mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+  name?: string;
+  objectId?: string;
 }
 
 export interface ChatApiRequest {
+  conversationId?: string;
   message: string;
   images?: ImageContent[];
   history?: ChatMessage[];

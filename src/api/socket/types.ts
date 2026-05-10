@@ -9,6 +9,8 @@
 export interface ImageContent {
   data: string;
   mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+  name?: string;
+  objectId?: string;
 }
 
 export interface ChatMessagePayload {

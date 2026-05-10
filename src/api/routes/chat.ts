@@ -23,6 +23,7 @@ const router = Router();
 // === Request/Response Types ===
 
 interface ChatApiRequest {
+  conversationId?: string;
   message: string;
   images?: ImageContent[];
   history?: ChatMessage[];
@@ -62,6 +63,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     const chatRequest: ChatRequest = {
       message: body.message.trim(),
       images: body.images,
+      conversationId: body.conversationId,
       conversationHistory: body.history ?? [],
       includeContext: body.includeContext !== false, // Default true
       contextQuery: body.contextQuery,

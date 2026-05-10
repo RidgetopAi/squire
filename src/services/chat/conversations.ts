@@ -1,5 +1,6 @@
 import { pool } from '../../db/pool.js';
 import { getOrCreateSession } from '../sessions.js';
+import { appendChatAttachmentReferences } from './attachments.js';
 
 // =============================================
 // TYPES
@@ -417,7 +418,7 @@ export async function persistToolTurn(input: PersistToolTurnInput): Promise<void
   }
 }
 
-type ContextMessage = { role: string; content: string; tool_calls?: unknown[]; tool_call_id?: string };
+type ContextMessage = { id: string; role: string; content: string; tool_calls?: unknown[]; tool_call_id?: string };
 
 /**
  * Get recent messages for a conversation including tool messages,
@@ -440,7 +441,7 @@ export async function getRecentMessagesForContext(
   limit = 60
 ): Promise<ContextMessage[]> {
   const result = await pool.query(
-    `SELECT role, content, tool_calls, tool_call_id
+    `SELECT id, role, content, tool_calls, tool_call_id, metadata
      FROM chat_messages
      WHERE conversation_id = $1
      ORDER BY sequence_number DESC
@@ -450,14 +451,20 @@ export async function getRecentMessagesForContext(
 
   // Back to chronological order
   const rows = (result.rows as Array<{
+    id: string;
     role: string;
     content: string;
     tool_calls: unknown[] | null;
     tool_call_id: string | null;
+    metadata: Record<string, unknown> | null;
   }>).reverse();
 
   const msgs: ContextMessage[] = rows.map((row) => {
-    const m: ContextMessage = { role: row.role, content: row.content };
+    const m: ContextMessage = {
+      role: row.role,
+      id: row.id,
+      content: appendChatAttachmentReferences(row.content, row.metadata),
+    };
     if (row.tool_calls) m.tool_calls = row.tool_calls;
     if (row.tool_call_id) m.tool_call_id = row.tool_call_id;
     return m;

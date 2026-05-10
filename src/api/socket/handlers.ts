@@ -39,6 +39,11 @@ import { SQUIRE_SYSTEM_PROMPT_BASE, TOOL_CALLING_INSTRUCTIONS } from '../../cons
 import { getObjectById } from '../../services/storage/objects.js';
 import { getSummary } from '../../services/summaries.js';
 import { searchForContext } from '../../services/documents/search.js';
+import {
+  buildChatAttachmentMetadata,
+  formatChatImageAttachmentReferences,
+  persistChatImageAttachments,
+} from '../../services/chat/attachments.js';
 import type {
   ClientToServerEvents,
   ServerToClientEvents,
@@ -302,6 +307,7 @@ async function compressImages(images: ImageContent[]): Promise<ImageContent[]> {
       console.log(`[Socket] Image compressed: ${(rawBytes / 1024 / 1024).toFixed(2)}MB → ${(compressedBytes / 1024 / 1024).toFixed(2)}MB`);
 
       results.push({
+        ...img,
         data: compressedBuffer.toString('base64'),
         mediaType: 'image/jpeg',
       });
@@ -533,11 +539,30 @@ async function handleChatMessage(
     console.log(`[Socket] Conversation ready: ${conversation.id}`);
     markLatency('conversation_ready');
 
+    // Step 1: Persist image attachments before the user message so the
+    // message metadata can carry stable object IDs for future tool calls.
+    const storedImageAttachments = images && images.length > 0
+      ? await persistChatImageAttachments({
+          conversationId: conversation.id,
+          message,
+          images,
+        })
+      : [];
+    if (storedImageAttachments.length > 0) {
+      markLatency('image_attachments_persisted');
+      console.log(
+        `[Socket] Stored ${storedImageAttachments.length} image attachment(s): ${
+          storedImageAttachments.map((attachment) => attachment.objectId).join(', ')
+        }`
+      );
+    }
+
     // Step 1: Persist user message immediately
     const userMessage = await addMessage({
       conversationId: conversation.id,
       role: 'user',
       content: message,
+      metadata: buildChatAttachmentMetadata(storedImageAttachments),
     });
     markLatency('user_message_persisted');
 
@@ -688,6 +713,10 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
     if (contextMarkdown) {
       dynamicContent += `\n\n---\n\n${contextMarkdown}`;
     }
+    const currentAttachmentReferences = formatChatImageAttachmentReferences(storedImageAttachments);
+    if (currentAttachmentReferences) {
+      dynamicContent += `\n\n---\n\n${currentAttachmentReferences}`;
+    }
     messages.push({ role: 'system', content: dynamicContent });
 
     // Add conversation history — load from DB to include tool call/result messages
@@ -696,7 +725,7 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
     const dbHistory = await getRecentMessagesForContext(conversation.id, 20);
     markLatency('db_history_loaded');
     // Remove the last message if it's the user message we just persisted (avoid duplication)
-    const historyWithoutCurrent = dbHistory.filter((m) => !(m.role === 'user' && m.content === message));
+    const historyWithoutCurrent = dbHistory.filter((m) => m.id !== userMessage.id);
     for (const msg of historyWithoutCurrent) {
       const histMsg: { role: string; content: string; tool_calls?: ToolCall[]; tool_call_id?: string } = {
         role: msg.role,
@@ -708,7 +737,11 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
     }
 
     // Compress images if needed (Anthropic has a 5MB per-image limit)
-    const processedImages = images ? await compressImages(images) : undefined;
+    const imagesWithObjectIds = images?.map((image, index) => ({
+      ...image,
+      objectId: storedImageAttachments[index]?.objectId,
+    }));
+    const processedImages = imagesWithObjectIds ? await compressImages(imagesWithObjectIds) : undefined;
     if (images) {
       markLatency('images_processed');
     }

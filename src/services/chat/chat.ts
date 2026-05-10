@@ -12,6 +12,10 @@ import { generateContext, type ContextPackage } from './context.js';
 import { config } from '../../config/index.js';
 import { getToolDefinitions, executeTools, hasTools } from '../../tools/index.js';
 import { SQUIRE_SYSTEM_PROMPT_BASE, TOOL_CALLING_INSTRUCTIONS } from '../../constants/prompts.js';
+import {
+  formatChatImageAttachmentReferences,
+  persistChatImageAttachments,
+} from './attachments.js';
 
 // === TYPES ===
 
@@ -29,6 +33,7 @@ export interface ChatRequest {
   contextQuery?: string;
   contextProfile?: string;
   maxContextTokens?: number;
+  conversationId?: string;
 }
 
 export interface ChatResponse {
@@ -83,7 +88,8 @@ function buildMessages(
   userMessage: string,
   conversationHistory: ChatMessage[],
   contextMarkdown?: string,
-  images?: ImageContent[]
+  images?: ImageContent[],
+  attachmentReferences?: string
 ): LLMMessage[] {
   const messages: LLMMessage[] = [];
 
@@ -99,6 +105,9 @@ function buildMessages(
   let dynamicContent = dateTimeGrounding;
   if (contextMarkdown) {
     dynamicContent += `\n\n---\n\n${contextMarkdown}`;
+  }
+  if (attachmentReferences) {
+    dynamicContent += `\n\n---\n\n${attachmentReferences}`;
   }
   messages.push({ role: 'system', content: dynamicContent });
 
@@ -128,6 +137,7 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
     contextQuery,
     contextProfile,
     maxContextTokens,
+    conversationId,
   } = request;
 
   let contextPackage: ContextPackage | undefined;
@@ -148,8 +158,27 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
     }
   }
 
+  const storedImageAttachments = images && images.length > 0
+    ? await persistChatImageAttachments({
+        conversationId: conversationId ?? 'http-chat',
+        message,
+        images,
+      })
+    : [];
+  const imagesWithObjectIds = images?.map((image, index) => ({
+    ...image,
+    objectId: storedImageAttachments[index]?.objectId,
+  }));
+  const attachmentReferences = formatChatImageAttachmentReferences(storedImageAttachments);
+
   // Build messages for LLM
-  const messages = buildMessages(message, conversationHistory, contextMarkdown, images);
+  const messages = buildMessages(
+    message,
+    conversationHistory,
+    contextMarkdown,
+    imagesWithObjectIds,
+    attachmentReferences
+  );
 
   // Get available tools
   const tools = hasTools() ? getToolDefinitions() : undefined;
@@ -230,4 +259,3 @@ export async function chatSimple(
   });
   return response.message;
 }
-
