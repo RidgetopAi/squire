@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { InputCard, type ImageAttachment } from './InputCard';
 import { CardList } from './CardList';
@@ -15,8 +15,11 @@ import { useChatStore, useIsLoadingContext } from '@/lib/stores';
 import { useSavedCardsStore } from '@/lib/stores/savedCardsStore';
 import type { ConversationPair } from '@/lib/types';
 import type { StoredDocument } from '@/lib/api/documents';
+import { recordClientDiagnostic } from '@/lib/diagnostics/clientDiagnostics';
 
 export function ChatWindowV2() {
+  const renderStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  const renderCountRef = useRef(0);
   const messages = useChatStore((state) => state.messages);
   const isLoading = useChatStore((state) => state.isLoading);
   const isStreaming = useChatStore((state) => state.isStreaming);
@@ -25,6 +28,26 @@ export function ChatWindowV2() {
   const sendMessage = useChatStore((state) => state.sendMessage);
 
   const pairs = useConversationPairs(messages, streamingMessageId);
+
+  useEffect(() => {
+    renderCountRef.current += 1;
+    const renderElapsedMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - renderStartedAt;
+    if (
+      renderCountRef.current <= 5 ||
+      renderCountRef.current % 20 === 0 ||
+      renderElapsedMs > 50 ||
+      messages.length > 250
+    ) {
+      recordClientDiagnostic('chat-window-render', {
+        render: renderCountRef.current,
+        renderElapsedMs: Number(renderElapsedMs.toFixed(2)),
+        messageCount: messages.length,
+        pairCount: pairs.length,
+        isLoading,
+        isStreaming,
+      });
+    }
+  });
 
   // Saved cards state
   const { isFilterMode, savedCards, bookmarks, saveCard, unsaveCard } = useSavedCardsStore();

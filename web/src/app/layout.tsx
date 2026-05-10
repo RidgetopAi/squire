@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, Instrument_Serif, Geist_Mono } from "next/font/google";
 import { QueryProvider } from "@/lib/providers/QueryProvider";
 import { WebSocketProvider } from "@/lib/providers/WebSocketProvider";
+import { ClientDiagnostics } from "@/components/system/ClientDiagnostics";
 import "./globals.css";
 
 const jakarta = Plus_Jakarta_Sans({
@@ -54,7 +55,10 @@ export default function RootLayout({
         className={`${jakarta.variable} ${instrument.variable} ${geistMono.variable} antialiased`}
       >
         <QueryProvider>
-          <WebSocketProvider>{children}</WebSocketProvider>
+          <WebSocketProvider>
+            <ClientDiagnostics />
+            {children}
+          </WebSocketProvider>
         </QueryProvider>
       </body>
     </html>

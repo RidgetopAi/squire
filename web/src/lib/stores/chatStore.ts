@@ -28,6 +28,7 @@ import {
   getPendingMessages,
   clearAllPendingMessages,
 } from '@/lib/utils/messageBackup';
+import { recordClientDiagnostic } from '@/lib/diagnostics/clientDiagnostics';
 
 // Helper to safely access overlay store (avoids circular dependency issues)
 function clearOverlayCards() {
@@ -319,7 +320,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   // Finish streaming
   finishStreaming: (_usage, reportData) => {
-    const { pendingUserMessageId, streamingMessageId, isStreaming, isLoading } = get();
+    const { pendingUserMessageId, streamingMessageId, isStreaming, isLoading, messages } = get();
     console.log('[ChatStore] finishStreaming called', { isStreaming, isLoading, pendingUserMessageId });
 
     // Clear the pending message backup - server has confirmed receipt
@@ -346,6 +347,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
     });
 
     console.log('[ChatStore] finishStreaming complete - state reset');
+    recordClientDiagnostic('chat-stream-finished', {
+      messageCount: messages.length,
+      hadReport: !!reportData,
+    });
   },
 
   // Handle streaming error
@@ -375,10 +380,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       isLoading: false,
       error,
     });
+    recordClientDiagnostic('chat-stream-error', { error });
   },
 
   // Send a message (handles user message + assistant response)
   sendMessage: async (content: string, images?: { data: string; mediaType: ImageContent['mediaType'] }[], options: SendMessageOptions = {}) => {
+    const sendStartedAt = nowMs();
     const {
       addMessage,
       setLoading,
@@ -428,6 +435,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     setLoading(true);
     setError(null);
+    recordClientDiagnostic('chat-send-started', {
+      contentChars: content.length,
+      imageCount: images?.length ?? 0,
+      includeContext,
+      useStreaming,
+      existingMessageCount: get().messages.length,
+    });
 
     try {
       let contextPackage: ContextPackage | undefined;
@@ -492,6 +506,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
         // Note: Response handling is done via initWebSocketListeners()
         // which calls appendToStreamingMessage, finishStreaming, etc.
+        recordClientDiagnostic('chat-send-emitted', {
+          elapsedMs: Math.round(nowMs() - sendStartedAt),
+          historyLength: history.length,
+          messageCount: get().messages.length,
+        });
       } else {
         // === HTTP PATH (fallback) ===
         const currentMessages = get().messages;
@@ -518,6 +537,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
         });
 
         setLoading(false);
+        recordClientDiagnostic('chat-send-http-complete', {
+          elapsedMs: Math.round(nowMs() - sendStartedAt),
+          messageCount: get().messages.length,
+        });
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Failed to get response';
@@ -531,6 +554,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
       setLoading(false);
       setStreaming(false);
+      recordClientDiagnostic('chat-send-error', {
+        elapsedMs: Math.round(nowMs() - sendStartedAt),
+        error: errorMsg,
+      });
     }
   },
 
@@ -540,6 +567,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     console.log('[ChatStore] loadRecentConversation called, hasLoadedInitial:', hasLoadedInitial);
     if (hasLoadedInitial) return;
 
+    const loadStartedAt = nowMs();
     set({ isLoadingHistory: true });
 
     try {
@@ -572,6 +600,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
           hasLoadedInitial: true,
           isLoadingHistory: false,
         });
+        recordClientDiagnostic('chat-history-loaded', {
+          elapsedMs: Math.round(nowMs() - loadStartedAt),
+          loadedMessages: chatMessages.length,
+          conversationMessageCount: conversation.message_count,
+          contentChars: chatMessages.reduce((sum, message) => sum + message.content.length, 0),
+        });
 
         // Join the conversation room for cross-device sync
         joinConversationRoom(conversationId);
@@ -580,12 +614,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
           hasLoadedInitial: true,
           isLoadingHistory: false,
         });
+        recordClientDiagnostic('chat-history-empty', {
+          elapsedMs: Math.round(nowMs() - loadStartedAt),
+        });
       }
     } catch (error) {
       console.error('Failed to load recent conversation:', error);
       set({
         hasLoadedInitial: true,
         isLoadingHistory: false,
+      });
+      recordClientDiagnostic('chat-history-error', {
+        elapsedMs: Math.round(nowMs() - loadStartedAt),
+        error: error instanceof Error ? error.message : String(error),
       });
     }
   },

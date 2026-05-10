@@ -218,7 +218,16 @@ router.get('/conversations', async (req: Request, res: Response): Promise<void> 
  */
 router.get('/conversations/recent', async (_req: Request, res: Response): Promise<void> => {
   try {
+    const startedAt = Date.now();
     const result = await getRecentConversationWithMessages();
+    const elapsedMs = Date.now() - startedAt;
+
+    console.log('[ChatRoute] recent conversation loaded', {
+      conversationId: result?.conversation.id,
+      clientId: result?.conversation.client_id,
+      messageCount: result?.messages.length ?? 0,
+      elapsedMs,
+    });
 
     res.json({
       success: true,

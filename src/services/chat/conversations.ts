@@ -279,6 +279,35 @@ export async function getMessages(
 }
 
 /**
+ * Get the latest displayable messages for a conversation in chronological order.
+ *
+ * Chat history can include tool rows and thousands of old messages. The web chat
+ * shell only renders user/assistant/system rows, so keep this display query
+ * bounded and exclude tool rows before sending it to mobile clients.
+ */
+export async function getRecentDisplayMessages(
+  conversationId: string,
+  options: { limit?: number } = {}
+): Promise<ChatMessageDB[]> {
+  const { limit = 300 } = options;
+
+  const result = await pool.query(
+    `SELECT * FROM (
+       SELECT *
+       FROM chat_messages
+       WHERE conversation_id = $1
+         AND role IN ('user', 'assistant', 'system')
+       ORDER BY sequence_number DESC
+       LIMIT $2
+     ) recent_messages
+     ORDER BY sequence_number ASC`,
+    [conversationId, limit]
+  );
+
+  return result.rows as ChatMessageDB[];
+}
+
+/**
  * Get the primary conversation with its messages
  * Used for loading chat history on page load.
  * Looks for the 'primary' conversation first (the main chat),
@@ -288,10 +317,18 @@ export async function getRecentConversationWithMessages(): Promise<{
   conversation: Conversation;
   messages: ChatMessageDB[];
 } | null> {
+  const displayMessageLimit = Number.parseInt(
+    process.env.CHAT_RECENT_DISPLAY_LIMIT ?? '300',
+    10
+  );
+  const messageLimit = Number.isFinite(displayMessageLimit) && displayMessageLimit > 0
+    ? displayMessageLimit
+    : 300;
+
   // First, look for the primary conversation (main chat)
   const primary = await getConversationByClientId('primary');
   if (primary && primary.status !== 'deleted') {
-    const messages = await getMessages(primary.id, { limit: 10000 });
+    const messages = await getRecentDisplayMessages(primary.id, { limit: messageLimit });
     return { conversation: primary, messages };
   }
 
@@ -306,7 +343,7 @@ export async function getRecentConversationWithMessages(): Promise<{
   const conversation = result.rows[0] as Conversation | undefined;
   if (!conversation) return null;
 
-  const messages = await getMessages(conversation.id, { limit: 10000 });
+  const messages = await getRecentDisplayMessages(conversation.id, { limit: messageLimit });
   return { conversation, messages };
 }
 
