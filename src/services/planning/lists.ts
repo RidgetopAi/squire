@@ -631,6 +631,43 @@ export async function reorderItems(listId: string, itemIds: string[]): Promise<v
   }
 }
 
+/**
+ * Move an item to another list and append it to the end unless a sort order is provided.
+ */
+export async function moveItemToList(
+  itemId: string,
+  targetListId: string,
+  sortOrder?: number
+): Promise<ListItem | null> {
+  const item = await getItem(itemId);
+  const targetList = await getList(targetListId);
+  if (!item || !targetList) return null;
+
+  let nextOrder = sortOrder;
+  if (nextOrder === undefined) {
+    const maxResult = await pool.query(
+      'SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order FROM list_items WHERE list_id = $1 AND archived_at IS NULL',
+      [targetListId]
+    );
+    nextOrder = Number(maxResult.rows[0]?.next_order ?? 0);
+  }
+
+  const result = await pool.query(
+    `UPDATE list_items
+     SET list_id = $1, sort_order = $2, updated_at = NOW()
+     WHERE id = $3 AND archived_at IS NULL
+     RETURNING *`,
+    [targetListId, nextOrder, itemId]
+  );
+
+  await pool.query(
+    'UPDATE lists SET updated_at = NOW() WHERE id = ANY($1::uuid[])',
+    [[item.list_id, targetListId]]
+  );
+
+  return (result.rows[0] as ListItem) ?? null;
+}
+
 // =============================================================================
 // CHECKLIST OPERATIONS
 // =============================================================================
