@@ -44,6 +44,16 @@ export interface PushResult {
   etag: string;
 }
 
+export interface GoogleEventUpdateInput {
+  title?: string | null;
+  description?: string | null;
+  location?: string | null;
+  due_at?: Date;
+  duration_minutes?: number;
+  all_day?: boolean;
+  timezone?: string;
+}
+
 /**
  * Pull events from Google Calendar and cache locally
  */
@@ -249,6 +259,7 @@ export async function pushEventToGoogle(
     id?: string; // Optional commitment ID to link to
     title: string;
     description?: string;
+    location?: string;
     due_at: Date;
     duration_minutes?: number;
     all_day?: boolean;
@@ -264,6 +275,7 @@ export async function pushEventToGoogle(
   const eventResource: calendar_v3.Schema$Event = {
     summary: event.title,
     description: event.description,
+    location: event.location,
   };
 
   if (event.all_day) {
@@ -301,12 +313,13 @@ export async function pushEventToGoogle(
   await pool.query(`
     INSERT INTO google_events (
       google_calendar_id, event_id, summary, description,
-      start_time, end_time, all_day, timezone, status, etag,
+      location, start_time, end_time, all_day, timezone, status, etag,
       commitment_id, raw
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
     ON CONFLICT (google_calendar_id, event_id) DO UPDATE SET
       summary = EXCLUDED.summary,
       description = EXCLUDED.description,
+      location = EXCLUDED.location,
       start_time = EXCLUDED.start_time,
       end_time = EXCLUDED.end_time,
       all_day = EXCLUDED.all_day,
@@ -319,6 +332,7 @@ export async function pushEventToGoogle(
     response.data.id,
     event.title,
     event.description || null,
+    event.location || null,
     event.due_at,
     endTime,
     event.all_day || false,
@@ -343,8 +357,9 @@ export async function updateEventInGoogle(
   calendar: GoogleCalendar,
   eventId: string,
   updates: {
-    title?: string;
-    description?: string;
+    title?: string | null;
+    description?: string | null;
+    location?: string | null;
     due_at?: Date;
     duration_minutes?: number;
     all_day?: boolean;
@@ -368,13 +383,34 @@ export async function updateEventInGoogle(
   if (updates.description !== undefined) {
     eventResource.description = updates.description;
   }
-  if (updates.due_at !== undefined) {
-    const duration = updates.duration_minutes || 60;
-    const endTime = new Date(updates.due_at.getTime() + duration * 60 * 1000);
+  if (updates.location !== undefined) {
+    eventResource.location = updates.location;
+  }
 
-    if (updates.all_day) {
+  if (
+    updates.due_at !== undefined ||
+    updates.duration_minutes !== undefined ||
+    updates.all_day !== undefined ||
+    updates.timezone !== undefined
+  ) {
+    const existingStart = dateFromGoogleEventTime(eventResource.start);
+    const existingEnd = dateFromGoogleEventTime(eventResource.end);
+    const startTime = updates.due_at ?? existingStart;
+
+    if (!startTime) {
+      throw new Error('Cannot update event time because existing start time is missing');
+    }
+
+    const existingDuration = existingStart && existingEnd
+      ? Math.max(1, Math.round((existingEnd.getTime() - existingStart.getTime()) / 60000))
+      : 60;
+    const duration = updates.duration_minutes ?? existingDuration;
+    const allDay = updates.all_day ?? !!eventResource.start?.date;
+    const endTime = new Date(startTime.getTime() + duration * 60 * 1000);
+
+    if (allDay) {
       eventResource.start = {
-        date: updates.due_at.toISOString().split('T')[0],
+        date: startTime.toISOString().split('T')[0],
         timeZone: updates.timezone || config.timezone,
       };
       eventResource.end = {
@@ -383,7 +419,7 @@ export async function updateEventInGoogle(
       };
     } else {
       eventResource.start = {
-        dateTime: updates.due_at.toISOString(),
+        dateTime: startTime.toISOString(),
         timeZone: updates.timezone || config.timezone,
       };
       eventResource.end = {
@@ -400,23 +436,29 @@ export async function updateEventInGoogle(
   });
 
   // Update local cache
+  const startTime = dateFromGoogleEventTime(eventResource.start);
+  const endTime = dateFromGoogleEventTime(eventResource.end);
   await pool.query(`
     UPDATE google_events SET
       summary = $1,
       description = $2,
-      start_time = $3,
-      end_time = $4,
-      all_day = $5,
-      etag = $6,
-      raw = $7,
+      location = $3,
+      start_time = $4,
+      end_time = $5,
+      all_day = $6,
+      timezone = $7,
+      etag = $8,
+      raw = $9,
       updated_at = NOW()
-    WHERE google_calendar_id = $8 AND event_id = $9
+    WHERE google_calendar_id = $10 AND event_id = $11
   `, [
     eventResource.summary,
     eventResource.description,
-    eventResource.start?.dateTime ? new Date(eventResource.start.dateTime) : null,
-    eventResource.end?.dateTime ? new Date(eventResource.end.dateTime) : null,
+    eventResource.location,
+    startTime,
+    endTime,
     !!(eventResource.start?.date),
+    eventResource.start?.timeZone || eventResource.end?.timeZone || null,
     response.data.etag,
     JSON.stringify(response.data),
     calendar.id,
@@ -424,6 +466,36 @@ export async function updateEventInGoogle(
   ]);
 
   return { etag: response.data.etag || '' };
+}
+
+function dateFromGoogleEventTime(value: calendar_v3.Schema$EventDateTime | undefined): Date | null {
+  if (!value) return null;
+  if (value.dateTime) return new Date(value.dateTime);
+  if (value.date) return new Date(value.date);
+  return null;
+}
+
+export async function deleteEventInGoogle(calendar: GoogleCalendar, eventId: string): Promise<void> {
+  const authClient = await getAuthenticatedClient(calendar.google_account_id);
+  const calendarApi = google.calendar({ version: 'v3', auth: authClient });
+
+  await calendarApi.events.delete({
+    calendarId: calendar.calendar_id,
+    eventId,
+  });
+
+  await pool.query(
+    'DELETE FROM google_events WHERE google_calendar_id = $1 AND event_id = $2',
+    [calendar.id, eventId]
+  );
+}
+
+export async function getGoogleEventById(id: string): Promise<GoogleEvent | null> {
+  const result = await pool.query(
+    'SELECT * FROM google_events WHERE id = $1',
+    [id]
+  );
+  return result.rows[0] as GoogleEvent || null;
 }
 
 /**
@@ -474,4 +546,3 @@ export async function getEventByCommitmentId(commitmentId: string): Promise<Goog
   );
   return result.rows[0] as GoogleEvent || null;
 }
-
