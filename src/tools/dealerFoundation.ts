@@ -9,10 +9,12 @@
 import {
   campaignReport,
   createDealerCampaign,
+  dealerFoundationSummary,
   generateDisplayCampaignTasks,
   importCampaignItemsFromCsv,
   importDealerFoundation,
   importSalesReport,
+  queryDealerFoundation,
   queryCampaignTasks,
   recordCampaignSale,
   updateCampaignTask,
@@ -258,7 +260,72 @@ async function handleDealerCampaignReport(args: DealerCampaignReportArgs): Promi
   }
 }
 
+interface QueryDealerFoundationArgs {
+  dealer_search?: string;
+  display_code?: string;
+  program_name?: string;
+  limit?: number;
+}
+
+async function handleQueryDealerFoundation(args: QueryDealerFoundationArgs): Promise<string> {
+  try {
+    const result = await queryDealerFoundation(args);
+    return JSON.stringify(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return JSON.stringify({ error: `Dealer foundation query failed: ${message}` });
+  }
+}
+
+async function handleDealerFoundationSummary(): Promise<string> {
+  try {
+    const result = await dealerFoundationSummary();
+    return JSON.stringify(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return JSON.stringify({ error: `Dealer foundation summary failed: ${message}` });
+  }
+}
+
 export const tools: ToolSpec[] = [
+  {
+    name: 'dealer_foundation_summary',
+    description:
+      'Get the current durable dealer foundation summary: active dealer count, display mappings, program memberships, visible campaigns, and campaign task counts. This is the source of truth for dealer/display foundation status.',
+    parameters: {
+      type: 'object',
+      properties: {},
+    },
+    handler: handleDealerFoundationSummary as ToolHandler,
+  },
+  {
+    name: 'query_dealer_foundation',
+    description:
+      'Query canonical dealers from the durable foundation by dealer name/account, active display code, or program membership. Use this instead of legacy dealer/display tools for questions like which dealers have Responsive displays, what displays a dealer has, or which dealers are in a program.',
+    parameters: {
+      type: 'object',
+      properties: {
+        dealer_search: {
+          type: 'string',
+          description: 'Dealer name, trade name, alias, or account number search.',
+        },
+        display_code: {
+          type: 'string',
+          description:
+            'Optional display code filter such as responsive, lauzon_expert, lauzon_partner, bjelin, adura_pro, sar, somerset.',
+        },
+        program_name: {
+          type: 'string',
+          description: 'Optional dealer program filter, such as ADVANTAGE or DIRECT PLUS.',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum dealers to return. Default 50.',
+        },
+      },
+    },
+    handler: handleQueryDealerFoundation as ToolHandler,
+  },
   {
     name: 'import_dealer_foundation',
     description:

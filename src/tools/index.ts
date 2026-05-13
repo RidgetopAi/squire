@@ -232,7 +232,6 @@ import { tools as scoutTools } from './scout.js';
 import { tools as sandboxTools } from './sandbox.js';
 import { tools as jobTools } from './jobs.js';
 import { tools as browserTools } from './browser/index.js';
-import { tools as dealerTools } from './dealers.js';
 import { tools as dealerFoundationTools } from './dealerFoundation.js';
 
 const allToolSpecs: ToolSpec[] = [
@@ -262,7 +261,6 @@ const allToolSpecs: ToolSpec[] = [
   ...sandboxTools,
   ...jobTools,
   ...browserTools,
-  ...dealerTools,
   ...dealerFoundationTools,
 ];
 

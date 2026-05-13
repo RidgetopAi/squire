@@ -91,6 +91,13 @@ export interface CampaignReportInput {
   limit?: number;
 }
 
+export interface DealerFoundationQueryInput {
+  dealer_search?: string;
+  display_code?: string;
+  program_name?: string;
+  limit?: number;
+}
+
 const DISPLAY_FILE_NAMES = new Set([
   'adura-pro-displays.csv',
   'apex-displays.csv',
@@ -1199,5 +1206,135 @@ export async function campaignReport(input: CampaignReportInput): Promise<Record
     task_summary: taskSummary.rows,
     item_entry_summary: entrySummary.rows,
     dealer_entry_summary: dealerSummary.rows,
+  };
+}
+
+// =============================================================================
+// FOUNDATION QUERIES & REPORTING
+// =============================================================================
+
+export async function dealerFoundationSummary(): Promise<Record<string, unknown>> {
+  const totals = await pool.query(
+    `SELECT
+      (SELECT COUNT(*)::int FROM dealers WHERE archived_at IS NULL) AS active_dealers,
+      (SELECT COUNT(*)::int FROM dealer_aliases) AS aliases,
+      (SELECT COUNT(*)::int FROM dealer_displays dd JOIN dealers d ON d.id = dd.dealer_id WHERE dd.active = TRUE AND d.archived_at IS NULL) AS active_display_links,
+      (SELECT COUNT(*)::int FROM dealer_program_memberships dpm JOIN dealers d ON d.id = dpm.dealer_id WHERE dpm.active = TRUE AND d.archived_at IS NULL) AS active_program_memberships,
+      (SELECT COUNT(*)::int FROM dealer_display_types WHERE is_active = TRUE) AS display_types,
+      (SELECT COUNT(*)::int FROM dealer_campaigns WHERE status != 'archived') AS active_or_visible_campaigns,
+      (SELECT COUNT(*)::int FROM dealer_campaign_tasks) AS campaign_tasks`
+  );
+
+  const displays = await pool.query(
+    `SELECT ddt.code, ddt.display_name, COUNT(*)::int AS dealer_count
+     FROM dealer_displays dd
+     JOIN dealer_display_types ddt ON ddt.id = dd.display_type_id
+     JOIN dealers d ON d.id = dd.dealer_id
+     WHERE dd.active = TRUE
+       AND d.archived_at IS NULL
+     GROUP BY ddt.code, ddt.display_name
+     ORDER BY ddt.code`
+  );
+
+  const programs = await pool.query(
+    `SELECT dpm.program_name, COUNT(*)::int AS dealer_count
+     FROM dealer_program_memberships dpm
+     JOIN dealers d ON d.id = dpm.dealer_id
+     WHERE dpm.active = TRUE
+       AND d.archived_at IS NULL
+     GROUP BY dpm.program_name
+     ORDER BY dpm.program_name`
+  );
+
+  const campaigns = await pool.query(
+    `SELECT name, campaign_type, status, period_start, period_end
+     FROM dealer_campaigns
+     WHERE status != 'archived'
+     ORDER BY updated_at DESC
+     LIMIT 20`
+  );
+
+  return {
+    totals: totals.rows[0],
+    displays: displays.rows,
+    programs: programs.rows,
+    campaigns: campaigns.rows,
+  };
+}
+
+export async function queryDealerFoundation(input: DealerFoundationQueryInput): Promise<Record<string, unknown>> {
+  const conditions: string[] = ['d.archived_at IS NULL'];
+  const params: unknown[] = [];
+  let index = 1;
+
+  if (input.dealer_search) {
+    conditions.push(
+      `(LOWER(d.name) LIKE LOWER($${index})
+        OR LOWER(d.trade_name) LIKE LOWER($${index})
+        OR LOWER(d.account_number) LIKE LOWER($${index})
+        OR EXISTS (
+          SELECT 1 FROM dealer_aliases da
+          WHERE da.dealer_id = d.id
+            AND LOWER(da.alias_name) LIKE LOWER($${index})
+        ))`
+    );
+    params.push(`%${input.dealer_search}%`);
+    index++;
+  }
+
+  if (input.display_code) {
+    conditions.push(
+      `EXISTS (
+        SELECT 1
+        FROM dealer_displays dd_filter
+        JOIN dealer_display_types ddt_filter ON ddt_filter.id = dd_filter.display_type_id
+        WHERE dd_filter.dealer_id = d.id
+          AND dd_filter.active = TRUE
+          AND ddt_filter.code = $${index}
+      )`
+    );
+    params.push(normalizeKey(input.display_code));
+    index++;
+  }
+
+  if (input.program_name) {
+    conditions.push(
+      `EXISTS (
+        SELECT 1
+        FROM dealer_program_memberships dpm_filter
+        WHERE dpm_filter.dealer_id = d.id
+          AND dpm_filter.active = TRUE
+          AND dpm_filter.normalized_program_name = $${index}
+      )`
+    );
+    params.push(normalizeKey(input.program_name));
+    index++;
+  }
+
+  const limit = input.limit ?? 50;
+  const result = await pool.query(
+    `SELECT
+      d.account_number,
+      d.name,
+      d.trade_name,
+      d.city,
+      d.state,
+      d.zip,
+      COALESCE(array_agg(DISTINCT ddt.code) FILTER (WHERE ddt.code IS NOT NULL), ARRAY[]::text[]) AS displays,
+      COALESCE(array_agg(DISTINCT dpm.program_name) FILTER (WHERE dpm.program_name IS NOT NULL), ARRAY[]::text[]) AS programs
+    FROM dealers d
+    LEFT JOIN dealer_displays dd ON dd.dealer_id = d.id AND dd.active = TRUE
+    LEFT JOIN dealer_display_types ddt ON ddt.id = dd.display_type_id
+    LEFT JOIN dealer_program_memberships dpm ON dpm.dealer_id = d.id AND dpm.active = TRUE
+    WHERE ${conditions.join(' AND ')}
+    GROUP BY d.account_number, d.name, d.trade_name, d.city, d.state, d.zip
+    ORDER BY d.name
+    LIMIT $${index}`,
+    [...params, limit]
+  );
+
+  return {
+    count: result.rowCount ?? 0,
+    dealers: result.rows,
   };
 }
