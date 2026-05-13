@@ -1073,9 +1073,9 @@ export async function updateCampaignTask(input: UpdateCampaignTaskInput): Promis
 
   const result = await pool.query(
     `UPDATE dealer_campaign_tasks
-     SET status = $2,
-       notes = COALESCE($3, notes),
-       completed_at = CASE WHEN $2 = 'done' THEN NOW() ELSE completed_at END,
+     SET status = $2::text,
+       notes = COALESCE($3::text, notes),
+       completed_at = CASE WHEN $2::text = 'done' THEN NOW() ELSE completed_at END,
        updated_at = NOW()
      WHERE id = $1
      RETURNING *`,
