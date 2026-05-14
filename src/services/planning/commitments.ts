@@ -62,7 +62,7 @@ export interface CreateCommitmentInput {
 
 export interface UpdateCommitmentInput {
   title?: string;
-  description?: string;
+  description?: string | null;
   due_at?: Date | null;
   timezone?: string;
   all_day?: boolean;
@@ -360,7 +360,7 @@ export async function updateCommitment(
     const current = await getCommitment(id);
     if (current) {
       const newTitle = input.title ?? current.title;
-      const newDesc = input.description ?? current.description;
+      const newDesc = input.description !== undefined ? input.description : current.description;
       const textForEmbedding = newDesc ? `${newTitle}. ${newDesc}` : newTitle;
       const embedding = await generateEmbedding(textForEmbedding);
       const embeddingStr = `[${embedding.join(',')}]`;

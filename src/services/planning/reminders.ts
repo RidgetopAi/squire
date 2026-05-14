@@ -43,8 +43,8 @@ export interface CreateReminderInput {
 }
 
 export interface UpdateReminderInput {
-  title?: string;
-  body?: string;
+  title?: string | null;
+  body?: string | null;
   scheduled_for?: Date;
   timezone?: string;
   channel?: ReminderChannel;
