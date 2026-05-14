@@ -1,8 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { listCommitmentsExpanded, ExpandedCommitment, updateCommitment, getCommitment } from '../../services/planning/commitments.js';
-import { getAllEvents, updateEventInGoogle, GoogleEvent } from '../../services/google/events.js';
+import { getAllEvents, pushEventToGoogle, updateEventInGoogle, GoogleEvent } from '../../services/google/events.js';
 import { listSyncEnabledAccounts } from '../../services/google/auth.js';
-import { getCalendar } from '../../services/google/calendars.js';
+import { getCalendar, getDefaultPushCalendar } from '../../services/google/calendars.js';
 import { syncAllAccounts } from '../../services/google/sync.js';
 import { pool } from '../../db/pool.js';
 
@@ -42,6 +42,22 @@ export interface CalendarEvent {
   isOccurrence?: boolean;
   occurrenceIndex?: number;
   rrule?: string | null;
+}
+
+/**
+ * Parse a date/time string from the web calendar form.
+ * All-day events use date-only local parsing to avoid UTC shifting the chosen day.
+ */
+function parseCalendarStart(input: string, allDay: boolean): Date | null {
+  if (allDay) {
+    const dateMatch = input.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!dateMatch) return null;
+    const [, year, month, day] = dateMatch;
+    return new Date(parseInt(year!, 10), parseInt(month!, 10) - 1, parseInt(day!, 10));
+  }
+
+  const date = new Date(input);
+  return isNaN(date.getTime()) ? null : date;
 }
 
 /**
@@ -123,6 +139,87 @@ router.get('/events', async (req: Request, res: Response): Promise<void> => {
   } catch (error) {
     console.error('Error getting calendar events:', error);
     res.status(500).json({ error: 'Failed to get calendar events' });
+  }
+});
+
+/**
+ * POST /api/calendar/events
+ * Create a standalone Google Calendar event.
+ *
+ * This deliberately does not create a commitment. Commitments are durable tasks
+ * and obligations; ordinary calendar events belong in Google/Squire calendar only.
+ */
+router.post('/events', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const {
+      title,
+      description,
+      start_time,
+      duration_minutes,
+      all_day,
+      timezone,
+    } = req.body;
+
+    if (!title || typeof title !== 'string' || title.trim().length === 0) {
+      res.status(400).json({ error: 'title is required and must be a string' });
+      return;
+    }
+
+    if (!start_time || typeof start_time !== 'string') {
+      res.status(400).json({ error: 'start_time is required and must be a string' });
+      return;
+    }
+
+    const parsedStart = parseCalendarStart(start_time, !!all_day);
+    if (!parsedStart) {
+      res.status(400).json({ error: 'start_time must be a valid date or datetime' });
+      return;
+    }
+
+    const accounts = await listSyncEnabledAccounts();
+    if (accounts.length === 0) {
+      res.status(400).json({ error: 'No Google account connected. Please connect a Google account first.' });
+      return;
+    }
+
+    const account = accounts[0]!;
+    const calendar = await getDefaultPushCalendar(account.id);
+    if (!calendar) {
+      res.status(400).json({ error: 'No writable default calendar configured.' });
+      return;
+    }
+
+    if (calendar.sync_direction === 'read_only') {
+      res.status(403).json({ error: `Calendar "${calendar.summary}" is read-only.` });
+      return;
+    }
+
+    const duration = typeof duration_minutes === 'number' && duration_minutes > 0
+      ? duration_minutes
+      : 60;
+
+    const result = await pushEventToGoogle(calendar, {
+      title: title.trim(),
+      description: typeof description === 'string' ? description.trim() || undefined : undefined,
+      due_at: parsedStart,
+      duration_minutes: all_day ? 24 * 60 : duration,
+      all_day: !!all_day,
+      timezone,
+    });
+
+    res.status(201).json({
+      event: {
+        id: result.event_id,
+        title: title.trim(),
+        start_time: all_day ? parsedStart.toISOString().split('T')[0] : parsedStart.toISOString(),
+        all_day: !!all_day,
+        calendar: calendar.summary,
+        google_event_id: result.event_id,
+      },
+    });
+  } catch (error) {
+    console.error('Error creating calendar event:', error);
+    res.status(500).json({ error: 'Failed to create calendar event' });
   }
 });
 

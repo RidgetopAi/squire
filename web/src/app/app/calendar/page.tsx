@@ -547,36 +547,36 @@ export default function CalendarPage() {
 
     setCreating(true);
     try {
-      let dueAt: Date;
       let durationMinutes: number | undefined;
+      let startTime: string;
 
       if (newEvent.allDay) {
-        dueAt = new Date(newEvent.startDate + 'T00:00:00');
+        startTime = newEvent.startDate;
       } else {
         if (!newEvent.startTime) {
           alert('Start time is required for non-all-day events');
           setCreating(false);
           return;
         }
-        dueAt = new Date(newEvent.startDate + 'T' + newEvent.startTime);
+        startTime = `${newEvent.startDate}T${newEvent.startTime}`;
+        const startDate = new Date(startTime);
         if (newEvent.endTime) {
           const endDate = new Date(newEvent.startDate + 'T' + newEvent.endTime);
-          durationMinutes = Math.round((endDate.getTime() - dueAt.getTime()) / 60000);
+          durationMinutes = Math.round((endDate.getTime() - startDate.getTime()) / 60000);
           if (durationMinutes <= 0) durationMinutes = 60;
         }
       }
 
-      const res = await fetch(`${API_URL}/api/commitments`, {
+      const res = await fetch(`${API_URL}/api/calendar/events`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: newEvent.title,
           description: newEvent.description || undefined,
-          due_at: dueAt.toISOString(),
+          start_time: startTime,
           all_day: newEvent.allDay,
           duration_minutes: durationMinutes,
           timezone: 'America/New_York',
-          source_type: 'manual',
         }),
       });
       if (!res.ok) {
