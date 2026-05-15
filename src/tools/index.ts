@@ -28,6 +28,17 @@ export type {
   AssistantMessageWithTools,
 } from './types.js';
 
+export interface ToolExecutionContext {
+  traceId?: string;
+  parentId?: string | null;
+  sourceLoop?: string;
+  actor?: string;
+  runtimeProvider?: string;
+  model?: string;
+  triggerReason?: string;
+  metadata?: Record<string, unknown>;
+}
+
 // === CONSTANTS ===
 
 /** Max characters for a single tool result before truncation (~8K tokens) */
@@ -36,6 +47,20 @@ const MAX_TOOL_RESULT_LENGTH = 32_000;
 // === REGISTRY ===
 
 const tools: Map<string, RegisteredTool> = new Map();
+
+function buildActivityMetadata(
+  call: ToolCall,
+  context: ToolExecutionContext | undefined,
+  metadata: Record<string, unknown>
+): Record<string, unknown> {
+  return {
+    ...metadata,
+    ...(context?.metadata ?? {}),
+    toolCallId: call.id,
+    toolName: call.function.name,
+    originSourceLoop: context?.sourceLoop,
+  };
+}
 
 /**
  * Register a tool with the registry
@@ -99,7 +124,7 @@ export function getToolCount(): number {
  * @param call - Tool call from LLM response
  * @returns Tool result with success/failure status
  */
-export async function executeTool(call: ToolCall): Promise<ToolResult> {
+export async function executeTool(call: ToolCall, context?: ToolExecutionContext): Promise<ToolResult> {
   const tool = tools.get(call.function.name);
   const startTime = Date.now();
 
@@ -113,15 +138,18 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
       durationMs: Date.now() - startTime,
     });
     await recordActivityEvent({
+      traceId: context?.traceId,
+      parentId: context?.parentId ?? undefined,
       sourceLoop: 'tool_executor',
       eventType: 'tool.denied',
+      actor: context?.actor,
+      runtimeProvider: context?.runtimeProvider,
+      model: context?.model,
+      triggerReason: context?.triggerReason,
       summary: `Unknown tool requested: ${call.function.name}`,
       status: 'failed',
       durationMs: Date.now() - startTime,
-      metadata: {
-        toolCallId: call.id,
-        toolName: call.function.name,
-      },
+      metadata: buildActivityMetadata(call, context, {}),
     });
     return {
       toolCallId: call.id,
@@ -147,16 +175,20 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
           durationMs: Date.now() - startTime,
         });
         await recordActivityEvent({
+          traceId: context?.traceId,
+          parentId: context?.parentId ?? undefined,
           sourceLoop: 'tool_executor',
           eventType: 'tool.denied',
+          actor: context?.actor,
+          runtimeProvider: context?.runtimeProvider,
+          model: context?.model,
+          triggerReason: context?.triggerReason,
           summary: `Invalid arguments for tool: ${call.function.name}`,
           status: 'failed',
           durationMs: Date.now() - startTime,
-          metadata: {
-            toolCallId: call.id,
-            toolName: call.function.name,
+          metadata: buildActivityMetadata(call, context, {
             rawArguments: call.function.arguments,
-          },
+          }),
         });
         return {
           toolCallId: call.id,
@@ -168,15 +200,19 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
     }
 
     await recordActivityEvent({
+      traceId: context?.traceId,
+      parentId: context?.parentId ?? undefined,
       sourceLoop: 'tool_executor',
       eventType: 'tool.requested',
+      actor: context?.actor,
+      runtimeProvider: context?.runtimeProvider,
+      model: context?.model,
+      triggerReason: context?.triggerReason,
       summary: `Tool requested: ${call.function.name}`,
       status: 'running',
-      metadata: {
-        toolCallId: call.id,
-        toolName: call.function.name,
+      metadata: buildActivityMetadata(call, context, {
         arguments: args,
-      },
+      }),
     });
 
     // Execute handler
@@ -200,17 +236,21 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
       durationMs,
     });
     await recordActivityEvent({
+      traceId: context?.traceId,
+      parentId: context?.parentId ?? undefined,
       sourceLoop: 'tool_executor',
       eventType: 'tool.completed',
+      actor: context?.actor,
+      runtimeProvider: context?.runtimeProvider,
+      model: context?.model,
+      triggerReason: context?.triggerReason,
       summary: `Tool completed: ${call.function.name}`,
       status: 'completed',
       durationMs,
-      metadata: {
-        toolCallId: call.id,
-        toolName: call.function.name,
+      metadata: buildActivityMetadata(call, context, {
         arguments: args,
         resultPreview: result.substring(0, 500),
-      },
+      }),
     });
 
     return {
@@ -232,16 +272,20 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
       durationMs,
     });
     await recordActivityEvent({
+      traceId: context?.traceId,
+      parentId: context?.parentId ?? undefined,
       sourceLoop: 'tool_executor',
       eventType: 'tool.failed',
+      actor: context?.actor,
+      runtimeProvider: context?.runtimeProvider,
+      model: context?.model,
+      triggerReason: context?.triggerReason,
       summary: `Tool failed: ${call.function.name}`,
       status: 'failed',
       durationMs,
-      metadata: {
-        toolCallId: call.id,
-        toolName: call.function.name,
+      metadata: buildActivityMetadata(call, context, {
         error: message,
-      },
+      }),
     });
 
     return {
@@ -259,8 +303,8 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
  * @param calls - Array of tool calls from LLM response
  * @returns Array of tool results
  */
-export async function executeTools(calls: ToolCall[]): Promise<ToolResult[]> {
-  return Promise.all(calls.map(executeTool));
+export async function executeTools(calls: ToolCall[], context?: ToolExecutionContext): Promise<ToolResult[]> {
+  return Promise.all(calls.map((call) => executeTool(call, context)));
 }
 
 // === TOOL REGISTRATION ===

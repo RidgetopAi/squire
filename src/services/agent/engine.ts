@@ -14,6 +14,7 @@ import {
 import { SQUIRE_SYSTEM_PROMPT_BASE, TOOL_CALLING_INSTRUCTIONS } from '../../constants/prompts.js';
 import { classifyTask, type ModelTier, isRoutingEnabled } from '../routing/index.js';
 import { buildMemoryContext } from '../memory/index.js';
+import { recordActivityEvent } from '../activity.js';
 
 // === Types ===
 
@@ -63,6 +64,14 @@ export interface AgentCallbacks {
 export interface AgentEngineOptions {
   /** Unique identifier for this conversation */
   conversationId: string;
+  /** Activity trace ID for grouping this run with its tool calls */
+  traceId?: string;
+  /** Activity source loop that started this engine */
+  sourceLoop?: string;
+  /** Actor that triggered the run */
+  actor?: string;
+  /** Human-readable reason this run started */
+  triggerReason?: string;
   /** Maximum number of turns before stopping (default: 50) */
   maxTurns?: number;
   /** Event callbacks */
@@ -104,6 +113,10 @@ export class AgentEngine {
   private turnCount: number = 0;
   private readonly maxTurns: number;
   private readonly conversationId: string;
+  private readonly traceId: string;
+  private readonly sourceLoop: string;
+  private readonly actor?: string;
+  private readonly triggerReason?: string;
   private readonly abortController: AbortController;
   private readonly callbacks: AgentCallbacks;
   private readonly systemPrompt: string;
@@ -118,6 +131,10 @@ export class AgentEngine {
    */
   constructor(options: AgentEngineOptions) {
     this.conversationId = options.conversationId;
+    this.traceId = options.traceId ?? options.conversationId;
+    this.sourceLoop = options.sourceLoop ?? 'agent_engine';
+    this.actor = options.actor;
+    this.triggerReason = options.triggerReason;
     this.maxTurns = options.maxTurns ?? 200;
     this.callbacks = options.callbacks ?? {};
     this.abortController = new AbortController();
@@ -148,14 +165,35 @@ export class AgentEngine {
    * @returns Promise resolving to the agent result
    */
   async run(input: string, context?: string): Promise<AgentResult> {
+    const startedAt = Date.now();
+    let runEventId: string | null = null;
+
     // Reset state for new run
     this.turnCount = 0;
     this.messages = [];
     this.setState('gathering');
 
     try {
+      runEventId = await recordActivityEvent({
+        traceId: this.traceId,
+        sourceLoop: this.sourceLoop,
+        eventType: 'agent.run.started',
+        actor: this.actor,
+        triggerReason: this.triggerReason,
+        summary: `Agent run started: ${this.conversationId}`,
+        status: 'running',
+        metadata: {
+          conversationId: this.conversationId,
+          inputLength: input.length,
+          hasContext: Boolean(context),
+          maxTurns: this.maxTurns,
+          tools: this.tools.length,
+        },
+      });
+
       // Check for cancellation
       if (this.abortController.signal.aborted) {
+        await this.recordRunFinished('agent.run.cancelled', 'cancelled', startedAt, runEventId, '');
         return this.createResult('cancelled', '');
       }
 
@@ -192,6 +230,7 @@ export class AgentEngine {
       while (this.turnCount < this.maxTurns) {
         // Check for cancellation at start of each turn
         if (this.abortController.signal.aborted) {
+          await this.recordRunFinished('agent.run.cancelled', 'cancelled', startedAt, runEventId, finalContent);
           return this.createResult('cancelled', finalContent);
         }
 
@@ -208,6 +247,7 @@ export class AgentEngine {
         } catch (error) {
           // Check if this was an abort
           if (this.abortController.signal.aborted) {
+            await this.recordRunFinished('agent.run.cancelled', 'cancelled', startedAt, runEventId, finalContent);
             return this.createResult('cancelled', finalContent);
           }
           throw error;
@@ -220,6 +260,7 @@ export class AgentEngine {
         if (response.toolCalls.length === 0) {
           // No tool calls - we're done
           this.setState('complete');
+          await this.recordRunFinished('agent.run.completed', 'completed', startedAt, runEventId, finalContent);
           return this.createResult('complete', finalContent);
         }
 
@@ -242,7 +283,17 @@ export class AgentEngine {
         }
 
         // Execute all tool calls
-        const toolResults = await executeTools(response.toolCalls);
+        const toolResults = await executeTools(response.toolCalls, {
+          traceId: this.traceId,
+          parentId: runEventId,
+          sourceLoop: this.sourceLoop,
+          actor: this.actor,
+          triggerReason: this.triggerReason,
+          metadata: {
+            conversationId: this.conversationId,
+            turnCount: this.turnCount,
+          },
+        });
 
         // Add tool results to messages
         for (const result of toolResults) {
@@ -258,6 +309,9 @@ export class AgentEngine {
 
       // Max turns reached
       this.setState('complete');
+      await this.recordRunFinished('agent.run.completed', 'completed', startedAt, runEventId, finalContent, {
+        maxTurnsReached: true,
+      });
       return this.createResult(
         'complete',
         finalContent || `[AgentEngine] Max turns (${this.maxTurns}) reached without final response`
@@ -266,6 +320,9 @@ export class AgentEngine {
       const err = error instanceof Error ? error : new Error(String(error));
       this.setState('error');
       this.callbacks.onError?.(err);
+      await this.recordRunFinished('agent.run.failed', 'failed', startedAt, runEventId, '', {
+        error: err.message,
+      });
       return this.createResult('error', '', err.message);
     }
   }
@@ -338,6 +395,33 @@ export class AgentEngine {
       this.state = newState;
       this.callbacks.onStateChange?.(this.state, this.turnCount);
     }
+  }
+
+  private async recordRunFinished(
+    eventType: string,
+    status: 'completed' | 'cancelled' | 'failed',
+    startedAt: number,
+    parentId: string | null,
+    content: string,
+    metadata: Record<string, unknown> = {}
+  ): Promise<void> {
+    await recordActivityEvent({
+      traceId: this.traceId,
+      parentId: parentId ?? undefined,
+      sourceLoop: this.sourceLoop,
+      eventType,
+      actor: this.actor,
+      triggerReason: this.triggerReason,
+      summary: `Agent run ${status}: ${this.conversationId}`,
+      status,
+      durationMs: Date.now() - startedAt,
+      metadata: {
+        conversationId: this.conversationId,
+        turnCount: this.turnCount,
+        outputLength: content.length,
+        ...metadata,
+      },
+    });
   }
 
   /**

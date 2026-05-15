@@ -31,10 +31,12 @@ import {
   executeTools,
   type ToolCall,
   type ToolDefinition,
+  type ToolExecutionContext,
 } from '../../tools/index.js';
 import { streamLLM } from '../../services/llm/index.js';
 import { buildMemoryContext } from '../../services/memory/index.js';
 import { getLLMRuntime } from '../../services/runtime/index.js';
+import { recordActivityEvent } from '../../services/activity.js';
 import { SQUIRE_SYSTEM_PROMPT_BASE, TOOL_CALLING_INSTRUCTIONS } from '../../constants/prompts.js';
 import { getObjectById } from '../../services/storage/objects.js';
 import { getSummary } from '../../services/summaries.js';
@@ -335,14 +337,33 @@ async function handleDocumentDiscussion(
   payload: ChatMessagePayload
 ): Promise<void> {
   const { conversationId, message, history = [], documentId } = payload;
+  const traceId = `socket-doc-${conversationId}-${Date.now()}`;
+  const startedAt = Date.now();
 
   console.log(`[Socket] Document discussion mode - doc: ${documentId}, conversation: ${conversationId}`);
 
   let chatDoneEmitted = false;
+  let startEventId: string | null = null;
   const abortController = new AbortController();
   activeStreams.set(conversationId, abortController);
 
   try {
+    startEventId = await recordActivityEvent({
+      traceId,
+      sourceLoop: 'socket_document_chat',
+      eventType: 'chat.message.started',
+      actor: 'user',
+      triggerReason: 'WebSocket document discussion',
+      summary: `Document chat started: ${conversationId}`,
+      status: 'running',
+      metadata: {
+        conversationId,
+        documentId,
+        socketId: socket.id,
+        messageLength: message.length,
+      },
+    });
+
     // Step 0: Ensure conversation + persist user message
     const conversation = await getOrCreateConversation(conversationId);
     const userMessage = await addMessage({
@@ -370,6 +391,22 @@ async function handleDocumentDiscussion(
         conversationId,
         error: 'Document not found or has no extracted text.',
         code: 'DOC_NOT_FOUND',
+      });
+      await recordActivityEvent({
+        traceId,
+        parentId: startEventId ?? undefined,
+        sourceLoop: 'socket_document_chat',
+        eventType: 'chat.message.failed',
+        actor: 'assistant',
+        triggerReason: 'WebSocket document discussion',
+        summary: `Document chat failed: ${conversationId}`,
+        status: 'failed',
+        durationMs: Date.now() - startedAt,
+        metadata: {
+          conversationId,
+          documentId,
+          error: 'Document not found or has no extracted text.',
+        },
       });
       return;
     }
@@ -451,7 +488,27 @@ ${documentContent}
     // Step 5: Stream LLM response
     const tools = hasTools() ? getToolDefinitions() : undefined;
     console.log(`[Socket] Document discussion: streaming response (${tools?.length ?? 0} tools available)`);
-    const streamResult = await streamWithToolLoop(socket, conversationId, messages, abortController.signal, tools, undefined, conversation.id);
+    const streamResult = await streamWithToolLoop(
+      socket,
+      conversationId,
+      messages,
+      abortController.signal,
+      tools,
+      undefined,
+      conversation.id,
+      undefined,
+      {
+        traceId,
+        parentId: startEventId,
+        sourceLoop: 'socket_document_chat',
+        actor: 'assistant',
+        triggerReason: 'WebSocket document discussion',
+        metadata: {
+          conversationId,
+          documentId,
+        },
+      }
+    );
 
     // Step 6: Persist BEFORE emitting done.
     // Only persist the final (post-tool-loop) assistant text — intermediate
@@ -484,8 +541,43 @@ ${documentContent}
       } : undefined,
     });
     chatDoneEmitted = true;
+    await recordActivityEvent({
+      traceId,
+      parentId: startEventId ?? undefined,
+      sourceLoop: 'socket_document_chat',
+      eventType: 'chat.message.completed',
+      actor: 'assistant',
+      triggerReason: 'WebSocket document discussion',
+      summary: `Document chat completed: ${conversationId}`,
+      status: 'completed',
+      durationMs: Date.now() - startedAt,
+      metadata: {
+        conversationId,
+        documentId,
+        outputLength: docFinalContent.length,
+        promptTokens: streamResult.usage?.promptTokens,
+        completionTokens: streamResult.usage?.completionTokens,
+        usedTools: streamResult.usedTools,
+      },
+    });
   } catch (error) {
     console.error('[Socket] Document discussion error:', error);
+    await recordActivityEvent({
+      traceId,
+      parentId: startEventId ?? undefined,
+      sourceLoop: 'socket_document_chat',
+      eventType: 'chat.message.failed',
+      actor: 'assistant',
+      triggerReason: 'WebSocket document discussion',
+      summary: `Document chat failed: ${conversationId}`,
+      status: 'failed',
+      durationMs: Date.now() - startedAt,
+      metadata: {
+        conversationId,
+        documentId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    });
     socket.emit('chat:error', {
       conversationId,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -517,6 +609,10 @@ async function handleChatMessage(
     return handleDocumentDiscussion(socket, io, payload);
   }
 
+  const traceId = `socket-chat-${conversationId}-${Date.now()}`;
+  const startedAt = Date.now();
+  let startEventId: string | null = null;
+
   // Track if we've emitted chat:done to avoid duplicates
   let chatDoneEmitted = false;
 
@@ -533,6 +629,23 @@ async function handleChatMessage(
   let disclosureId: string | undefined;
 
   try {
+    startEventId = await recordActivityEvent({
+      traceId,
+      sourceLoop: 'socket_chat',
+      eventType: 'chat.message.started',
+      actor: 'user',
+      triggerReason: 'WebSocket chat message',
+      summary: `Socket chat started: ${conversationId}`,
+      status: 'running',
+      metadata: {
+        conversationId,
+        socketId: socket.id,
+        messageLength: message.length,
+        imageCount: images?.length ?? 0,
+        includeContext,
+      },
+    });
+
     console.log(`[Socket] Step 0: Getting/creating conversation...`);
     // Step 0: Ensure conversation exists in database
     const conversation = await getOrCreateConversation(conversationId);
@@ -580,6 +693,21 @@ async function handleChatMessage(
     markLatency('candidate_response_checked');
     if (candidateResponse) {
       // User confirmed/dismissed - we've already sent a response, skip LLM
+      await recordActivityEvent({
+        traceId,
+        parentId: startEventId ?? undefined,
+        sourceLoop: 'socket_chat',
+        eventType: 'chat.message.completed',
+        actor: 'assistant',
+        triggerReason: 'WebSocket chat message',
+        summary: `Socket chat handled candidate response: ${conversationId}`,
+        status: 'completed',
+        durationMs: Date.now() - startedAt,
+        metadata: {
+          conversationId,
+          handledBy: 'candidate_response',
+        },
+      });
       return;
     }
 
@@ -759,7 +887,29 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
     
     console.log(`[Socket] Step 4: Starting ${providerName} stream... (${tools?.length ?? 0} tools available${hasImages ? ', with images' : ''})`);
     markLatency('starting_llm_stream');
-    const streamResult = await streamWithToolLoop(socket, conversationId, messages, abortController.signal, tools, providerOverride, conversation.id, markLatency);
+    const streamResult = await streamWithToolLoop(
+      socket,
+      conversationId,
+      messages,
+      abortController.signal,
+      tools,
+      providerOverride,
+      conversation.id,
+      markLatency,
+      {
+        traceId,
+        parentId: startEventId,
+        sourceLoop: 'socket_chat',
+        actor: 'assistant',
+        triggerReason: 'WebSocket chat tool call',
+        runtimeProvider: providerName,
+        model: providerOverride?.model ?? config.llm.model,
+        metadata: {
+          conversationId,
+          socketId: socket.id,
+        },
+      }
+    );
     console.log(`[Socket] Stream complete: ${streamResult.content.length} chars`);
     markLatency('llm_stream_complete');
 
@@ -851,8 +1001,47 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
     markLatency('chat_done_emitted');
     io.to(`conversation:${conversationId}`).emit('chat:done', chatDonePayload);
     chatDoneEmitted = true;
+    await recordActivityEvent({
+      traceId,
+      parentId: startEventId ?? undefined,
+      sourceLoop: 'socket_chat',
+      eventType: 'chat.message.completed',
+      actor: 'assistant',
+      runtimeProvider: providerName,
+      model: providerOverride?.model ?? config.llm.model,
+      triggerReason: 'WebSocket chat message',
+      summary: `Socket chat completed: ${conversationId}`,
+      status: 'completed',
+      durationMs: Date.now() - startedAt,
+      metadata: {
+        conversationId,
+        socketId: socket.id,
+        outputLength: fullContent.length,
+        promptTokens: streamResult.usage?.promptTokens,
+        completionTokens: streamResult.usage?.completionTokens,
+        usedTools: streamResult.usedTools,
+        memoryCount: memoryIds.length,
+        disclosureId,
+      },
+    });
   } catch (error) {
     console.error('[Socket] Chat error:', error);
+    await recordActivityEvent({
+      traceId,
+      parentId: startEventId ?? undefined,
+      sourceLoop: 'socket_chat',
+      eventType: 'chat.message.failed',
+      actor: 'assistant',
+      triggerReason: 'WebSocket chat message',
+      summary: `Socket chat failed: ${conversationId}`,
+      status: 'failed',
+      durationMs: Date.now() - startedAt,
+      metadata: {
+        conversationId,
+        socketId: socket.id,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    });
 
     socket.emit('chat:error', {
       conversationId,
@@ -891,7 +1080,8 @@ async function streamWithToolLoop(
   tools?: ToolDefinition[],
   providerOverride?: { provider: string; model: string },
   conversationDbId?: string,
-  markLatency?: (label: string) => void
+  markLatency?: (label: string) => void,
+  activityContext?: ToolExecutionContext
 ): Promise<{ content: string; usage?: { promptTokens: number; completionTokens: number }; reportData?: { title: string; summary: string; content: string; generatedAt: string }; usedTools: boolean; finalAssistantContent: string }> {
   let fullContent = '';
   let totalPromptTokens = 0;
@@ -986,7 +1176,15 @@ async function streamWithToolLoop(
 
     // Execute tool calls
     console.log(`[Socket] Tool iteration ${iteration + 1}: ${response.toolCalls.map((t) => t.function.name).join(', ')}`);
-    const toolResults = await executeTools(response.toolCalls);
+    const toolResults = await executeTools(response.toolCalls, {
+      ...activityContext,
+      model: response.model ?? activityContext?.model,
+      metadata: {
+        ...(activityContext?.metadata ?? {}),
+        conversationId,
+        iteration: iteration + 1,
+      },
+    });
 
     for (const result of toolResults) {
       console.log(`[Socket] Tool ${result.name}: ${result.success ? 'success' : 'failed'}`);
