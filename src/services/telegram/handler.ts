@@ -14,6 +14,7 @@ import { getOrCreateConversation, addMessage, getMessages } from '../chat/conver
 import { processMessageRealTime } from '../chat/chatExtraction.js';
 import { AgentEngine } from '../agent/index.js';
 import { getUserIdentity } from '../identity.js';
+import { recordActivityEvent } from '../activity.js';
 import { SQUIRE_SYSTEM_PROMPT_BASE, TOOL_CALLING_INSTRUCTIONS } from '../../constants/prompts.js';
 import { hasTools, getToolDefinitions } from '../../tools/index.js';
 import {
@@ -65,7 +66,7 @@ async function buildSystemPrompt(): Promise<string> {
     prompt = `You are talking to ${identity.name}.\n\n` + prompt;
   }
 
-  if (hasTools()) {
+  if (hasTools({ sourceLoop: 'telegram' })) {
     prompt += TOOL_CALLING_INSTRUCTIONS;
   }
 
@@ -82,25 +83,76 @@ export async function handleTelegramMessage(message: TelegramMessage): Promise<v
   const userId = message.from?.id;
   const chatId = message.chat.id;
   const text = message.text;
+  const traceId = `telegram-${message.message_id}-${Date.now()}`;
 
   // Validate user
   if (!userId) {
     console.log('[Telegram] Message without user ID, ignoring');
+    await recordActivityEvent({
+      traceId,
+      sourceLoop: 'telegram',
+      eventType: 'external.message_ignored',
+      summary: 'Telegram message ignored: missing user ID',
+      status: 'skipped',
+      metadata: {
+        chatId,
+        messageId: message.message_id,
+      },
+    });
     return;
   }
 
   if (!isUserAllowed(userId)) {
     console.log(`[Telegram] Unauthorized user attempted access: ${userId} (@${message.from?.username ?? 'unknown'})`);
+    await recordActivityEvent({
+      traceId,
+      sourceLoop: 'telegram',
+      eventType: 'external.message_denied',
+      summary: 'Telegram message denied: unauthorized user',
+      status: 'denied',
+      metadata: {
+        chatId,
+        userId,
+        username: message.from?.username,
+        messageId: message.message_id,
+      },
+    });
     return;
   }
 
   // Ignore messages without text (photos, stickers, etc. for now)
   if (!text) {
     console.log('[Telegram] Message without text, ignoring');
+    await recordActivityEvent({
+      traceId,
+      sourceLoop: 'telegram',
+      eventType: 'external.message_ignored',
+      summary: 'Telegram message ignored: no text content',
+      status: 'skipped',
+      metadata: {
+        chatId,
+        userId,
+        messageId: message.message_id,
+      },
+    });
     return;
   }
 
   console.log(`[Telegram] Message from ${userId}: ${text.substring(0, 50)}${text.length > 50 ? '...' : ''}`);
+  await recordActivityEvent({
+    traceId,
+    sourceLoop: 'telegram',
+    eventType: 'external.message_received',
+    summary: 'Telegram message received',
+    status: 'received',
+    metadata: {
+      chatId,
+      userId,
+      username: message.from?.username,
+      messageId: message.message_id,
+      textPreview: text.substring(0, 300),
+    },
+  });
 
   // Send typing indicator
   try {
@@ -114,6 +166,17 @@ export async function handleTelegramMessage(message: TelegramMessage): Promise<v
     // Get or create conversation
     const conversationId = getConversationId(userId);
     const conversation = await getOrCreateConversation(conversationId);
+    await recordActivityEvent({
+      traceId,
+      sourceLoop: 'telegram',
+      eventType: 'agent.started',
+      summary: 'Telegram AgentEngine started',
+      status: 'running',
+      metadata: {
+        conversationId,
+        messageId: message.message_id,
+      },
+    });
 
     // Persist user message
     await addMessage({
@@ -161,9 +224,13 @@ export async function handleTelegramMessage(message: TelegramMessage): Promise<v
 
     const engine = new AgentEngine({
       conversationId,
+      traceId,
       maxTurns: 200,
       systemPrompt,
-      tools: hasTools() ? getToolDefinitions() : [],
+      sourceLoop: 'telegram',
+      actor: 'assistant',
+      triggerReason: 'Telegram message',
+      tools: hasTools({ sourceLoop: 'telegram' }) ? getToolDefinitions({ sourceLoop: 'telegram' }) : [],
       callbacks: {
         onStateChange: async (state, turn) => {
           console.log(`[Telegram] State: ${state}, Turn: ${turn}`);
@@ -261,10 +328,37 @@ export async function handleTelegramMessage(message: TelegramMessage): Promise<v
 
     // Send response to Telegram
     await sendMessage(chatId, fullContent);
+    await recordActivityEvent({
+      traceId,
+      sourceLoop: 'telegram',
+      eventType: 'external.message_sent',
+      summary: 'Telegram response sent',
+      status: 'completed',
+      metadata: {
+        chatId,
+        conversationId,
+        messageId: message.message_id,
+        turns: result.turnCount,
+        responsePreview: fullContent.substring(0, 300),
+      },
+    });
 
     console.log(`[Telegram] Response sent (${fullContent.length} chars, ${result.turnCount} turns)`);
   } catch (error) {
     console.error('[Telegram] Error handling message:', error);
+    await recordActivityEvent({
+      traceId,
+      sourceLoop: 'telegram',
+      eventType: 'agent.failed',
+      summary: 'Telegram message handling failed',
+      status: 'failed',
+      metadata: {
+        chatId,
+        userId,
+        messageId: message.message_id,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    });
 
     // Send error message to user
     try {

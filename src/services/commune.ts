@@ -13,6 +13,7 @@ import { listEntries as listScratchpadEntries } from './storage/scratchpad.js';
 import { getUpcomingCommitments } from './planning/commitments.js';
 import { sendMessage as sendTelegramMessage, isConfigured as isTelegramConfigured } from './telegram/client.js';
 import { AgentEngine } from './agent/engine.js';
+import { recordActivityEvent } from './activity.js';
 import { getToolDefinitions } from '../tools/index.js';
 import * as crypto from 'crypto';
 
@@ -407,7 +408,7 @@ function getCommuneTools() {
     'lesson_search',
   ];
 
-  return getToolDefinitions().filter((t) =>
+  return getToolDefinitions({ sourceLoop: 'commune' }).filter((t) =>
     allowedTools.includes(t.function.name)
   );
 }
@@ -424,13 +425,31 @@ export async function attemptOutreach(): Promise<{
   sent: boolean;
   reason: string;
 }> {
+  const traceId = `commune-${Date.now()}`;
+
   // Check hard guardrails first (saves LLM cost during quiet hours)
   const communeConfig = await getCommuneConfig();
   if (!communeConfig.enabled) {
+    await recordActivityEvent({
+      traceId,
+      sourceLoop: 'commune',
+      eventType: 'loop.skipped',
+      summary: 'Commune skipped: disabled',
+      status: 'skipped',
+      triggerReason: 'commune scheduler wake-up',
+    });
     return { sent: false, reason: 'Commune is disabled' };
   }
 
   if (isQuietHours(communeConfig)) {
+    await recordActivityEvent({
+      traceId,
+      sourceLoop: 'commune',
+      eventType: 'loop.skipped',
+      summary: 'Commune skipped: quiet hours',
+      status: 'skipped',
+      triggerReason: 'commune scheduler wake-up',
+    });
     return { sent: false, reason: 'Currently in quiet hours' };
   }
 
@@ -439,10 +458,24 @@ export async function attemptOutreach(): Promise<{
 
   // Gather context for the model
   const context = await gatherCommuneContext(sendStatus);
+  await recordActivityEvent({
+    traceId,
+    sourceLoop: 'commune',
+    eventType: 'loop.started',
+    summary: 'Commune wake-up started',
+    status: 'running',
+    triggerReason: 'commune scheduler wake-up',
+    metadata: {
+      canSend: sendStatus.allowed,
+      sendStatusReason: sendStatus.reason,
+    },
+  });
 
   // Spin up AgentEngine with commune prompt + curated tools
   const engine = new AgentEngine({
-    conversationId: `commune-${Date.now()}`,
+    conversationId: traceId,
+    sourceLoop: 'commune',
+    triggerReason: 'commune scheduler wake-up',
     maxTurns: 8,
     tier: 'fast',
     systemPrompt: COMMUNE_SYSTEM_PROMPT,
@@ -456,10 +489,23 @@ export async function attemptOutreach(): Promise<{
   // The commune_send tool handles event recording internally
   const wasSent = result.content?.toLowerCase().includes('message sent successfully') ||
     result.content?.toLowerCase().includes('sent successfully');
+  await recordActivityEvent({
+    traceId,
+    sourceLoop: 'commune',
+    eventType: 'loop.completed',
+    summary: wasSent ? 'Commune wake-up completed with outbound message' : 'Commune wake-up completed without outbound message',
+    status: result.success ? 'completed' : 'failed',
+    metadata: {
+      sent: wasSent,
+      turns: result.turnCount,
+      state: result.state,
+      resultPreview: result.content.substring(0, 500),
+      error: result.error,
+    },
+  });
 
   return {
     sent: wasSent,
     reason: result.success ? result.content : (result.error ?? 'Agent engine error'),
   };
 }
-

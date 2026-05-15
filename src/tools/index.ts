@@ -10,10 +10,12 @@ import type {
   ToolCall,
   ToolResult,
   ToolHandler,
-  ToolSpec,
-  RegisteredTool,
 } from './types.js';
 import { logToolCall } from '../services/tool-logger.js';
+import { recordActivityEvent } from '../services/activity.js';
+import { squireMasterConfig } from '../config/master.js';
+import { CapabilityRegistry, type Capability, type ToolAccessContext } from './capabilityRegistry.js';
+import { capabilityBoundaries } from './capabilities.js';
 
 // Re-export types for convenience
 export type {
@@ -26,6 +28,19 @@ export type {
   ToolMessage,
   AssistantMessageWithTools,
 } from './types.js';
+export { CapabilityRegistry };
+export type { Capability, RegisteredCapability, ToolAccessContext } from './capabilityRegistry.js';
+
+export interface ToolExecutionContext {
+  traceId?: string;
+  parentId?: string | null;
+  sourceLoop?: string;
+  actor?: string;
+  runtimeProvider?: string;
+  model?: string;
+  triggerReason?: string;
+  metadata?: Record<string, unknown>;
+}
 
 // === CONSTANTS ===
 
@@ -34,7 +49,21 @@ const MAX_TOOL_RESULT_LENGTH = 32_000;
 
 // === REGISTRY ===
 
-const tools: Map<string, RegisteredTool> = new Map();
+const defaultCapabilityRegistry = new CapabilityRegistry({ masterConfig: squireMasterConfig });
+
+function buildActivityMetadata(
+  call: ToolCall,
+  context: ToolExecutionContext | undefined,
+  metadata: Record<string, unknown>
+): Record<string, unknown> {
+  return {
+    ...metadata,
+    ...(context?.metadata ?? {}),
+    toolCallId: call.id,
+    toolName: call.function.name,
+    originSourceLoop: context?.sourceLoop,
+  };
+}
 
 /**
  * Register a tool with the registry
@@ -50,44 +79,35 @@ export function registerTool<T = unknown>(
   parameters: Record<string, unknown>,
   handler: ToolHandler<T>
 ): void {
-  if (tools.has(name)) {
-    console.warn(`Tool '${name}' is already registered. Overwriting.`);
-  }
-
-  tools.set(name, {
-    definition: {
-      type: 'function',
-      function: {
-        name,
-        description,
-        parameters,
-      },
-    },
-    handler: handler as ToolHandler,
-  });
-
-  console.log(`Tool registered: ${name}`);
+  defaultCapabilityRegistry.registerTool(name, description, parameters, handler);
 }
 
 /**
  * Get all registered tool definitions (for LLM request)
  */
-export function getToolDefinitions(): ToolDefinition[] {
-  return Array.from(tools.values()).map((t) => t.definition);
+export function getToolDefinitions(context?: ToolAccessContext): ToolDefinition[] {
+  return defaultCapabilityRegistry.getToolDefinitions(context);
 }
 
 /**
  * Check if any tools are registered
  */
-export function hasTools(): boolean {
-  return tools.size > 0;
+export function hasTools(context?: ToolAccessContext): boolean {
+  return defaultCapabilityRegistry.hasTools(context);
 }
 
 /**
  * Get count of registered tools
  */
-export function getToolCount(): number {
-  return tools.size;
+export function getToolCount(context?: ToolAccessContext): number {
+  return defaultCapabilityRegistry.getToolCount(context);
+}
+
+/**
+ * Get grouped registered capabilities.
+ */
+export function getCapabilities() {
+  return defaultCapabilityRegistry.getCapabilities();
 }
 
 // === EXECUTOR ===
@@ -98,8 +118,8 @@ export function getToolCount(): number {
  * @param call - Tool call from LLM response
  * @returns Tool result with success/failure status
  */
-export async function executeTool(call: ToolCall): Promise<ToolResult> {
-  const tool = tools.get(call.function.name);
+export async function executeTool(call: ToolCall, context?: ToolExecutionContext): Promise<ToolResult> {
+  const tool = defaultCapabilityRegistry.getTool(call.function.name, context);
   const startTime = Date.now();
 
   if (!tool) {
@@ -110,6 +130,20 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
       success: false,
       errorMessage: `Unknown tool '${call.function.name}'`,
       durationMs: Date.now() - startTime,
+    });
+    await recordActivityEvent({
+      traceId: context?.traceId,
+      parentId: context?.parentId ?? undefined,
+      sourceLoop: 'tool_executor',
+      eventType: 'tool.denied',
+      actor: context?.actor,
+      runtimeProvider: context?.runtimeProvider,
+      model: context?.model,
+      triggerReason: context?.triggerReason,
+      summary: `Unknown tool requested: ${call.function.name}`,
+      status: 'failed',
+      durationMs: Date.now() - startTime,
+      metadata: buildActivityMetadata(call, context, {}),
     });
     return {
       toolCallId: call.id,
@@ -134,6 +168,22 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
           errorMessage: `Invalid JSON arguments: ${call.function.arguments}`,
           durationMs: Date.now() - startTime,
         });
+        await recordActivityEvent({
+          traceId: context?.traceId,
+          parentId: context?.parentId ?? undefined,
+          sourceLoop: 'tool_executor',
+          eventType: 'tool.denied',
+          actor: context?.actor,
+          runtimeProvider: context?.runtimeProvider,
+          model: context?.model,
+          triggerReason: context?.triggerReason,
+          summary: `Invalid arguments for tool: ${call.function.name}`,
+          status: 'failed',
+          durationMs: Date.now() - startTime,
+          metadata: buildActivityMetadata(call, context, {
+            rawArguments: call.function.arguments,
+          }),
+        });
         return {
           toolCallId: call.id,
           name: call.function.name,
@@ -142,6 +192,22 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
         };
       }
     }
+
+    await recordActivityEvent({
+      traceId: context?.traceId,
+      parentId: context?.parentId ?? undefined,
+      sourceLoop: 'tool_executor',
+      eventType: 'tool.requested',
+      actor: context?.actor,
+      runtimeProvider: context?.runtimeProvider,
+      model: context?.model,
+      triggerReason: context?.triggerReason,
+      summary: `Tool requested: ${call.function.name}`,
+      status: 'running',
+      metadata: buildActivityMetadata(call, context, {
+        arguments: args,
+      }),
+    });
 
     // Execute handler
     let result = await tool.handler(args);
@@ -163,6 +229,23 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
       success: true,
       durationMs,
     });
+    await recordActivityEvent({
+      traceId: context?.traceId,
+      parentId: context?.parentId ?? undefined,
+      sourceLoop: 'tool_executor',
+      eventType: 'tool.completed',
+      actor: context?.actor,
+      runtimeProvider: context?.runtimeProvider,
+      model: context?.model,
+      triggerReason: context?.triggerReason,
+      summary: `Tool completed: ${call.function.name}`,
+      status: 'completed',
+      durationMs,
+      metadata: buildActivityMetadata(call, context, {
+        arguments: args,
+        resultPreview: result.substring(0, 500),
+      }),
+    });
 
     return {
       toolCallId: call.id,
@@ -182,6 +265,22 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
       errorMessage: message,
       durationMs,
     });
+    await recordActivityEvent({
+      traceId: context?.traceId,
+      parentId: context?.parentId ?? undefined,
+      sourceLoop: 'tool_executor',
+      eventType: 'tool.failed',
+      actor: context?.actor,
+      runtimeProvider: context?.runtimeProvider,
+      model: context?.model,
+      triggerReason: context?.triggerReason,
+      summary: `Tool failed: ${call.function.name}`,
+      status: 'failed',
+      durationMs,
+      metadata: buildActivityMetadata(call, context, {
+        error: message,
+      }),
+    });
 
     return {
       toolCallId: call.id,
@@ -198,13 +297,12 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
  * @param calls - Array of tool calls from LLM response
  * @returns Array of tool results
  */
-export async function executeTools(calls: ToolCall[]): Promise<ToolResult[]> {
-  return Promise.all(calls.map(executeTool));
+export async function executeTools(calls: ToolCall[], context?: ToolExecutionContext): Promise<ToolResult[]> {
+  return Promise.all(calls.map((call) => executeTool(call, context)));
 }
 
 // === TOOL REGISTRATION ===
-// Import tool arrays and register them
-// This happens after the registry Map is initialized
+// Import tool arrays and register them after the registry object exists.
 
 import { tools as timeTools } from './time.js';
 import { tools as notesTools } from './notes.js';
@@ -234,36 +332,51 @@ import { tools as jobTools } from './jobs.js';
 import { tools as browserTools } from './browser/index.js';
 import { tools as dealerFoundationTools } from './dealerFoundation.js';
 
-const allToolSpecs: ToolSpec[] = [
-  ...timeTools,
-  ...notesTools,
-  ...listsTools,
-  ...trackersTools,
-  ...calendarTools,
-  ...commitmentTools,
-  ...reminderTools,
-  ...codingTools,
-  ...stewardTools,
-  ...mandrelTools,
-  ...memoryTools,
-  ...emailTools,
-  ...squireEmailTools,
-  ...searchTools,
-  ...scratchpadTools,
-  ...communeTools,
-  ...imageTools,
-  ...reportTools,
-  ...pageTools,
-  ...goalTools,
-  ...continuityTools,
-  ...pdfTools,
-  ...scoutTools,
-  ...sandboxTools,
-  ...jobTools,
-  ...browserTools,
-  ...dealerFoundationTools,
+function capability(name: string, tools: Capability['tools'], description?: string): Capability {
+  const boundary = capabilityBoundaries[name] ?? { visibility: 'public' as const, package: 'core' as const };
+  return {
+    name,
+    description,
+    visibility: boundary.visibility,
+    tools,
+    metadata: { package: boundary.package },
+  };
+}
+
+const allCapabilities: Capability[] = [
+  capability('time', timeTools),
+  capability('notes', notesTools),
+  capability('lists', listsTools),
+  capability('trackers', trackersTools),
+  capability('calendar', calendarTools),
+  capability('commitments', commitmentTools),
+  capability('reminders', reminderTools),
+  capability('coding', codingTools),
+  capability('steward', stewardTools),
+  capability('mandrel', mandrelTools),
+  capability('memory', memoryTools),
+  capability('email', emailTools),
+  capability('squire_email', squireEmailTools, 'RidgetopAI/Squire-specific email account tools.'),
+  capability('search', searchTools),
+  capability('scratchpad', scratchpadTools),
+  capability('commune', communeTools),
+  capability('images', imageTools),
+  capability('report', reportTools),
+  capability('page', pageTools),
+  capability('goals', goalTools),
+  capability('continuity', continuityTools),
+  capability('pdf', pdfTools),
+  capability('scout', scoutTools),
+  capability('sandbox', sandboxTools),
+  capability('jobs', jobTools),
+  capability('browser', browserTools),
+  capability(
+    'dealer_foundation',
+    dealerFoundationTools,
+    'Brian-specific dealer foundation, campaign, and sales-report tools.'
+  ),
 ];
 
-for (const spec of allToolSpecs) {
-  registerTool(spec.name, spec.description, spec.parameters, spec.handler);
+for (const capability of allCapabilities) {
+  defaultCapabilityRegistry.registerCapability(capability);
 }

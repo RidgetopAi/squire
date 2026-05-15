@@ -1,0 +1,362 @@
+export type ConfigMode = 'public-core' | 'private';
+export type CapabilityVisibility = 'public' | 'private';
+export type ConnectorId = 'mandrel' | 'telegram' | 'google' | 'agentmail' | 'object_storage';
+export type LoopId = 'socket_chat' | 'http_chat' | 'telegram' | 'goal_worker' | 'courier' | 'commune';
+export type MandrelTransportPolicy = 'mcp' | 'http-bridge';
+export type ToolPolicy = 'allow_registered' | 'allow_list' | 'deny_all';
+
+export interface CapabilityConfig {
+  enabled: boolean;
+  visibility: CapabilityVisibility;
+  tags: string[];
+}
+
+export interface ConnectorConfig {
+  enabled: boolean;
+  requiredSecrets: string[];
+  visibility: CapabilityVisibility;
+}
+
+export interface ProviderSlotConfig {
+  provider: string;
+  model: string;
+  maxTokens?: number;
+  temperature?: number;
+}
+
+export interface WorkerSlotConfig {
+  provider: string;
+  claudeModel: string;
+  codexModel: string;
+}
+
+export interface LoopConfig {
+  enabled: boolean;
+  runtime?: string;
+  schedule?: {
+    intervalMs?: number;
+    quietHoursStart?: number;
+    quietHoursEnd?: number;
+  };
+  allowedCapabilities: string[];
+  allowedTools: string[];
+  externalEffects: string[];
+  audit: {
+    traceActivity: boolean;
+    retentionDays: number;
+  };
+}
+
+export interface SquireMasterConfig {
+  version: 1;
+  mode: ConfigMode;
+  capabilities: Record<string, CapabilityConfig>;
+  connectors: Record<ConnectorId, ConnectorConfig>;
+  providers: {
+    llm: {
+      default: ProviderSlotConfig;
+      slots: Record<string, ProviderSlotConfig>;
+    };
+    worker: Record<string, WorkerSlotConfig>;
+  };
+  loops: Record<LoopId, LoopConfig>;
+  mandrel: {
+    project: string;
+    transport: MandrelTransportPolicy;
+    requireStableConnectionId: boolean;
+    allowHttpFallback: boolean;
+  };
+  audit: {
+    activityLoggingEnabled: boolean;
+    retentionDays: number;
+  };
+  permissions: {
+    defaultToolPolicy: ToolPolicy;
+    externalEffectsRequireAudit: boolean;
+    loopPolicies: Record<LoopId, ToolPolicy>;
+  };
+  visibility: {
+    publicCapabilities: string[];
+    privateCapabilities: string[];
+  };
+}
+
+const CORE_CAPABILITIES = [
+  'time',
+  'notes',
+  'lists',
+  'trackers',
+  'calendar',
+  'commitments',
+  'reminders',
+  'coding',
+  'steward',
+  'mandrel',
+  'memory',
+  'email',
+  'search',
+  'scratchpad',
+  'commune',
+  'images',
+  'report',
+  'page',
+  'goals',
+  'continuity',
+  'pdf',
+  'scout',
+  'sandbox',
+  'jobs',
+  'browser',
+] as const;
+
+const PRIVATE_CAPABILITIES = [
+  'squire_email',
+  'dealer_foundation',
+] as const;
+
+function envString(env: NodeJS.ProcessEnv, name: string, defaultValue: string): string {
+  return env[name] ?? defaultValue;
+}
+
+function envBoolean(env: NodeJS.ProcessEnv, name: string, defaultValue: boolean): boolean {
+  const value = env[name];
+  if (value === undefined) return defaultValue;
+  return value === 'true' || value === '1';
+}
+
+function envNumber(env: NodeJS.ProcessEnv, name: string, defaultValue: number): number {
+  const value = env[name];
+  if (value === undefined) return defaultValue;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : defaultValue;
+}
+
+function envList(env: NodeJS.ProcessEnv, name: string): string[] {
+  return (env[name] ?? '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function unique(values: string[]): string[] {
+  return Array.from(new Set(values));
+}
+
+function buildCapabilities(env: NodeJS.ProcessEnv): Record<string, CapabilityConfig> {
+  const publicOverrides = new Set(envList(env, 'SQUIRE_PUBLIC_CAPABILITIES'));
+  const privateOverrides = new Set(envList(env, 'SQUIRE_PRIVATE_CAPABILITIES'));
+  const enabledOnly = new Set(envList(env, 'SQUIRE_CAPABILITIES_ENABLED'));
+  const disabled = new Set(envList(env, 'SQUIRE_CAPABILITIES_DISABLED'));
+  const privateDefaults = new Set<string>(PRIVATE_CAPABILITIES);
+  const capabilityNames = unique([
+    ...CORE_CAPABILITIES,
+    ...PRIVATE_CAPABILITIES,
+    ...publicOverrides,
+    ...privateOverrides,
+    ...enabledOnly,
+    ...disabled,
+  ]);
+
+  const capabilities: Record<string, CapabilityConfig> = {};
+  for (const name of capabilityNames) {
+    const visibility = privateOverrides.has(name) || (privateDefaults.has(name) && !publicOverrides.has(name))
+      ? 'private'
+      : 'public';
+    const enabled = enabledOnly.size > 0 ? enabledOnly.has(name) : !disabled.has(name);
+    capabilities[name] = {
+      enabled,
+      visibility,
+      tags: visibility === 'private' ? ['private'] : ['core'],
+    };
+  }
+
+  return capabilities;
+}
+
+function enabledCapabilityNames(capabilities: Record<string, CapabilityConfig>): string[] {
+  return Object.entries(capabilities)
+    .filter(([, capability]) => capability.enabled)
+    .map(([name]) => name);
+}
+
+export function buildSquireMasterConfig(env: NodeJS.ProcessEnv = process.env): SquireMasterConfig {
+  const capabilities = buildCapabilities(env);
+  const allEnabledCapabilities = enabledCapabilityNames(capabilities);
+  const auditRetentionDays = envNumber(env, 'ACTIVITY_RETENTION_DAYS', 90);
+
+  return {
+    version: 1,
+    mode: envString(env, 'SQUIRE_CONFIG_MODE', 'private') as ConfigMode,
+    capabilities,
+    connectors: {
+      mandrel: {
+        enabled: envBoolean(env, 'MANDREL_ENABLED', true),
+        requiredSecrets: [],
+        visibility: 'public',
+      },
+      telegram: {
+        enabled: envBoolean(env, 'TELEGRAM_ENABLED', true),
+        requiredSecrets: ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_ALLOWED_USER_IDS'],
+        visibility: 'private',
+      },
+      google: {
+        enabled: envBoolean(env, 'GOOGLE_ENABLED', true),
+        requiredSecrets: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'],
+        visibility: 'private',
+      },
+      agentmail: {
+        enabled: envBoolean(env, 'AGENTMAIL_ENABLED', true),
+        requiredSecrets: ['AGENTMAIL_API_KEY'],
+        visibility: 'private',
+      },
+      object_storage: {
+        enabled: true,
+        requiredSecrets: [],
+        visibility: 'public',
+      },
+    },
+    providers: {
+      llm: {
+        default: {
+          provider: envString(env, 'LLM_PROVIDER', 'openai'),
+          model: envString(env, 'LLM_MODEL', 'gpt-5.5'),
+          maxTokens: envNumber(env, 'LLM_MAX_TOKENS', 8192),
+          temperature: envNumber(env, 'LLM_TEMPERATURE', 0.7),
+        },
+        slots: {
+          smart: {
+            provider: envString(env, 'ROUTING_SMART_PROVIDER', 'openai'),
+            model: envString(env, 'ROUTING_SMART_MODEL', 'gpt-5.5'),
+          },
+          fast: {
+            provider: envString(env, 'ROUTING_FAST_PROVIDER', 'openai'),
+            model: envString(env, 'ROUTING_FAST_MODEL', 'gpt-5.4-nano'),
+          },
+          page: {
+            provider: envString(env, 'PAGE_AGENT_PROVIDER', 'openai'),
+            model: envString(env, 'PAGE_AGENT_MODEL', 'gpt-5.4-mini'),
+            maxTokens: envNumber(env, 'PAGE_AGENT_MAX_TOKENS', 16384),
+            temperature: envNumber(env, 'PAGE_AGENT_TEMPERATURE', 0.3),
+          },
+          scout: {
+            provider: envString(env, 'SCOUT_AGENT_PROVIDER', 'openai'),
+            model: envString(env, 'SCOUT_AGENT_MODEL', 'gpt-5.4-mini'),
+            maxTokens: envNumber(env, 'SCOUT_AGENT_MAX_TOKENS', 16384),
+            temperature: envNumber(env, 'SCOUT_AGENT_TEMPERATURE', 0.3),
+          },
+          vision: {
+            provider: envString(env, 'VISION_PROVIDER', 'openai'),
+            model: envString(env, 'VISION_MODEL', 'gpt-5.4-mini'),
+          },
+        },
+      },
+      worker: {
+        coding: {
+          provider: envString(env, 'CODING_AGENT_PROVIDER', 'claude-code'),
+          claudeModel: envString(env, 'CODING_AGENT_CLAUDE_MODEL', 'sonnet'),
+          codexModel: envString(env, 'CODING_AGENT_CODEX_MODEL', 'gpt-5.4'),
+        },
+        sandbox: {
+          provider: envString(env, 'SANDBOX_AGENT_PROVIDER', 'claude-code'),
+          claudeModel: envString(env, 'SANDBOX_AGENT_CLAUDE_MODEL', 'sonnet'),
+          codexModel: envString(env, 'SANDBOX_AGENT_CODEX_MODEL', 'gpt-5.4'),
+        },
+      },
+    },
+    loops: {
+      socket_chat: {
+        enabled: true,
+        runtime: 'smart',
+        allowedCapabilities: allEnabledCapabilities,
+        allowedTools: ['*'],
+        externalEffects: ['tool_calls'],
+        audit: { traceActivity: true, retentionDays: auditRetentionDays },
+      },
+      http_chat: {
+        enabled: true,
+        runtime: 'smart',
+        allowedCapabilities: allEnabledCapabilities,
+        allowedTools: ['*'],
+        externalEffects: ['tool_calls'],
+        audit: { traceActivity: true, retentionDays: auditRetentionDays },
+      },
+      telegram: {
+        enabled: envBoolean(env, 'TELEGRAM_ENABLED', true),
+        runtime: 'smart',
+        allowedCapabilities: allEnabledCapabilities,
+        allowedTools: ['*'],
+        externalEffects: ['telegram_send', 'tool_calls'],
+        audit: { traceActivity: true, retentionDays: auditRetentionDays },
+      },
+      goal_worker: {
+        enabled: envBoolean(env, 'GOAL_WORKER_ENABLED', true),
+        runtime: 'smart',
+        schedule: {
+          intervalMs: envNumber(env, 'GOAL_WORKER_INTERVAL_MS', 3600000),
+        },
+        allowedCapabilities: allEnabledCapabilities,
+        allowedTools: ['*'],
+        externalEffects: ['telegram_send', 'mandrel_call', 'tool_calls'],
+        audit: { traceActivity: true, retentionDays: auditRetentionDays },
+      },
+      courier: {
+        enabled: envBoolean(env, 'COURIER_ENABLED', true),
+        runtime: 'courier-summarizer',
+        schedule: {
+          intervalMs: envNumber(env, 'COURIER_INTERVAL_MS', 1800000),
+          quietHoursStart: envNumber(env, 'COURIER_QUIET_START', 22),
+          quietHoursEnd: envNumber(env, 'COURIER_QUIET_END', 7),
+        },
+        allowedCapabilities: ['email', 'squire_email', 'calendar', 'reminders', 'commitments'],
+        allowedTools: ['*'],
+        externalEffects: ['telegram_send', 'email_read'],
+        audit: { traceActivity: true, retentionDays: auditRetentionDays },
+      },
+      commune: {
+        enabled: envBoolean(env, 'COMMUNE_ENABLED', true),
+        runtime: 'smart',
+        schedule: {
+          intervalMs: envNumber(env, 'COMMUNE_INTERVAL_MS', 900000),
+          quietHoursStart: envNumber(env, 'COMMUNE_QUIET_START', 22),
+          quietHoursEnd: envNumber(env, 'COMMUNE_QUIET_END', 7),
+        },
+        allowedCapabilities: allEnabledCapabilities,
+        allowedTools: ['commune_send', '*'],
+        externalEffects: ['telegram_send', 'tool_calls'],
+        audit: { traceActivity: true, retentionDays: auditRetentionDays },
+      },
+    },
+    mandrel: {
+      project: envString(env, 'MANDREL_PROJECT', 'squire-agent'),
+      transport: envString(env, 'MANDREL_TRANSPORT', 'mcp') as MandrelTransportPolicy,
+      requireStableConnectionId: envBoolean(env, 'MANDREL_REQUIRE_STABLE_CONNECTION_ID', true),
+      allowHttpFallback: envBoolean(env, 'MANDREL_ALLOW_HTTP_FALLBACK', true),
+    },
+    audit: {
+      activityLoggingEnabled: envBoolean(env, 'ACTIVITY_LOGGING_ENABLED', true),
+      retentionDays: auditRetentionDays,
+    },
+    permissions: {
+      defaultToolPolicy: envString(env, 'SQUIRE_DEFAULT_TOOL_POLICY', 'allow_registered') as ToolPolicy,
+      externalEffectsRequireAudit: true,
+      loopPolicies: {
+        socket_chat: 'allow_registered',
+        http_chat: 'allow_registered',
+        telegram: 'allow_registered',
+        goal_worker: 'allow_registered',
+        courier: 'allow_list',
+        commune: 'allow_registered',
+      },
+    },
+    visibility: {
+      publicCapabilities: Object.entries(capabilities)
+        .filter(([, capability]) => capability.visibility === 'public')
+        .map(([name]) => name),
+      privateCapabilities: Object.entries(capabilities)
+        .filter(([, capability]) => capability.visibility === 'private')
+        .map(([name]) => name),
+    },
+  };
+}
+
+export const squireMasterConfig = buildSquireMasterConfig();

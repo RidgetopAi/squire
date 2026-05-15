@@ -16,6 +16,7 @@ import {
   formatChatImageAttachmentReferences,
   persistChatImageAttachments,
 } from './attachments.js';
+import { recordActivityEvent } from '../activity.js';
 
 // === TYPES ===
 
@@ -95,7 +96,7 @@ function buildMessages(
 
   // Static system prompt (cacheable — identical across calls)
   let staticPrompt = SQUIRE_SYSTEM_PROMPT_BASE;
-  if (hasTools()) {
+  if (hasTools({ sourceLoop: 'http_chat' })) {
     staticPrompt += TOOL_CALLING_INSTRUCTIONS;
   }
   messages.push({ role: 'system', content: staticPrompt });
@@ -129,6 +130,7 @@ function buildMessages(
  * Process a chat message and return the assistant's response
  */
 export async function chat(request: ChatRequest): Promise<ChatResponse> {
+  const startedAt = Date.now();
   const {
     message,
     images,
@@ -139,110 +141,183 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
     maxContextTokens,
     conversationId,
   } = request;
+  const traceId = `http-chat-${conversationId ?? 'anonymous'}-${Date.now()}`;
+  let startEventId: string | null = null;
 
   let contextPackage: ContextPackage | undefined;
   let contextMarkdown: string | undefined;
 
-  // Fetch context if requested
-  if (includeContext) {
-    try {
-      contextPackage = await generateContext({
-        query: contextQuery ?? message,
-        profile: contextProfile,
-        maxTokens: maxContextTokens,
-      });
-      contextMarkdown = contextPackage.markdown;
-    } catch (error) {
-      console.error('Failed to generate context:', error);
-      // Continue without context rather than failing
-    }
-  }
-
-  const storedImageAttachments = images && images.length > 0
-    ? await persistChatImageAttachments({
-        conversationId: conversationId ?? 'http-chat',
-        message,
-        images,
-      })
-    : [];
-  const imagesWithObjectIds = images?.map((image, index) => ({
-    ...image,
-    objectId: storedImageAttachments[index]?.objectId,
-  }));
-  const attachmentReferences = formatChatImageAttachmentReferences(storedImageAttachments);
-
-  // Build messages for LLM
-  const messages = buildMessages(
-    message,
-    conversationHistory,
-    contextMarkdown,
-    imagesWithObjectIds,
-    attachmentReferences
-  );
-
-  // Get available tools
-  const tools = hasTools() ? getToolDefinitions() : undefined;
-
-  // Call LLM with tools
-  let result: LLMCompletionResult = await complete(messages, { tools });
-
-  // Tool calling loop - handle tool calls until we get a final response
-  const maxToolIterations = 50; // Prevent infinite loops
-  let iterations = 0;
-
-  while (result.finishReason === 'tool_calls' && result.toolCalls?.length && iterations < maxToolIterations) {
-    iterations++;
-    console.log(`Tool call iteration ${iterations}: ${result.toolCalls.map((t) => t.function.name).join(', ')}`);
-
-    // Execute all tool calls in parallel
-    const toolResults = await executeTools(result.toolCalls);
-
-    // Add assistant message with tool calls to conversation
-    messages.push({
-      role: 'assistant',
-      content: result.content,
-      tool_calls: result.toolCalls,
+  try {
+    startEventId = await recordActivityEvent({
+      traceId,
+      sourceLoop: 'http_chat',
+      eventType: 'chat.message.started',
+      actor: 'user',
+      triggerReason: 'HTTP /api/chat request',
+      summary: `HTTP chat started: ${conversationId ?? 'anonymous'}`,
+      status: 'running',
+      metadata: {
+        conversationId: conversationId ?? null,
+        messageLength: message.length,
+        imageCount: images?.length ?? 0,
+        includeContext,
+      },
     });
 
-    // Add tool results to conversation
-    for (const tr of toolResults) {
-      messages.push({
-        role: 'tool',
-        tool_call_id: tr.toolCallId,
-        content: tr.result,
-      });
-      console.log(`Tool ${tr.name} result: ${tr.success ? 'success' : 'failed'}`);
+    // Fetch context if requested
+    if (includeContext) {
+      try {
+        contextPackage = await generateContext({
+          query: contextQuery ?? message,
+          profile: contextProfile,
+          maxTokens: maxContextTokens,
+        });
+        contextMarkdown = contextPackage.markdown;
+      } catch (error) {
+        console.error('Failed to generate context:', error);
+        // Continue without context rather than failing
+      }
     }
 
-    // Re-prompt LLM with tool results
-    result = await complete(messages, { tools });
-  }
+    const storedImageAttachments = images && images.length > 0
+      ? await persistChatImageAttachments({
+          conversationId: conversationId ?? 'http-chat',
+          message,
+          images,
+        })
+      : [];
+    const imagesWithObjectIds = images?.map((image, index) => ({
+      ...image,
+      objectId: storedImageAttachments[index]?.objectId,
+    }));
+    const attachmentReferences = formatChatImageAttachmentReferences(storedImageAttachments);
 
-  if (iterations >= maxToolIterations) {
-    console.warn(`Tool calling reached max iterations (${maxToolIterations})`);
-  }
+    // Build messages for LLM
+    const messages = buildMessages(
+      message,
+      conversationHistory,
+      contextMarkdown,
+      imagesWithObjectIds,
+      attachmentReferences
+    );
 
-  // Build response
-  const response: ChatResponse = {
-    message: result.content,
-    role: 'assistant',
-    usage: result.usage,
-    model: result.model,
-    provider: result.provider,
-  };
+    // Get available tools
+    const toolContext = { sourceLoop: 'http_chat' };
+    const tools = hasTools(toolContext) ? getToolDefinitions(toolContext) : undefined;
 
-  // Add context metadata if available
-  if (contextPackage) {
-    response.context = {
-      memoryCount: contextPackage.memories.length,
-      entityCount: contextPackage.entities.length,
-      summaryCount: contextPackage.summaries.length,
-      tokenCount: contextPackage.token_count,
-      disclosureId: contextPackage.disclosure_id,
+    // Call LLM with tools
+    let result: LLMCompletionResult = await complete(messages, { tools });
+
+    // Tool calling loop - handle tool calls until we get a final response
+    const maxToolIterations = 50; // Prevent infinite loops
+    let iterations = 0;
+
+    while (result.finishReason === 'tool_calls' && result.toolCalls?.length && iterations < maxToolIterations) {
+      iterations++;
+      console.log(`Tool call iteration ${iterations}: ${result.toolCalls.map((t) => t.function.name).join(', ')}`);
+
+      // Execute all tool calls in parallel
+      const toolResults = await executeTools(result.toolCalls, {
+        traceId,
+        parentId: startEventId,
+        sourceLoop: 'http_chat',
+        actor: 'assistant',
+        triggerReason: 'HTTP chat tool call',
+        runtimeProvider: result.provider,
+        model: result.model,
+        metadata: {
+          conversationId: conversationId ?? null,
+          iteration: iterations,
+        },
+      });
+
+      // Add assistant message with tool calls to conversation
+      messages.push({
+        role: 'assistant',
+        content: result.content,
+        tool_calls: result.toolCalls,
+      });
+
+      // Add tool results to conversation
+      for (const tr of toolResults) {
+        messages.push({
+          role: 'tool',
+          tool_call_id: tr.toolCallId,
+          content: tr.result,
+        });
+        console.log(`Tool ${tr.name} result: ${tr.success ? 'success' : 'failed'}`);
+      }
+
+      // Re-prompt LLM with tool results
+      result = await complete(messages, { tools });
+    }
+
+    if (iterations >= maxToolIterations) {
+      console.warn(`Tool calling reached max iterations (${maxToolIterations})`);
+    }
+
+    // Build response
+    const response: ChatResponse = {
+      message: result.content,
+      role: 'assistant',
+      usage: result.usage,
+      model: result.model,
+      provider: result.provider,
     };
-  }
 
-  return response;
+    // Add context metadata if available
+    if (contextPackage) {
+      response.context = {
+        memoryCount: contextPackage.memories.length,
+        entityCount: contextPackage.entities.length,
+        summaryCount: contextPackage.summaries.length,
+        tokenCount: contextPackage.token_count,
+        disclosureId: contextPackage.disclosure_id,
+      };
+    }
+
+    await recordActivityEvent({
+      traceId,
+      parentId: startEventId ?? undefined,
+      sourceLoop: 'http_chat',
+      eventType: 'chat.message.completed',
+      actor: 'assistant',
+      runtimeProvider: result.provider,
+      model: result.model,
+      triggerReason: 'HTTP /api/chat request',
+      summary: `HTTP chat completed: ${conversationId ?? 'anonymous'}`,
+      status: 'completed',
+      durationMs: Date.now() - startedAt,
+      metadata: {
+        conversationId: conversationId ?? null,
+        iterations,
+        outputLength: result.content.length,
+        promptTokens: result.usage.promptTokens,
+        completionTokens: result.usage.completionTokens,
+        contextMemoryCount: contextPackage?.memories.length ?? 0,
+      },
+    });
+
+    return response;
+  } catch (error) {
+    const messageText = error instanceof Error ? error.message : String(error);
+    await recordActivityEvent({
+      traceId,
+      parentId: startEventId ?? undefined,
+      sourceLoop: 'http_chat',
+      eventType: 'chat.message.failed',
+      actor: 'assistant',
+      triggerReason: 'HTTP /api/chat request',
+      summary: `HTTP chat failed: ${conversationId ?? 'anonymous'}`,
+      status: 'failed',
+      durationMs: Date.now() - startedAt,
+      metadata: {
+        conversationId: conversationId ?? null,
+        error: messageText,
+      },
+    });
+    throw error;
+  }
 }
 
 /**

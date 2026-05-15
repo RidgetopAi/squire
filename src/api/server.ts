@@ -30,6 +30,7 @@ import identityRouter from './routes/identity.js';
 import documentsRouter from './routes/documents.js';
 import toolsRouter from './routes/tools.js';
 import savedCardsRouter from './routes/saved-cards.js';
+import activityRouter from './routes/activity.js';
 import { initScheduler, shutdownScheduler } from '../services/scheduler.js';
 import { migrateFromPersonalitySummary } from '../services/identity.js';
 import { syncAllAccounts } from '../services/google/sync.js';
@@ -37,6 +38,7 @@ import { startTelegramPoller, stopTelegramPoller } from '../services/telegram/in
 import { startCourier, stopCourier } from '../services/courier/index.js';
 import { initCommuneScheduler, shutdownCommuneScheduler } from '../services/commune/index.js';
 import { closePool } from '../db/pool.js';
+import { pruneActivityEvents } from '../services/activity.js';
 
 // Google Calendar sync interval (configurable, default 15 minutes)
 const CALENDAR_SYNC_INTERVAL_MS = parseInt(process.env['CALENDAR_SYNC_INTERVAL_MS'] || '900000', 10);
@@ -126,6 +128,7 @@ app.use('/api/identity', identityRouter);
 app.use('/api/documents', documentsRouter);
 app.use('/api/tools', toolsRouter);
 app.use('/api/saved-cards', savedCardsRouter);
+app.use('/api/activity', activityRouter);
 
 // 404 handler
 app.use((_req, res) => {
@@ -153,6 +156,15 @@ httpServer.listen(port, async () => {
     }
   } catch (error) {
     console.error('Identity migration failed:', error);
+  }
+
+  try {
+    const prunedEvents = await pruneActivityEvents();
+    if (prunedEvents > 0) {
+      console.log(`[Activity] Pruned ${prunedEvents} event(s) older than ${config.master.audit.retentionDays} days`);
+    }
+  } catch (error) {
+    console.error('[Activity] Retention pruning failed:', error);
   }
 
   // Start the reminder scheduler
