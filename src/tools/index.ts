@@ -10,11 +10,10 @@ import type {
   ToolCall,
   ToolResult,
   ToolHandler,
-  ToolSpec,
-  RegisteredTool,
 } from './types.js';
 import { logToolCall } from '../services/tool-logger.js';
 import { recordActivityEvent } from '../services/activity.js';
+import { CapabilityRegistry, type Capability } from './capabilityRegistry.js';
 
 // Re-export types for convenience
 export type {
@@ -27,6 +26,8 @@ export type {
   ToolMessage,
   AssistantMessageWithTools,
 } from './types.js';
+export { CapabilityRegistry };
+export type { Capability, RegisteredCapability } from './capabilityRegistry.js';
 
 export interface ToolExecutionContext {
   traceId?: string;
@@ -46,7 +47,7 @@ const MAX_TOOL_RESULT_LENGTH = 32_000;
 
 // === REGISTRY ===
 
-const tools: Map<string, RegisteredTool> = new Map();
+const defaultCapabilityRegistry = new CapabilityRegistry();
 
 function buildActivityMetadata(
   call: ToolCall,
@@ -76,44 +77,35 @@ export function registerTool<T = unknown>(
   parameters: Record<string, unknown>,
   handler: ToolHandler<T>
 ): void {
-  if (tools.has(name)) {
-    console.warn(`Tool '${name}' is already registered. Overwriting.`);
-  }
-
-  tools.set(name, {
-    definition: {
-      type: 'function',
-      function: {
-        name,
-        description,
-        parameters,
-      },
-    },
-    handler: handler as ToolHandler,
-  });
-
-  console.log(`Tool registered: ${name}`);
+  defaultCapabilityRegistry.registerTool(name, description, parameters, handler);
 }
 
 /**
  * Get all registered tool definitions (for LLM request)
  */
 export function getToolDefinitions(): ToolDefinition[] {
-  return Array.from(tools.values()).map((t) => t.definition);
+  return defaultCapabilityRegistry.getToolDefinitions();
 }
 
 /**
  * Check if any tools are registered
  */
 export function hasTools(): boolean {
-  return tools.size > 0;
+  return defaultCapabilityRegistry.hasTools();
 }
 
 /**
  * Get count of registered tools
  */
 export function getToolCount(): number {
-  return tools.size;
+  return defaultCapabilityRegistry.getToolCount();
+}
+
+/**
+ * Get grouped registered capabilities.
+ */
+export function getCapabilities() {
+  return defaultCapabilityRegistry.getCapabilities();
 }
 
 // === EXECUTOR ===
@@ -125,7 +117,7 @@ export function getToolCount(): number {
  * @returns Tool result with success/failure status
  */
 export async function executeTool(call: ToolCall, context?: ToolExecutionContext): Promise<ToolResult> {
-  const tool = tools.get(call.function.name);
+  const tool = defaultCapabilityRegistry.getTool(call.function.name);
   const startTime = Date.now();
 
   if (!tool) {
@@ -339,36 +331,36 @@ import { tools as jobTools } from './jobs.js';
 import { tools as browserTools } from './browser/index.js';
 import { tools as dealerFoundationTools } from './dealerFoundation.js';
 
-const allToolSpecs: ToolSpec[] = [
-  ...timeTools,
-  ...notesTools,
-  ...listsTools,
-  ...trackersTools,
-  ...calendarTools,
-  ...commitmentTools,
-  ...reminderTools,
-  ...codingTools,
-  ...stewardTools,
-  ...mandrelTools,
-  ...memoryTools,
-  ...emailTools,
-  ...squireEmailTools,
-  ...searchTools,
-  ...scratchpadTools,
-  ...communeTools,
-  ...imageTools,
-  ...reportTools,
-  ...pageTools,
-  ...goalTools,
-  ...continuityTools,
-  ...pdfTools,
-  ...scoutTools,
-  ...sandboxTools,
-  ...jobTools,
-  ...browserTools,
-  ...dealerFoundationTools,
+const allCapabilities: Capability[] = [
+  { name: 'time', tools: timeTools },
+  { name: 'notes', tools: notesTools },
+  { name: 'lists', tools: listsTools },
+  { name: 'trackers', tools: trackersTools },
+  { name: 'calendar', tools: calendarTools },
+  { name: 'commitments', tools: commitmentTools },
+  { name: 'reminders', tools: reminderTools },
+  { name: 'coding', tools: codingTools },
+  { name: 'steward', tools: stewardTools },
+  { name: 'mandrel', tools: mandrelTools },
+  { name: 'memory', tools: memoryTools },
+  { name: 'email', tools: emailTools },
+  { name: 'squire_email', tools: squireEmailTools },
+  { name: 'search', tools: searchTools },
+  { name: 'scratchpad', tools: scratchpadTools },
+  { name: 'commune', tools: communeTools },
+  { name: 'images', tools: imageTools },
+  { name: 'report', tools: reportTools },
+  { name: 'page', tools: pageTools },
+  { name: 'goals', tools: goalTools },
+  { name: 'continuity', tools: continuityTools },
+  { name: 'pdf', tools: pdfTools },
+  { name: 'scout', tools: scoutTools },
+  { name: 'sandbox', tools: sandboxTools },
+  { name: 'jobs', tools: jobTools },
+  { name: 'browser', tools: browserTools },
+  { name: 'dealer_foundation', tools: dealerFoundationTools },
 ];
 
-for (const spec of allToolSpecs) {
-  registerTool(spec.name, spec.description, spec.parameters, spec.handler);
+for (const capability of allCapabilities) {
+  defaultCapabilityRegistry.registerCapability(capability);
 }
