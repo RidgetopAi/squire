@@ -14,6 +14,7 @@ import type {
   RegisteredTool,
 } from './types.js';
 import { logToolCall } from '../services/tool-logger.js';
+import { recordActivityEvent } from '../services/activity.js';
 
 // Re-export types for convenience
 export type {
@@ -111,6 +112,17 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
       errorMessage: `Unknown tool '${call.function.name}'`,
       durationMs: Date.now() - startTime,
     });
+    await recordActivityEvent({
+      sourceLoop: 'tool_executor',
+      eventType: 'tool.denied',
+      summary: `Unknown tool requested: ${call.function.name}`,
+      status: 'failed',
+      durationMs: Date.now() - startTime,
+      metadata: {
+        toolCallId: call.id,
+        toolName: call.function.name,
+      },
+    });
     return {
       toolCallId: call.id,
       name: call.function.name,
@@ -134,6 +146,18 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
           errorMessage: `Invalid JSON arguments: ${call.function.arguments}`,
           durationMs: Date.now() - startTime,
         });
+        await recordActivityEvent({
+          sourceLoop: 'tool_executor',
+          eventType: 'tool.denied',
+          summary: `Invalid arguments for tool: ${call.function.name}`,
+          status: 'failed',
+          durationMs: Date.now() - startTime,
+          metadata: {
+            toolCallId: call.id,
+            toolName: call.function.name,
+            rawArguments: call.function.arguments,
+          },
+        });
         return {
           toolCallId: call.id,
           name: call.function.name,
@@ -142,6 +166,18 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
         };
       }
     }
+
+    await recordActivityEvent({
+      sourceLoop: 'tool_executor',
+      eventType: 'tool.requested',
+      summary: `Tool requested: ${call.function.name}`,
+      status: 'running',
+      metadata: {
+        toolCallId: call.id,
+        toolName: call.function.name,
+        arguments: args,
+      },
+    });
 
     // Execute handler
     let result = await tool.handler(args);
@@ -163,6 +199,19 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
       success: true,
       durationMs,
     });
+    await recordActivityEvent({
+      sourceLoop: 'tool_executor',
+      eventType: 'tool.completed',
+      summary: `Tool completed: ${call.function.name}`,
+      status: 'completed',
+      durationMs,
+      metadata: {
+        toolCallId: call.id,
+        toolName: call.function.name,
+        arguments: args,
+        resultPreview: result.substring(0, 500),
+      },
+    });
 
     return {
       toolCallId: call.id,
@@ -181,6 +230,18 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
       success: false,
       errorMessage: message,
       durationMs,
+    });
+    await recordActivityEvent({
+      sourceLoop: 'tool_executor',
+      eventType: 'tool.failed',
+      summary: `Tool failed: ${call.function.name}`,
+      status: 'failed',
+      durationMs,
+      metadata: {
+        toolCallId: call.id,
+        toolName: call.function.name,
+        error: message,
+      },
     });
 
     return {

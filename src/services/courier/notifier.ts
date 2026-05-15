@@ -1,5 +1,6 @@
 import { config } from '../../config/index.js';
 import { broadcastEmailSummary } from '../../api/socket/broadcast.js';
+import { recordActivityEvent } from '../activity.js';
 import type { EmailSummary } from './summarizer.js';
 
 export interface NotifyOptions {
@@ -45,15 +46,51 @@ async function sendTelegram(message: string, useMarkdown = true): Promise<void> 
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`[Notifier] Telegram error for ${chatId}:`, errorText);
+        await recordActivityEvent({
+          sourceLoop: 'courier',
+          eventType: 'external.message_sent',
+          summary: 'Courier Telegram notification failed',
+          status: 'failed',
+          metadata: {
+            channel: 'telegram',
+            chatId,
+            messagePreview: truncatedMessage.substring(0, 300),
+            error: errorText,
+          },
+        });
 
         // If markdown parsing failed, retry without markdown
         if (useMarkdown && errorText.includes("can't parse entities")) {
           console.log('[Notifier] Retrying without markdown...');
           await sendTelegram(message.replace(/[*_`\[\]]/g, ''), false);
         }
+      } else {
+        await recordActivityEvent({
+          sourceLoop: 'courier',
+          eventType: 'external.message_sent',
+          summary: 'Courier Telegram notification sent',
+          status: 'completed',
+          metadata: {
+            channel: 'telegram',
+            chatId,
+            messagePreview: truncatedMessage.substring(0, 300),
+          },
+        });
       }
     } catch (error) {
       console.error(`[Notifier] Telegram send failed for ${chatId}:`, error);
+      await recordActivityEvent({
+        sourceLoop: 'courier',
+        eventType: 'external.message_sent',
+        summary: 'Courier Telegram notification failed',
+        status: 'failed',
+        metadata: {
+          channel: 'telegram',
+          chatId,
+          messagePreview: truncatedMessage.substring(0, 300),
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
     }
   }
 }
