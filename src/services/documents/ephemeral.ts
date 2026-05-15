@@ -165,11 +165,12 @@ const summaryCache = new TTLCache<SummarizeResult>(30);
 const answerCache = new TTLCache<AskResult>(30);
 
 // Prune caches periodically (every 5 minutes)
-setInterval(() => {
+const cachePruneInterval = setInterval(() => {
   documentCache.prune();
   summaryCache.prune();
   answerCache.prune();
 }, 5 * 60 * 1000);
+cachePruneInterval.unref();
 
 // === HELPER FUNCTIONS ===
 
@@ -417,4 +418,3 @@ export function clearCaches(): void {
   summaryCache.clear();
   answerCache.clear();
 }
-

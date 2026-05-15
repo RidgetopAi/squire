@@ -85,6 +85,11 @@ export const config = {
   },
   mandrel: {
     baseUrl: optional('MANDREL_URL', 'http://localhost:8080'),
+    project: optional('MANDREL_PROJECT', 'squire-agent'),
+    connectionScope: optional('MANDREL_CONNECTION_SCOPE', 'runtime'),
+  },
+  activity: {
+    enabled: optional('ACTIVITY_LOGGING_ENABLED', 'true') === 'true',
   },
   routing: {
     enabled: optional('ROUTING_ENABLED', 'true') === 'true',

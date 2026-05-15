@@ -1,1 +1,6 @@
-export { callMandrelTool, type MandrelResponse } from './client.js';
+export {
+  callMandrelTool,
+  getMandrelConnectionId,
+  type MandrelCallOptions,
+  type MandrelResponse,
+} from './client.js';

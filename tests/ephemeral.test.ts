@@ -7,9 +7,15 @@
  * Note: Full LLM tests require API keys and are marked for integration testing.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it } from 'node:test';
+import assert from 'node:assert';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as crypto from 'crypto';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Import the ephemeral functions (will be available after build)
 // For unit tests, we test the cache logic and extraction flow
@@ -54,47 +60,44 @@ describe('Ephemeral Document Processing', () => {
     it('should store and retrieve values', () => {
       const cache = new TestCache<string>(60000); // 1 minute TTL
       cache.set('key1', 'value1');
-      expect(cache.get('key1')).toBe('value1');
+      assert.strictEqual(cache.get('key1'), 'value1');
     });
 
     it('should return undefined for non-existent keys', () => {
       const cache = new TestCache<string>(60000);
-      expect(cache.get('nonexistent')).toBeUndefined();
+      assert.strictEqual(cache.get('nonexistent'), undefined);
     });
 
     it('should expire entries after TTL', async () => {
       const cache = new TestCache<string>(50); // 50ms TTL
       cache.set('key1', 'value1');
-      expect(cache.get('key1')).toBe('value1');
+      assert.strictEqual(cache.get('key1'), 'value1');
 
       // Wait for expiration
       await new Promise((resolve) => setTimeout(resolve, 100));
-      expect(cache.get('key1')).toBeUndefined();
+      assert.strictEqual(cache.get('key1'), undefined);
     });
 
     it('should track cache size', () => {
       const cache = new TestCache<string>(60000);
-      expect(cache.size).toBe(0);
+      assert.strictEqual(cache.size, 0);
       cache.set('key1', 'value1');
-      expect(cache.size).toBe(1);
+      assert.strictEqual(cache.size, 1);
       cache.set('key2', 'value2');
-      expect(cache.size).toBe(2);
+      assert.strictEqual(cache.size, 2);
     });
 
     it('should clear all entries', () => {
       const cache = new TestCache<string>(60000);
       cache.set('key1', 'value1');
       cache.set('key2', 'value2');
-      expect(cache.size).toBe(2);
+      assert.strictEqual(cache.size, 2);
       cache.clear();
-      expect(cache.size).toBe(0);
+      assert.strictEqual(cache.size, 0);
     });
   });
 
   describe('Cache Key Generation', () => {
-    // Test cache key generation patterns
-    const crypto = require('crypto');
-
     function hashBuffer(buffer: Buffer): string {
       return crypto.createHash('sha256').update(buffer).digest('hex').slice(0, 16);
     }
@@ -113,8 +116,8 @@ describe('Ephemeral Document Processing', () => {
       const buffer2 = Buffer.from('test content');
       const buffer3 = Buffer.from('different content');
 
-      expect(hashBuffer(buffer1)).toBe(hashBuffer(buffer2));
-      expect(hashBuffer(buffer1)).not.toBe(hashBuffer(buffer3));
+      assert.strictEqual(hashBuffer(buffer1), hashBuffer(buffer2));
+      assert.notStrictEqual(hashBuffer(buffer1), hashBuffer(buffer3));
     });
 
     it('should generate unique summary keys for different styles', () => {
@@ -123,10 +126,10 @@ describe('Ephemeral Document Processing', () => {
       const key2 = summaryKey(docHash, 'detailed');
       const key3 = summaryKey(docHash, 'bullet-points');
 
-      expect(key1).not.toBe(key2);
-      expect(key2).not.toBe(key3);
-      expect(key1).toContain('brief');
-      expect(key2).toContain('detailed');
+      assert.notStrictEqual(key1, key2);
+      assert.notStrictEqual(key2, key3);
+      assert.ok(key1.includes('brief'));
+      assert.ok(key2.includes('detailed'));
     });
 
     it('should generate unique summary keys for different focus areas', () => {
@@ -134,7 +137,7 @@ describe('Ephemeral Document Processing', () => {
       const key1 = summaryKey(docHash, 'brief', 'finance');
       const key2 = summaryKey(docHash, 'brief', 'technology');
 
-      expect(key1).not.toBe(key2);
+      assert.notStrictEqual(key1, key2);
     });
 
     it('should generate unique answer keys for different questions', () => {
@@ -142,7 +145,7 @@ describe('Ephemeral Document Processing', () => {
       const key1 = answerKey(docHash, 'What is the main topic?');
       const key2 = answerKey(docHash, 'Who is the author?');
 
-      expect(key1).not.toBe(key2);
+      assert.notStrictEqual(key1, key2);
     });
 
     it('should generate consistent answer keys for same question', () => {
@@ -151,7 +154,7 @@ describe('Ephemeral Document Processing', () => {
       const key1 = answerKey(docHash, question);
       const key2 = answerKey(docHash, question);
 
-      expect(key1).toBe(key2);
+      assert.strictEqual(key1, key2);
     });
   });
 
@@ -159,13 +162,13 @@ describe('Ephemeral Document Processing', () => {
     const fixturesDir = path.join(__dirname, 'fixtures');
 
     it('should have test fixtures available', () => {
-      expect(fs.existsSync(path.join(fixturesDir, 'sample.txt'))).toBe(true);
-      expect(fs.existsSync(path.join(fixturesDir, 'sample.md'))).toBe(true);
+      assert.strictEqual(fs.existsSync(path.join(fixturesDir, 'sample.txt')), true);
+      assert.strictEqual(fs.existsSync(path.join(fixturesDir, 'sample.md')), true);
     });
 
     it('should read text fixture correctly', () => {
       const content = fs.readFileSync(path.join(fixturesDir, 'sample.txt'), 'utf-8');
-      expect(content.length).toBeGreaterThan(0);
+      assert.ok(content.length > 0);
     });
   });
 
@@ -174,7 +177,7 @@ describe('Ephemeral Document Processing', () => {
 
     it('should accept valid summary styles', () => {
       for (const style of validStyles) {
-        expect(validStyles.includes(style)).toBe(true);
+        assert.strictEqual(validStyles.includes(style), true);
       }
     });
 
@@ -183,8 +186,8 @@ describe('Ephemeral Document Processing', () => {
       const defaultAnswerTokens = 1000;
       const maxDocTokens = 30000;
 
-      expect(defaultSummaryTokens).toBeLessThan(maxDocTokens);
-      expect(defaultAnswerTokens).toBeLessThan(maxDocTokens);
+      assert.ok(defaultSummaryTokens < maxDocTokens);
+      assert.ok(defaultAnswerTokens < maxDocTokens);
     });
   });
 
@@ -193,36 +196,36 @@ describe('Ephemeral Document Processing', () => {
       const optionsWithCitations = { includeCitations: true };
       const optionsWithoutCitations = { includeCitations: false };
 
-      expect(optionsWithCitations.includeCitations).toBe(true);
-      expect(optionsWithoutCitations.includeCitations).toBe(false);
+      assert.strictEqual(optionsWithCitations.includeCitations, true);
+      assert.strictEqual(optionsWithoutCitations.includeCitations, false);
     });
   });
 });
 
 // Integration tests (require LLM API key)
-describe.skip('Ephemeral Processing Integration', () => {
+describe('Ephemeral Processing Integration', { skip: true }, () => {
   // These tests require actual LLM calls
   // Run with: npm test -- --run ephemeral.test.ts
 
   it('should summarize a text document', async () => {
     // const buffer = fs.readFileSync('tests/fixtures/sample.txt');
     // const result = await summarizeDocument(buffer, 'text/plain', 'sample.txt');
-    // expect(result.summary).toBeDefined();
-    // expect(result.summary.length).toBeGreaterThan(0);
+    // assert.ok(result.summary);
+    // assert.ok(result.summary.length > 0);
   });
 
   it('should answer questions about a document', async () => {
     // const buffer = fs.readFileSync('tests/fixtures/sample.txt');
     // const result = await askDocument(buffer, 'text/plain', 'sample.txt', 'What is this document about?');
-    // expect(result.answer).toBeDefined();
-    // expect(result.answer.length).toBeGreaterThan(0);
+    // assert.ok(result.answer);
+    // assert.ok(result.answer.length > 0);
   });
 
   it('should cache repeated requests', async () => {
     // const buffer = fs.readFileSync('tests/fixtures/sample.txt');
     // const result1 = await summarizeDocument(buffer, 'text/plain', 'sample.txt');
     // const result2 = await summarizeDocument(buffer, 'text/plain', 'sample.txt');
-    // expect(result1.cached).toBe(false);
-    // expect(result2.cached).toBe(true);
+    // assert.strictEqual(result1.cached, false);
+    // assert.strictEqual(result2.cached, true);
   });
 });
