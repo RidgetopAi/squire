@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { squireMasterConfig } from './master.js';
 
 dotenv.config();
 
@@ -18,6 +19,8 @@ function optional(name: string, defaultValue: string): string {
 }
 
 export const config = {
+  master: squireMasterConfig,
+
   // Auto-detect timezone from system
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
 
