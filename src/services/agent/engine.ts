@@ -147,7 +147,7 @@ export class AgentEngine {
     }
 
     // Use provided tools or default to all registered tools
-    this.tools = options.tools ?? getToolDefinitions();
+    this.tools = options.tools ?? getToolDefinitions({ sourceLoop: this.sourceLoop });
 
     // Allow callers to force a model tier (bypasses task classification)
     this.tier = options.tier;

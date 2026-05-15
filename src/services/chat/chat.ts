@@ -96,7 +96,7 @@ function buildMessages(
 
   // Static system prompt (cacheable — identical across calls)
   let staticPrompt = SQUIRE_SYSTEM_PROMPT_BASE;
-  if (hasTools()) {
+  if (hasTools({ sourceLoop: 'http_chat' })) {
     staticPrompt += TOOL_CALLING_INSTRUCTIONS;
   }
   messages.push({ role: 'system', content: staticPrompt });
@@ -202,7 +202,8 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
     );
 
     // Get available tools
-    const tools = hasTools() ? getToolDefinitions() : undefined;
+    const toolContext = { sourceLoop: 'http_chat' };
+    const tools = hasTools(toolContext) ? getToolDefinitions(toolContext) : undefined;
 
     // Call LLM with tools
     let result: LLMCompletionResult = await complete(messages, { tools });

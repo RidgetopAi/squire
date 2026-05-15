@@ -408,7 +408,7 @@ function getCommuneTools() {
     'lesson_search',
   ];
 
-  return getToolDefinitions().filter((t) =>
+  return getToolDefinitions({ sourceLoop: 'commune' }).filter((t) =>
     allowedTools.includes(t.function.name)
   );
 }
@@ -474,6 +474,8 @@ export async function attemptOutreach(): Promise<{
   // Spin up AgentEngine with commune prompt + curated tools
   const engine = new AgentEngine({
     conversationId: traceId,
+    sourceLoop: 'commune',
+    triggerReason: 'commune scheduler wake-up',
     maxTurns: 8,
     tier: 'fast',
     systemPrompt: COMMUNE_SYSTEM_PROMPT,

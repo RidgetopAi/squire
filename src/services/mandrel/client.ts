@@ -1,4 +1,5 @@
 import { config } from '../../config/index.js';
+import type { SquireMasterConfig } from '../../config/master.js';
 import { recordActivityEvent } from '../activity.js';
 
 export interface MandrelResponse<T = unknown> {
@@ -25,7 +26,13 @@ function resolveProject(args: Record<string, unknown>, options: MandrelCallOptio
     return args['project'];
   }
 
-  return config.mandrel.project;
+  return config.master.mandrel.project;
+}
+
+export function canUseMandrelHttpBridge(
+  policy: SquireMasterConfig['mandrel'] = config.master.mandrel
+): boolean {
+  return policy.transport === 'http-bridge' || policy.allowHttpFallback;
 }
 
 export function getMandrelConnectionId(
@@ -56,9 +63,31 @@ export async function callMandrelTool<T = unknown>(
   args: Record<string, unknown> = {},
   options: MandrelCallOptions = {}
 ): Promise<MandrelResponse<T>> {
-  const url = `${config.mandrel.baseUrl}/mcp/tools/${toolName}`;
   const connectionId = getMandrelConnectionId(args, options);
   const startTime = Date.now();
+
+  if (!canUseMandrelHttpBridge()) {
+    await recordActivityEvent({
+      sourceLoop: 'mandrel',
+      eventType: 'mandrel.call',
+      summary: `Mandrel HTTP bridge denied for tool ${toolName}`,
+      status: 'denied',
+      durationMs: Date.now() - startTime,
+      metadata: {
+        toolName,
+        arguments: args,
+        connectionId,
+        transport: config.master.mandrel.transport,
+        allowHttpFallback: config.master.mandrel.allowHttpFallback,
+      },
+    });
+    return {
+      success: false,
+      error: 'Mandrel HTTP bridge disabled by master config policy',
+    };
+  }
+
+  const url = `${config.mandrel.baseUrl}/mcp/tools/${toolName}`;
 
   try {
     const response = await fetch(url, {
@@ -82,6 +111,7 @@ export async function callMandrelTool<T = unknown>(
           toolName,
           arguments: args,
           connectionId,
+          transport: 'http-bridge',
           httpStatus: response.status,
           responseText: text || response.statusText,
         },
@@ -103,6 +133,7 @@ export async function callMandrelTool<T = unknown>(
         toolName,
         arguments: args,
         connectionId,
+        transport: 'http-bridge',
       },
     });
     return { success: true, data: data as T };
@@ -118,6 +149,7 @@ export async function callMandrelTool<T = unknown>(
         toolName,
         arguments: args,
         connectionId,
+        transport: 'http-bridge',
         error: message,
       },
     });

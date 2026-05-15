@@ -249,7 +249,7 @@ async function buildSystemPrompt(): Promise<string> {
   }
 
   // Add tool calling instructions
-  if (hasTools()) {
+  if (hasTools({ sourceLoop: 'socket_chat' })) {
     prompt += TOOL_CALLING_INSTRUCTIONS;
   }
 
@@ -486,7 +486,8 @@ ${documentContent}
     messages.push({ role: 'user', content: message });
 
     // Step 5: Stream LLM response
-    const tools = hasTools() ? getToolDefinitions() : undefined;
+    const documentToolContext = { sourceLoop: 'socket_document_chat' };
+    const tools = hasTools(documentToolContext) ? getToolDefinitions(documentToolContext) : undefined;
     console.log(`[Socket] Document discussion: streaming response (${tools?.length ?? 0} tools available)`);
     const streamResult = await streamWithToolLoop(
       socket,
@@ -878,7 +879,8 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
     messages.push({ role: 'user', content: message, images: processedImages });
 
     // Step 4: Stream LLM response with iterative tool loop
-    const tools = hasTools() ? getToolDefinitions() : undefined;
+    const socketToolContext = { sourceLoop: 'socket_chat' };
+    const tools = hasTools(socketToolContext) ? getToolDefinitions(socketToolContext) : undefined;
     
     // Use the configured vision runtime when images are attached.
     const hasImages = images && images.length > 0;

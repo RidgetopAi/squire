@@ -66,7 +66,7 @@ async function buildSystemPrompt(): Promise<string> {
     prompt = `You are talking to ${identity.name}.\n\n` + prompt;
   }
 
-  if (hasTools()) {
+  if (hasTools({ sourceLoop: 'telegram' })) {
     prompt += TOOL_CALLING_INSTRUCTIONS;
   }
 
@@ -224,9 +224,13 @@ export async function handleTelegramMessage(message: TelegramMessage): Promise<v
 
     const engine = new AgentEngine({
       conversationId,
+      traceId,
       maxTurns: 200,
       systemPrompt,
-      tools: hasTools() ? getToolDefinitions() : [],
+      sourceLoop: 'telegram',
+      actor: 'assistant',
+      triggerReason: 'Telegram message',
+      tools: hasTools({ sourceLoop: 'telegram' }) ? getToolDefinitions({ sourceLoop: 'telegram' }) : [],
       callbacks: {
         onStateChange: async (state, turn) => {
           console.log(`[Telegram] State: ${state}, Turn: ${turn}`);

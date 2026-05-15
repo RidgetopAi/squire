@@ -6,7 +6,7 @@ process.env.MANDREL_PROJECT = 'squire-agent';
 process.env.MANDREL_CONNECTION_SCOPE = 'runtime';
 process.env.ACTIVITY_LOGGING_ENABLED = 'false';
 
-const { callMandrelTool, getMandrelConnectionId } = await import('../src/services/mandrel/client.js');
+const { callMandrelTool, canUseMandrelHttpBridge, getMandrelConnectionId } = await import('../src/services/mandrel/client.js');
 
 describe('Mandrel client identity', () => {
   afterEach(() => {
@@ -54,5 +54,28 @@ describe('Mandrel client identity', () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  it('honors master Mandrel transport fallback policy', () => {
+    assert.strictEqual(canUseMandrelHttpBridge({
+      project: 'squire-agent',
+      transport: 'mcp',
+      requireStableConnectionId: true,
+      allowHttpFallback: false,
+    }), false);
+
+    assert.strictEqual(canUseMandrelHttpBridge({
+      project: 'squire-agent',
+      transport: 'mcp',
+      requireStableConnectionId: true,
+      allowHttpFallback: true,
+    }), true);
+
+    assert.strictEqual(canUseMandrelHttpBridge({
+      project: 'squire-agent',
+      transport: 'http-bridge',
+      requireStableConnectionId: true,
+      allowHttpFallback: false,
+    }), true);
   });
 });

@@ -6,10 +6,12 @@ process.env.ACTIVITY_LOGGING_ENABLED = 'false';
 
 const registryModule = await import('../src/tools/capabilityRegistry.js');
 const capabilityManifests = await import('../src/tools/capabilities.js');
+const masterConfigModule = await import('../src/config/master.js');
 const toolsFacade = await import('../src/tools/index.js');
 
 const { CapabilityRegistry } = registryModule;
 const { privateBusinessCapabilityNames, publicCoreCapabilityNames } = capabilityManifests;
+const { buildSquireMasterConfig } = masterConfigModule;
 const {
   getCapabilities,
   getToolCount,
@@ -62,6 +64,96 @@ describe('CapabilityRegistry', () => {
     assert.strictEqual(registry.getToolCount(), 0);
     assert.strictEqual(registry.getTool('disabled_tool'), undefined);
     assert.strictEqual(registry.getCapability('disabled_capability')?.enabled, false);
+  });
+
+  it('applies master config capability disablement when registering tools', () => {
+    const registry = new CapabilityRegistry({
+      masterConfig: buildSquireMasterConfig({
+        SQUIRE_CAPABILITIES_DISABLED: 'disabled_capability',
+      }),
+    });
+
+    registry.registerCapability({
+      name: 'disabled_capability',
+      tools: [
+        {
+          name: 'disabled_tool',
+          description: 'Disabled tool',
+          parameters: { type: 'object', properties: {} },
+          handler: () => 'disabled',
+        },
+      ],
+    });
+
+    assert.strictEqual(registry.getCapability('disabled_capability')?.enabled, false);
+    assert.strictEqual(registry.getToolDefinitions().length, 0);
+    assert.strictEqual(registry.getTool('disabled_tool'), undefined);
+  });
+
+  it('hides private capability tools in public-core mode', () => {
+    const registry = new CapabilityRegistry({
+      masterConfig: buildSquireMasterConfig({
+        SQUIRE_CONFIG_MODE: 'public-core',
+        SQUIRE_PRIVATE_CAPABILITIES: 'private_capability',
+      }),
+    });
+
+    registry.registerCapability({
+      name: 'private_capability',
+      visibility: 'private',
+      tools: [
+        {
+          name: 'private_tool',
+          description: 'Private tool',
+          parameters: { type: 'object', properties: {} },
+          handler: () => 'private',
+        },
+      ],
+    });
+
+    assert.strictEqual(registry.getCapability('private_capability')?.enabled, true);
+    assert.strictEqual(registry.getCapability('private_capability')?.visibility, 'private');
+    assert.strictEqual(registry.getToolDefinitions().length, 0);
+    assert.strictEqual(registry.getTool('private_tool'), undefined);
+  });
+
+  it('filters tool definitions and execution lookup by loop capability policy', () => {
+    const masterConfig = buildSquireMasterConfig({
+      SQUIRE_CAPABILITIES_ENABLED: 'alpha,beta',
+    });
+    masterConfig.loops.http_chat.allowedCapabilities = ['alpha'];
+
+    const registry = new CapabilityRegistry({ masterConfig });
+    registry.registerCapability({
+      name: 'alpha',
+      tools: [
+        {
+          name: 'alpha_tool',
+          description: 'Alpha tool',
+          parameters: { type: 'object', properties: {} },
+          handler: () => 'alpha',
+        },
+      ],
+    });
+    registry.registerCapability({
+      name: 'beta',
+      tools: [
+        {
+          name: 'beta_tool',
+          description: 'Beta tool',
+          parameters: { type: 'object', properties: {} },
+          handler: () => 'beta',
+        },
+      ],
+    });
+
+    assert.deepStrictEqual(
+      registry.getToolDefinitions({ sourceLoop: 'http_chat' }).map((tool) => tool.function.name),
+      ['alpha_tool']
+    );
+    assert.strictEqual(registry.getTool('alpha_tool', { sourceLoop: 'http_chat' })?.handler({}), 'alpha');
+    assert.strictEqual(registry.getTool('beta_tool', { sourceLoop: 'http_chat' }), undefined);
+    assert.ok(registry.getTool('beta_tool'), 'Unscoped lookups preserve existing default behavior');
   });
 });
 

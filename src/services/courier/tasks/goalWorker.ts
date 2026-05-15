@@ -133,6 +133,9 @@ Begin working on your goal now.`;
       // 4. Run the agent with a timeout
       const engine = new AgentEngine({
         conversationId: traceId,
+        sourceLoop: 'goal_worker',
+        actor: 'assistant',
+        triggerReason: 'goal worker background session',
         maxTurns: config.goalWorker.maxTurns,
         tier: 'fast',
         callbacks: {

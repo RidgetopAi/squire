@@ -13,7 +13,8 @@ import type {
 } from './types.js';
 import { logToolCall } from '../services/tool-logger.js';
 import { recordActivityEvent } from '../services/activity.js';
-import { CapabilityRegistry, type Capability } from './capabilityRegistry.js';
+import { squireMasterConfig } from '../config/master.js';
+import { CapabilityRegistry, type Capability, type ToolAccessContext } from './capabilityRegistry.js';
 import { capabilityBoundaries } from './capabilities.js';
 
 // Re-export types for convenience
@@ -28,7 +29,7 @@ export type {
   AssistantMessageWithTools,
 } from './types.js';
 export { CapabilityRegistry };
-export type { Capability, RegisteredCapability } from './capabilityRegistry.js';
+export type { Capability, RegisteredCapability, ToolAccessContext } from './capabilityRegistry.js';
 
 export interface ToolExecutionContext {
   traceId?: string;
@@ -48,7 +49,7 @@ const MAX_TOOL_RESULT_LENGTH = 32_000;
 
 // === REGISTRY ===
 
-const defaultCapabilityRegistry = new CapabilityRegistry();
+const defaultCapabilityRegistry = new CapabilityRegistry({ masterConfig: squireMasterConfig });
 
 function buildActivityMetadata(
   call: ToolCall,
@@ -84,22 +85,22 @@ export function registerTool<T = unknown>(
 /**
  * Get all registered tool definitions (for LLM request)
  */
-export function getToolDefinitions(): ToolDefinition[] {
-  return defaultCapabilityRegistry.getToolDefinitions();
+export function getToolDefinitions(context?: ToolAccessContext): ToolDefinition[] {
+  return defaultCapabilityRegistry.getToolDefinitions(context);
 }
 
 /**
  * Check if any tools are registered
  */
-export function hasTools(): boolean {
-  return defaultCapabilityRegistry.hasTools();
+export function hasTools(context?: ToolAccessContext): boolean {
+  return defaultCapabilityRegistry.hasTools(context);
 }
 
 /**
  * Get count of registered tools
  */
-export function getToolCount(): number {
-  return defaultCapabilityRegistry.getToolCount();
+export function getToolCount(context?: ToolAccessContext): number {
+  return defaultCapabilityRegistry.getToolCount(context);
 }
 
 /**
@@ -118,7 +119,7 @@ export function getCapabilities() {
  * @returns Tool result with success/failure status
  */
 export async function executeTool(call: ToolCall, context?: ToolExecutionContext): Promise<ToolResult> {
-  const tool = defaultCapabilityRegistry.getTool(call.function.name);
+  const tool = defaultCapabilityRegistry.getTool(call.function.name, context);
   const startTime = Date.now();
 
   if (!tool) {

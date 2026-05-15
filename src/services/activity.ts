@@ -61,8 +61,37 @@ function toActivityEvent(row: Record<string, unknown>): ActivityEvent {
   };
 }
 
+function normalizeActivityLoopId(sourceLoop: string | undefined): keyof typeof config.master.loops | undefined {
+  if (!sourceLoop) {
+    return undefined;
+  }
+
+  if (sourceLoop === 'socket_document_chat') {
+    return 'socket_chat';
+  }
+
+  if (sourceLoop in config.master.loops) {
+    return sourceLoop as keyof typeof config.master.loops;
+  }
+
+  return undefined;
+}
+
+function shouldTraceActivity(params: ActivityEventInput): boolean {
+  const originSourceLoop = typeof params.metadata?.['originSourceLoop'] === 'string'
+    ? params.metadata['originSourceLoop']
+    : undefined;
+  const loopId = normalizeActivityLoopId(originSourceLoop ?? params.sourceLoop);
+
+  if (!loopId) {
+    return true;
+  }
+
+  return config.master.loops[loopId].audit.traceActivity;
+}
+
 export async function recordActivityEvent(params: ActivityEventInput): Promise<string | null> {
-  if (!config.activity.enabled) {
+  if (!config.activity.enabled || !shouldTraceActivity(params)) {
     return null;
   }
 
@@ -141,4 +170,18 @@ export async function listActivityEvents(filters: ActivityEventFilters = {}): Pr
   );
 
   return result.rows.map((row: Record<string, unknown>) => toActivityEvent(row));
+}
+
+export async function pruneActivityEvents(retentionDays = config.master.audit.retentionDays): Promise<number> {
+  if (!config.activity.enabled || retentionDays <= 0) {
+    return 0;
+  }
+
+  const result = await pool.query(
+    `DELETE FROM squire_activity_events
+     WHERE created_at < NOW() - ($1::int * INTERVAL '1 day')`,
+    [retentionDays]
+  );
+
+  return result.rowCount ?? 0;
 }
