@@ -5,9 +5,11 @@ process.env.DATABASE_URL ??= 'postgresql://test:test@localhost:5432/test';
 process.env.ACTIVITY_LOGGING_ENABLED = 'false';
 
 const registryModule = await import('../src/tools/capabilityRegistry.js');
+const capabilityManifests = await import('../src/tools/capabilities.js');
 const toolsFacade = await import('../src/tools/index.js');
 
 const { CapabilityRegistry } = registryModule;
+const { privateBusinessCapabilityNames, publicCoreCapabilityNames } = capabilityManifests;
 const {
   getCapabilities,
   getToolCount,
@@ -103,5 +105,28 @@ describe('tools facade capability registration', () => {
         `Expected ${expectedCapability} capability to be registered`
       );
     }
+  });
+
+  it('marks open-source core and private business capabilities explicitly', () => {
+    const capabilities = new Map(getCapabilities().map((capability) => [capability.name, capability]));
+
+    assert.strictEqual(capabilities.get('notes')?.visibility, 'public');
+    assert.strictEqual(capabilities.get('calendar')?.visibility, 'public');
+    assert.strictEqual(capabilities.get('browser')?.metadata?.package, 'core');
+    assert.strictEqual(capabilities.get('squire_email')?.visibility, 'private');
+    assert.strictEqual(capabilities.get('dealer_foundation')?.visibility, 'private');
+    assert.strictEqual(capabilities.get('dealer_foundation')?.metadata?.package, 'private-business');
+  });
+
+  it('exports separate public core and private business capability manifests', () => {
+    const publicNames = new Set<string>(publicCoreCapabilityNames);
+    const privateNames = new Set<string>(privateBusinessCapabilityNames);
+
+    assert.ok(publicNames.has('notes'));
+    assert.ok(publicNames.has('mandrel'));
+    assert.ok(publicNames.has('browser'));
+    assert.ok(privateNames.has('squire_email'));
+    assert.ok(privateNames.has('dealer_foundation'));
+    assert.strictEqual(publicNames.has('dealer_foundation'), false);
   });
 });

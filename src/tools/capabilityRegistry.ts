@@ -5,9 +5,12 @@ import type {
   ToolSpec,
 } from './types.js';
 
+export type CapabilityVisibility = 'public' | 'private';
+
 export interface Capability {
   name: string;
   description?: string;
+  visibility?: CapabilityVisibility;
   tools: ToolSpec[];
   enabled?: boolean;
   metadata?: Record<string, unknown>;
@@ -15,6 +18,7 @@ export interface Capability {
 
 export interface RegisteredCapability extends Capability {
   enabled: boolean;
+  visibility: CapabilityVisibility;
 }
 
 /**
@@ -61,6 +65,7 @@ export class CapabilityRegistry {
     const registered: RegisteredCapability = {
       ...capability,
       enabled,
+      visibility: capability.visibility ?? 'public',
     };
 
     this.capabilities.set(capability.name, registered);

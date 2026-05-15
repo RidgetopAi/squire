@@ -14,6 +14,7 @@ import type {
 import { logToolCall } from '../services/tool-logger.js';
 import { recordActivityEvent } from '../services/activity.js';
 import { CapabilityRegistry, type Capability } from './capabilityRegistry.js';
+import { capabilityBoundaries } from './capabilities.js';
 
 // Re-export types for convenience
 export type {
@@ -300,8 +301,7 @@ export async function executeTools(calls: ToolCall[], context?: ToolExecutionCon
 }
 
 // === TOOL REGISTRATION ===
-// Import tool arrays and register them
-// This happens after the registry Map is initialized
+// Import tool arrays and register them after the registry object exists.
 
 import { tools as timeTools } from './time.js';
 import { tools as notesTools } from './notes.js';
@@ -331,34 +331,49 @@ import { tools as jobTools } from './jobs.js';
 import { tools as browserTools } from './browser/index.js';
 import { tools as dealerFoundationTools } from './dealerFoundation.js';
 
+function capability(name: string, tools: Capability['tools'], description?: string): Capability {
+  const boundary = capabilityBoundaries[name] ?? { visibility: 'public' as const, package: 'core' as const };
+  return {
+    name,
+    description,
+    visibility: boundary.visibility,
+    tools,
+    metadata: { package: boundary.package },
+  };
+}
+
 const allCapabilities: Capability[] = [
-  { name: 'time', tools: timeTools },
-  { name: 'notes', tools: notesTools },
-  { name: 'lists', tools: listsTools },
-  { name: 'trackers', tools: trackersTools },
-  { name: 'calendar', tools: calendarTools },
-  { name: 'commitments', tools: commitmentTools },
-  { name: 'reminders', tools: reminderTools },
-  { name: 'coding', tools: codingTools },
-  { name: 'steward', tools: stewardTools },
-  { name: 'mandrel', tools: mandrelTools },
-  { name: 'memory', tools: memoryTools },
-  { name: 'email', tools: emailTools },
-  { name: 'squire_email', tools: squireEmailTools },
-  { name: 'search', tools: searchTools },
-  { name: 'scratchpad', tools: scratchpadTools },
-  { name: 'commune', tools: communeTools },
-  { name: 'images', tools: imageTools },
-  { name: 'report', tools: reportTools },
-  { name: 'page', tools: pageTools },
-  { name: 'goals', tools: goalTools },
-  { name: 'continuity', tools: continuityTools },
-  { name: 'pdf', tools: pdfTools },
-  { name: 'scout', tools: scoutTools },
-  { name: 'sandbox', tools: sandboxTools },
-  { name: 'jobs', tools: jobTools },
-  { name: 'browser', tools: browserTools },
-  { name: 'dealer_foundation', tools: dealerFoundationTools },
+  capability('time', timeTools),
+  capability('notes', notesTools),
+  capability('lists', listsTools),
+  capability('trackers', trackersTools),
+  capability('calendar', calendarTools),
+  capability('commitments', commitmentTools),
+  capability('reminders', reminderTools),
+  capability('coding', codingTools),
+  capability('steward', stewardTools),
+  capability('mandrel', mandrelTools),
+  capability('memory', memoryTools),
+  capability('email', emailTools),
+  capability('squire_email', squireEmailTools, 'RidgetopAI/Squire-specific email account tools.'),
+  capability('search', searchTools),
+  capability('scratchpad', scratchpadTools),
+  capability('commune', communeTools),
+  capability('images', imageTools),
+  capability('report', reportTools),
+  capability('page', pageTools),
+  capability('goals', goalTools),
+  capability('continuity', continuityTools),
+  capability('pdf', pdfTools),
+  capability('scout', scoutTools),
+  capability('sandbox', sandboxTools),
+  capability('jobs', jobTools),
+  capability('browser', browserTools),
+  capability(
+    'dealer_foundation',
+    dealerFoundationTools,
+    'Brian-specific dealer foundation, campaign, and sales-report tools.'
+  ),
 ];
 
 for (const capability of allCapabilities) {
