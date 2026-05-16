@@ -377,6 +377,13 @@ export class AgentEngine {
   }
 
   /**
+   * Get the tool names made available to this engine instance.
+   */
+  getAvailableToolNames(): string[] {
+    return this.tools.map((tool) => tool.function.name);
+  }
+
+  /**
    * Check if the abort signal has been triggered
    *
    * @returns True if cancelled, false otherwise

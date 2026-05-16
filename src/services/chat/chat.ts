@@ -11,6 +11,7 @@ import type { ImageContent } from '../llm/types.js';
 import { generateContext, type ContextPackage } from './context.js';
 import { config } from '../../config/index.js';
 import { getToolDefinitions, executeTools, hasTools, type ToolAccessContext } from '../../tools/index.js';
+import type { ToolDefinition } from '../../tools/types.js';
 import { SQUIRE_SYSTEM_PROMPT_BASE, TOOL_CALLING_INSTRUCTIONS } from '../../constants/prompts.js';
 import {
   formatChatImageAttachmentReferences,
@@ -83,6 +84,17 @@ function getCurrentDateTimeString(): string {
 
 // === HELPER FUNCTIONS ===
 
+const HTTP_CHAT_TOOL_CONTEXT = { sourceLoop: 'http_chat' } as const;
+
+export function getHttpChatToolDefinitions(hasImages = false): ToolDefinition[] | undefined {
+  if (!hasTools(HTTP_CHAT_TOOL_CONTEXT)) {
+    return undefined;
+  }
+
+  const definitions = getImageAwareToolDefinitions(HTTP_CHAT_TOOL_CONTEXT, hasImages);
+  return definitions.length > 0 ? definitions : undefined;
+}
+
 /**
  * Get tool definitions appropriate for the chat context.
  * When images are present, return only image-specific tools to avoid
@@ -91,22 +103,15 @@ function getCurrentDateTimeString(): string {
 function getImageAwareToolDefinitions(
   context: ToolAccessContext,
   hasImages: boolean
-): ReturnType<typeof getToolDefinitions> {
+): ToolDefinition[] {
+  const definitions = getToolDefinitions(context);
+
   if (!hasImages) {
-    // No images: return full tool set
-    return getToolDefinitions(context);
+    return definitions;
   }
 
-  // Images present: return only image-specific tools
-  // Convert ToolSpec[] to ToolDefinition[]
-  return imageTools.map(tool => ({
-    type: 'function' as const,
-    function: {
-      name: tool.name,
-      description: tool.description,
-      parameters: tool.parameters,
-    },
-  }));
+  const imageToolNames = new Set(imageTools.map((tool) => tool.name));
+  return definitions.filter((definition) => imageToolNames.has(definition.function.name));
 }
 
 /**
@@ -123,7 +128,7 @@ function buildMessages(
 
   // Static system prompt (cacheable — identical across calls)
   let staticPrompt = SQUIRE_SYSTEM_PROMPT_BASE;
-  if (hasTools({ sourceLoop: 'http_chat' })) {
+  if (hasTools(HTTP_CHAT_TOOL_CONTEXT)) {
     staticPrompt += TOOL_CALLING_INSTRUCTIONS;
   }
   messages.push({ role: 'system', content: staticPrompt });
@@ -230,12 +235,9 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
 
     // For image-bearing requests, use a reduced tool set to avoid sending
     // the full registry to OpenAI (which has strict payload limits)
-    const toolContext = { sourceLoop: 'http_chat' };
     const hasImages = (images && images.length > 0) ||
                       conversationHistory.some(msg => msg.images && msg.images.length > 0);
-    const tools = hasTools(toolContext)
-      ? getImageAwareToolDefinitions(toolContext, hasImages)
-      : undefined;
+    const tools = getHttpChatToolDefinitions(hasImages);
 
     // Call LLM with tools
     let result: LLMCompletionResult = await complete(messages, { tools });

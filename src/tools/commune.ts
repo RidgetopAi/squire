@@ -11,7 +11,7 @@ import {
   markEventSent,
   markEventFailed,
   deliverMessage,
-} from '../services/commune.js';
+} from '../services/commune/core.js';
 import { recordActivityEvent } from '../services/activity.js';
 import type { ToolHandler, ToolSpec } from './types.js';
 

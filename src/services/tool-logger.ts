@@ -30,6 +30,10 @@ export async function logToolCall(params: {
   errorMessage?: string;
   conversationId?: string;
 }): Promise<void> {
+  if (process.env.TOOL_CALL_LOGGING_ENABLED === 'false') {
+    return;
+  }
+
   try {
     // Truncate result summary to avoid huge logs
     const truncatedResult = params.resultSummary
