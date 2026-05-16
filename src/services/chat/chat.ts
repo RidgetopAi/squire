@@ -10,13 +10,14 @@ import { complete, type LLMMessage, type LLMCompletionResult } from '../../provi
 import type { ImageContent } from '../llm/types.js';
 import { generateContext, type ContextPackage } from './context.js';
 import { config } from '../../config/index.js';
-import { getToolDefinitions, executeTools, hasTools } from '../../tools/index.js';
+import { getToolDefinitions, executeTools, hasTools, type ToolAccessContext } from '../../tools/index.js';
 import { SQUIRE_SYSTEM_PROMPT_BASE, TOOL_CALLING_INSTRUCTIONS } from '../../constants/prompts.js';
 import {
   formatChatImageAttachmentReferences,
   persistChatImageAttachments,
 } from './attachments.js';
 import { recordActivityEvent } from '../activity.js';
+import { tools as imageTools } from '../../tools/images.js';
 
 // === TYPES ===
 
@@ -81,6 +82,32 @@ function getCurrentDateTimeString(): string {
 }
 
 // === HELPER FUNCTIONS ===
+
+/**
+ * Get tool definitions appropriate for the chat context.
+ * When images are present, return only image-specific tools to avoid
+ * overwhelming OpenAI's payload limits with the full tool registry.
+ */
+function getImageAwareToolDefinitions(
+  context: ToolAccessContext,
+  hasImages: boolean
+): ReturnType<typeof getToolDefinitions> {
+  if (!hasImages) {
+    // No images: return full tool set
+    return getToolDefinitions(context);
+  }
+
+  // Images present: return only image-specific tools
+  // Convert ToolSpec[] to ToolDefinition[]
+  return imageTools.map(tool => ({
+    type: 'function' as const,
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters,
+    },
+  }));
+}
 
 /**
  * Build the full message array for the LLM
@@ -202,8 +229,14 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
     );
 
     // Get available tools
+    // For image-bearing requests, use a reduced tool set to avoid sending
+    // the full registry to OpenAI (which has strict payload limits)
     const toolContext = { sourceLoop: 'http_chat' };
-    const tools = hasTools(toolContext) ? getToolDefinitions(toolContext) : undefined;
+    const hasImages = (images && images.length > 0) ||
+                      conversationHistory.some(msg => msg.images && msg.images.length > 0);
+    const tools = hasTools(toolContext)
+      ? getImageAwareToolDefinitions(toolContext, hasImages)
+      : undefined;
 
     // Call LLM with tools
     let result: LLMCompletionResult = await complete(messages, { tools });
