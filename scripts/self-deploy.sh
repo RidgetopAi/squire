@@ -40,6 +40,67 @@ done
 log() { echo "[deploy] $(date '+%H:%M:%S') $1"; }
 die() { log "ERROR: $1"; exit 1; }
 
+# Detect the owner of production to use for backup normalization
+PROD_OWNER=$(stat -c '%U' "$PRODUCTION" 2>/dev/null || echo "ridgetop")
+PROD_GROUP=$(stat -c '%G' "$PRODUCTION" 2>/dev/null || echo "ridgetop")
+
+# normalize_ownership - Recursively chown a directory to the production owner.
+# This ensures backups created by root can be cleaned up in subsequent deploys.
+normalize_ownership() {
+  local target="$1"
+  if [ ! -e "$target" ]; then
+    return 0
+  fi
+  # Only attempt chown if running as root or with sudo
+  if [ "${EUID:-$(id -u)}" -eq 0 ]; then
+    chown -R "$PROD_OWNER:$PROD_GROUP" "$target" 2>/dev/null || true
+  elif sudo -n chown -R "$PROD_OWNER:$PROD_GROUP" "$target" 2>/dev/null; then
+    : # success via sudo
+  else
+    log "  WARN: Could not normalize ownership of $target (non-root, no passwordless sudo for chown)"
+  fi
+}
+
+# safe_backup_cleanup - Remove backup contents, handling mixed ownership gracefully.
+# The backup may contain root-owned files from previous deploys.
+safe_backup_cleanup() {
+  local target="$1"
+  if [ ! -d "$target" ]; then
+    return 0
+  fi
+
+  # Check if there's anything to clean
+  if [ -z "$(ls -A "$target" 2>/dev/null)" ]; then
+    return 0
+  fi
+
+  # First, try to normalize ownership so regular rm works
+  normalize_ownership "$target"
+
+  # Now try to remove contents
+  if find "$target" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + 2>/dev/null; then
+    return 0
+  fi
+
+  # If that failed, try with sudo rm
+  if sudo -n find "$target" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + 2>/dev/null; then
+    log "  Cleaned backup via sudo (mixed ownership detected)"
+    return 0
+  fi
+
+  # Last resort: use systemd-run to clean as root (we have sudo access to systemd-run)
+  log "  Using systemd-run to clean backup (mixed ownership, limited sudo)"
+  local cleanup_unit="squire-backup-cleanup-$$"
+  if sudo -n /usr/bin/systemd-run --unit="$cleanup_unit" --wait \
+      bash -c "find '$target' -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +" 2>/dev/null; then
+    # Reset any failed state
+    sudo -n /usr/bin/systemctl reset-failed "$cleanup_unit.service" 2>/dev/null || true
+    return 0
+  fi
+
+  die "Cannot clean backup directory $target - all cleanup methods failed"
+}
+
 SYSTEMD_RUN=(systemd-run)
 if [ "${EUID:-$(id -u)}" -ne 0 ]; then
   if sudo -n /usr/bin/systemd-run --version >/dev/null 2>&1; then
@@ -144,7 +205,7 @@ fi
 # --- Step 3: Backup production ---
 log "[3/5] Backing up current production..."
 mkdir -p "$BACKUP"
-find "$BACKUP" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+safe_backup_cleanup "$BACKUP"
 cp -a "$PRODUCTION/dist" "$BACKUP/dist"
 cp "$PRODUCTION/package.json" "$BACKUP/package.json"
 cp "$PRODUCTION/tsconfig.json" "$BACKUP/tsconfig.json"
@@ -153,6 +214,7 @@ cp "$PRODUCTION/tsconfig.json" "$BACKUP/tsconfig.json"
 [ -d "$PRODUCTION/scripts" ] && mkdir -p "$BACKUP/scripts" && cp "$PRODUCTION/scripts/self-deploy.sh" "$BACKUP/scripts/self-deploy.sh" 2>/dev/null || true
 [ -d "$PRODUCTION/scripts" ] && cp "$PRODUCTION/scripts/setup-staging.sh" "$BACKUP/scripts/setup-staging.sh" 2>/dev/null || true
 [ -d "$PRODUCTION/scripts" ] && cp "$PRODUCTION/scripts/self-rollback.sh" "$BACKUP/scripts/self-rollback.sh" 2>/dev/null || true
+normalize_ownership "$BACKUP"
 log "✓ Backup saved to $BACKUP"
 
 # --- Step 4: Sync to production ---
@@ -212,6 +274,17 @@ if [ "$SKIP_WEB" = "false" ] && [ -d "$STAGING/web/src" ]; then
 fi
 
 log "✓ Synced to production"
+
+# Normalize production ownership to prevent permission issues on subsequent deploys
+log "  Normalizing production file ownership..."
+if [ "${EUID:-$(id -u)}" -eq 0 ]; then
+  chown -R "$PROD_OWNER:$PROD_GROUP" "$PRODUCTION/dist" "$PRODUCTION/src" "$PRODUCTION/schema" "$PRODUCTION/scripts" 2>/dev/null || true
+elif sudo -n /usr/bin/systemd-run --unit="squire-normalize-prod-$$" --wait \
+    bash -c "chown -R '$PROD_OWNER:$PROD_GROUP' '$PRODUCTION/dist' '$PRODUCTION/src' '$PRODUCTION/schema' '$PRODUCTION/scripts'" 2>/dev/null; then
+  sudo -n /usr/bin/systemctl reset-failed "squire-normalize-prod-$$.service" 2>/dev/null || true
+else
+  log "  WARN: Could not normalize production ownership (non-critical)"
+fi
 
 log "  Running production database migrations..."
 cd "$PRODUCTION"
