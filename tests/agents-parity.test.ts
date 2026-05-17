@@ -1,15 +1,22 @@
 /**
- * Phase 2 — Parity tests for the Agent Runtime Registry.
+ * Phase 2/3 — Registry shape guards for loop agents.
  *
- * For each loop agent still constructed inline (goal_worker, telegram),
- * assert that the registry definition produces the same runtime shape the
- * call site builds today. These tests gate each Phase 3 migration: if any
- * of them fail, `runAgent('<id>', ...)` would diverge from the existing
- * AgentEngine construction.
+ * Originally added as parity tests to gate Phase 3 migrations: each
+ * assertion compared the registry definition against the call site's
+ * inline AgentEngine construction. After commune and goal_worker
+ * migrated to runAgent(), only telegram remains pre-migration — so the
+ * goal_worker tests below now serve as plain registry-shape guards
+ * rather than literal parity checks (they continue to be useful, since
+ * the call-site activity-event metadata and addGoalNote text still
+ * depend on `config.goalWorker.maxExecutionMs` matching the registry).
  *
- * Commune is no longer covered here — its call site has already been
- * migrated to runAgent('commune', ...) in Phase 3. Commune shape is
- * still asserted in tests/agents-registry.test.ts.
+ * Telegram still has an inline AgentEngine in services/telegram/handler.ts
+ * — its call site cannot migrate until PromptResolver is extended to
+ * allow async resolvers (its buildSystemPrompt is async). Until then
+ * the telegram tests here remain true parity checks.
+ *
+ * Commune is no longer represented in this file at all; structural
+ * coverage lives in tests/agents-registry.test.ts.
  */
 
 import { test, describe } from 'node:test';
@@ -23,12 +30,15 @@ function toolNames(tools: { function: { name: string } }[]): string[] {
   return tools.map((t) => t.function.name).sort();
 }
 
-describe('Agent Runtime Registry — Phase 2 parity (goal_worker, telegram)', () => {
+describe('Agent Runtime Registry — registry shape guards (goal_worker post-migration; telegram still inline)', () => {
   // ---------------------------------------------------------------------------
-  // goal_worker  →  services/courier/tasks/goalWorker.ts AgentEngine
+  // goal_worker  (post-Phase-3; call site now uses runAgent)
+  //   The remaining assertions guard that the registry knobs still match
+  //   the values the call site reads from config.goalWorker.* (used in
+  //   activity-event metadata and timeout notes after a cancelled run).
   // ---------------------------------------------------------------------------
 
-  test('goal_worker: runtime knobs match courier/tasks/goalWorker.ts call site', () => {
+  test('goal_worker: runtime knobs match config.goalWorker.* used by the call site', () => {
     const def = getAgent('goal_worker');
     assert.equal(def.kind, 'loop_llm');
     assert.equal(def.forceTier, 'fast');
@@ -48,7 +58,7 @@ describe('Agent Runtime Registry — Phase 2 parity (goal_worker, telegram)', ()
   });
 
   // ---------------------------------------------------------------------------
-  // telegram  →  services/telegram/handler.ts AgentEngine
+  // telegram  →  services/telegram/handler.ts AgentEngine (still inline; true parity)
   // ---------------------------------------------------------------------------
 
   test('telegram: runtime knobs match services/telegram/handler.ts call site', () => {

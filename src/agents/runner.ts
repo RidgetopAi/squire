@@ -67,6 +67,7 @@ async function runLoopLLM(def: AgentDefinition, args: AgentRunArgs): Promise<Age
     systemPrompt: systemPrompt ?? undefined,
     tools: def.tools ? def.tools(args) : undefined,
     tier: def.forceTier,
+    callbacks: args.callbacks,
   });
 
   // Honor abort + maxExecutionMs without rewriting AgentEngine.

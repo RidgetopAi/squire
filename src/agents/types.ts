@@ -10,7 +10,7 @@ import type { LoopId } from '../config/master.js';
 import type { LLMRuntimeId, WorkerRuntimeId } from '../services/runtime/index.js';
 import type { ModelTier } from '../services/routing/index.js';
 import type { ToolDefinition, LLMMessage } from '../services/llm/types.js';
-import type { AgentState } from '../services/agent/engine.js';
+import type { AgentState, AgentCallbacks } from '../services/agent/engine.js';
 
 // =============================================================================
 // Kinds
@@ -53,6 +53,8 @@ export interface AgentRunArgs {
   signal?: AbortSignal;
   /** Arbitrary per-agent payload (used by deterministic/connector handlers) */
   payload?: unknown;
+  /** Optional engine callbacks (loop_llm only — onStateChange/onToolCall/onError). */
+  callbacks?: AgentCallbacks;
 }
 
 export interface AgentRunResult {
