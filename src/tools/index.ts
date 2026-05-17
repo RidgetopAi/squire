@@ -13,6 +13,7 @@ import type {
 } from './types.js';
 import { logToolCall } from '../services/tool-logger.js';
 import { recordActivityEvent } from '../services/activity.js';
+import { evaluateAndRecordGuardrail, guardedActionForTool } from '../services/action-guardrails.js';
 import { squireMasterConfig } from '../config/master.js';
 import { CapabilityRegistry, type Capability, type ToolAccessContext } from './capabilityRegistry.js';
 import { capabilityBoundaries } from './capabilities.js';
@@ -188,6 +189,42 @@ export async function executeTool(call: ToolCall, context?: ToolExecutionContext
           toolCallId: call.id,
           name: call.function.name,
           result: `Error: Invalid JSON arguments: ${call.function.arguments}`,
+          success: false,
+        };
+      }
+    }
+
+    const guardedAction = guardedActionForTool(call.function.name, args);
+    if (guardedAction) {
+      const decision = await evaluateAndRecordGuardrail({
+        action: guardedAction,
+        sourceLoop: context?.sourceLoop,
+        toolName: call.function.name,
+        actor: context?.actor,
+        traceId: context?.traceId,
+        parentId: context?.parentId,
+        triggerReason: context?.triggerReason,
+        summary: `Tool guardrail decision: ${call.function.name}`,
+        metadata: buildActivityMetadata(call, context, {
+          arguments: args,
+        }),
+      });
+
+      if (!decision.allowed) {
+        const durationMs = Date.now() - startTime;
+        const message = decision.message ?? `Action blocked by Squire guardrail policy: ${guardedAction}`;
+        logToolCall({
+          toolName: call.function.name,
+          arguments: args,
+          success: false,
+          errorMessage: message,
+          durationMs,
+        });
+
+        return {
+          toolCallId: call.id,
+          name: call.function.name,
+          result: message,
           success: false,
         };
       }

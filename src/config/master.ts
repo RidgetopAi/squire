@@ -1,6 +1,12 @@
 export type ConfigMode = 'public-core' | 'private';
 export type CapabilityVisibility = 'public' | 'private';
 export type ConnectorId = 'mandrel' | 'telegram' | 'google' | 'agentmail' | 'object_storage';
+export type ActionGuardrailPolicy = 'allow' | 'deny' | 'draft' | 'require_approval';
+export type GuardedAction =
+  | 'external.telegram_send'
+  | 'external.email_send'
+  | 'delete.email_trash'
+  | 'delete.permanent';
 export type LoopId =
   | 'socket_chat'
   | 'http_chat'
@@ -85,6 +91,11 @@ export interface SquireMasterConfig {
     defaultToolPolicy: ToolPolicy;
     externalEffectsRequireAudit: boolean;
     loopPolicies: Record<LoopId, ToolPolicy>;
+    actionGuardrails: {
+      defaultPolicy: ActionGuardrailPolicy;
+      loopActionPolicies: Partial<Record<LoopId, Partial<Record<GuardedAction, ActionGuardrailPolicy>>>>;
+      toolPolicies: Record<string, ActionGuardrailPolicy>;
+    };
   };
   visibility: {
     publicCapabilities: string[];
@@ -147,6 +158,77 @@ function envList(env: NodeJS.ProcessEnv, name: string): string[] {
     .split(',')
     .map((value) => value.trim())
     .filter(Boolean);
+}
+
+function parseGuardrailPolicy(value: string | undefined, fallback: ActionGuardrailPolicy): ActionGuardrailPolicy {
+  switch (value) {
+    case 'allow':
+    case 'deny':
+    case 'draft':
+    case 'require_approval':
+      return value;
+    default:
+      return fallback;
+  }
+}
+
+function parseToolGuardrailPolicies(env: NodeJS.ProcessEnv): Record<string, ActionGuardrailPolicy> {
+  const policies: Record<string, ActionGuardrailPolicy> = {};
+  for (const entry of envList(env, 'SQUIRE_TOOL_GUARDRAILS')) {
+    const [toolName, policy] = entry.split(':').map((part) => part.trim());
+    if (!toolName) {
+      continue;
+    }
+    policies[toolName] = parseGuardrailPolicy(policy, 'allow');
+  }
+  return policies;
+}
+
+function isLoopId(value: string): value is LoopId {
+  return [
+    'socket_chat',
+    'http_chat',
+    'telegram',
+    'goal_worker',
+    'courier',
+    'commune',
+    'page',
+    'scout',
+    'worker_agent',
+    'sandbox_worker',
+    'codex_chat',
+  ].includes(value);
+}
+
+function isGuardedAction(value: string): value is GuardedAction {
+  return [
+    'external.telegram_send',
+    'external.email_send',
+    'delete.email_trash',
+    'delete.permanent',
+  ].includes(value);
+}
+
+function parseLoopActionGuardrails(
+  env: NodeJS.ProcessEnv
+): Partial<Record<LoopId, Partial<Record<GuardedAction, ActionGuardrailPolicy>>>> {
+  const policies: Partial<Record<LoopId, Partial<Record<GuardedAction, ActionGuardrailPolicy>>>> = {};
+  for (const entry of envList(env, 'SQUIRE_LOOP_ACTION_GUARDRAILS')) {
+    const [selector, policy] = entry.split(':').map((part) => part.trim());
+    if (!selector) {
+      continue;
+    }
+
+    const [loopId, ...actionParts] = selector.split('.');
+    const action = actionParts.join('.');
+    if (!loopId || !isLoopId(loopId) || !isGuardedAction(action)) {
+      continue;
+    }
+
+    policies[loopId] ??= {};
+    policies[loopId][action] = parseGuardrailPolicy(policy, 'allow');
+  }
+  return policies;
 }
 
 function unique(values: string[]): string[] {
@@ -402,6 +484,11 @@ export function buildSquireMasterConfig(env: NodeJS.ProcessEnv = process.env): S
         worker_agent: 'allow_registered',
         sandbox_worker: 'allow_registered',
         codex_chat: 'allow_registered',
+      },
+      actionGuardrails: {
+        defaultPolicy: parseGuardrailPolicy(env.SQUIRE_ACTION_GUARDRAIL_DEFAULT, 'allow'),
+        loopActionPolicies: parseLoopActionGuardrails(env),
+        toolPolicies: parseToolGuardrailPolicies(env),
       },
     },
     visibility: {

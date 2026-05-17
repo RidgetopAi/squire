@@ -1,11 +1,16 @@
 import { config } from '../../config/index.js';
 import { broadcastEmailSummary } from '../../api/socket/broadcast.js';
 import { recordActivityEvent } from '../activity.js';
+import { evaluateAndRecordGuardrail } from '../action-guardrails.js';
 import type { EmailSummary } from './summarizer.js';
 
 export interface NotifyOptions {
   channels?: ('telegram' | 'webapp')[];
   priority?: 'normal' | 'high';
+  sourceLoop?: string;
+  traceId?: string;
+  triggerReason?: string;
+  metadata?: Record<string, unknown>;
 }
 
 // Telegram max message length
@@ -19,7 +24,12 @@ function truncateForTelegram(message: string): string {
   return message.substring(0, TELEGRAM_MAX_LENGTH - 20) + '\n\n... (truncated)';
 }
 
-async function sendTelegram(message: string, useMarkdown = true): Promise<void> {
+async function sendTelegram(
+  message: string,
+  useMarkdown = true,
+  options: NotifyOptions = {},
+  checkGuardrail = true
+): Promise<void> {
   const token = config.telegram.botToken;
   const chatIds = config.telegram.allowedUserIds;
 
@@ -30,6 +40,27 @@ async function sendTelegram(message: string, useMarkdown = true): Promise<void> 
 
   // Truncate long messages
   const truncatedMessage = truncateForTelegram(message);
+  const sourceLoop = options.sourceLoop ?? 'courier';
+
+  if (checkGuardrail) {
+    const decision = await evaluateAndRecordGuardrail({
+      action: 'external.telegram_send',
+      sourceLoop,
+      traceId: options.traceId,
+      triggerReason: options.triggerReason,
+      summary: 'Telegram notification guardrail decision',
+      metadata: {
+        channel: 'telegram',
+        messagePreview: truncatedMessage.substring(0, 300),
+        ...options.metadata,
+      },
+    });
+
+    if (!decision.allowed) {
+      console.log(`[Notifier] Telegram notification held by guardrail: ${decision.policy}`);
+      return;
+    }
+  }
 
   for (const chatId of chatIds) {
     try {
@@ -47,9 +78,9 @@ async function sendTelegram(message: string, useMarkdown = true): Promise<void> 
         const errorText = await response.text();
         console.error(`[Notifier] Telegram error for ${chatId}:`, errorText);
         await recordActivityEvent({
-          sourceLoop: 'courier',
+          sourceLoop,
           eventType: 'external.message_sent',
-          summary: 'Courier Telegram notification failed',
+          summary: 'Telegram notification failed',
           status: 'failed',
           metadata: {
             channel: 'telegram',
@@ -62,13 +93,13 @@ async function sendTelegram(message: string, useMarkdown = true): Promise<void> 
         // If markdown parsing failed, retry without markdown
         if (useMarkdown && errorText.includes("can't parse entities")) {
           console.log('[Notifier] Retrying without markdown...');
-          await sendTelegram(message.replace(/[*_`\[\]]/g, ''), false);
+          await sendTelegram(message.replace(/[*_`\[\]]/g, ''), false, options, false);
         }
       } else {
         await recordActivityEvent({
-          sourceLoop: 'courier',
+          sourceLoop,
           eventType: 'external.message_sent',
-          summary: 'Courier Telegram notification sent',
+          summary: 'Telegram notification sent',
           status: 'completed',
           metadata: {
             channel: 'telegram',
@@ -80,9 +111,9 @@ async function sendTelegram(message: string, useMarkdown = true): Promise<void> 
     } catch (error) {
       console.error(`[Notifier] Telegram send failed for ${chatId}:`, error);
       await recordActivityEvent({
-        sourceLoop: 'courier',
+        sourceLoop,
         eventType: 'external.message_sent',
-        summary: 'Courier Telegram notification failed',
+        summary: 'Telegram notification failed',
         status: 'failed',
         metadata: {
           channel: 'telegram',
@@ -99,7 +130,7 @@ export async function notify(message: string, options: NotifyOptions = {}): Prom
   const channels = options.channels || ['telegram', 'webapp'];
 
   if (channels.includes('telegram')) {
-    await sendTelegram(message);
+    await sendTelegram(message, true, options);
   }
 
   if (channels.includes('webapp')) {
@@ -132,7 +163,7 @@ export async function notifyEmailSummary(emails: EmailSummary[]): Promise<void> 
   const message = header + body + footer;
 
   // Send to Telegram
-  await sendTelegram(message);
+  await sendTelegram(message, true, { sourceLoop: 'courier' });
 
   // Broadcast to webapp via Socket.IO
   broadcastEmailSummary({

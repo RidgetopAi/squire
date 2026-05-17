@@ -6,6 +6,7 @@
 
 import { google } from 'googleapis';
 import { getAuthenticatedClient, listSyncEnabledAccounts } from '../google/auth.js';
+import { evaluateAndRecordGuardrail } from '../action-guardrails.js';
 
 /**
  * Send an HTML email via Gmail
@@ -123,6 +124,22 @@ export async function sendDailyBrief(
   }
 
   console.log(`[DailyBrief] Sending to ${account.email}`);
+
+  const decision = await evaluateAndRecordGuardrail({
+    action: 'external.email_send',
+    sourceLoop: 'courier',
+    summary: 'Daily brief email guardrail decision',
+    metadata: {
+      channel: 'email',
+      to: account.email,
+      subject,
+    },
+  });
+
+  if (!decision.allowed) {
+    console.log(`[DailyBrief] Email held by guardrail: ${decision.policy}`);
+    return false;
+  }
 
   return sendHtmlEmail(account.id, account.email, subject, htmlBody);
 }

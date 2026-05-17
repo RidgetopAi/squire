@@ -33,6 +33,8 @@ describe('Squire master config', () => {
     assert.strictEqual(config.permissions.loopPolicies.courier, 'allow_list');
     assert.strictEqual(config.permissions.loopPolicies.page, 'allow_list');
     assert.strictEqual(config.permissions.loopPolicies.scout, 'allow_list');
+    assert.strictEqual(config.permissions.actionGuardrails.defaultPolicy, 'allow');
+    assert.deepStrictEqual(config.permissions.actionGuardrails.toolPolicies, {});
 
     assert.strictEqual(config.mandrel.project, 'squire-agent');
     assert.strictEqual(config.mandrel.transport, 'mcp');
@@ -52,6 +54,9 @@ describe('Squire master config', () => {
       LLM_PROVIDER: 'anthropic',
       LLM_MODEL: 'claude-test',
       TELEGRAM_BOT_TOKEN: 'secret-token',
+      SQUIRE_ACTION_GUARDRAIL_DEFAULT: 'draft',
+      SQUIRE_TOOL_GUARDRAILS: 'email_send:require_approval,delete_note:deny',
+      SQUIRE_LOOP_ACTION_GUARDRAILS: 'commune.external.telegram_send:draft,http_chat.delete.permanent:require_approval',
     });
 
     assert.strictEqual(config.mode, 'public-core');
@@ -67,6 +72,17 @@ describe('Squire master config', () => {
     assert.strictEqual(config.loops.scout.enabled, true);
     assert.strictEqual(config.providers.llm.default.provider, 'anthropic');
     assert.strictEqual(config.providers.llm.default.model, 'claude-test');
+    assert.strictEqual(config.permissions.actionGuardrails.defaultPolicy, 'draft');
+    assert.strictEqual(config.permissions.actionGuardrails.toolPolicies.email_send, 'require_approval');
+    assert.strictEqual(config.permissions.actionGuardrails.toolPolicies.delete_note, 'deny');
+    assert.strictEqual(
+      config.permissions.actionGuardrails.loopActionPolicies.commune?.['external.telegram_send'],
+      'draft'
+    );
+    assert.strictEqual(
+      config.permissions.actionGuardrails.loopActionPolicies.http_chat?.['delete.permanent'],
+      'require_approval'
+    );
     assert.deepStrictEqual(config.connectors.telegram.requiredSecrets, [
       'TELEGRAM_BOT_TOKEN',
       'TELEGRAM_ALLOWED_USER_IDS',

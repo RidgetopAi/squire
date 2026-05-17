@@ -52,6 +52,7 @@ async function withRuntimePolicy<T>(
           allowedCapabilities: [...squireMasterConfig.loops[loopId].allowedCapabilities],
           allowedTools: [...squireMasterConfig.loops[loopId].allowedTools],
           policy: squireMasterConfig.permissions.loopPolicies[loopId],
+          actionPolicies: { ...(squireMasterConfig.permissions.actionGuardrails.loopActionPolicies[loopId] ?? {}) },
         },
       ])
     ) as Record<MutableLoopId, {
@@ -59,7 +60,12 @@ async function withRuntimePolicy<T>(
       allowedCapabilities: string[];
       allowedTools: string[];
       policy: typeof squireMasterConfig.permissions.loopPolicies[MutableLoopId];
+      actionPolicies: NonNullable<typeof squireMasterConfig.permissions.actionGuardrails.loopActionPolicies[MutableLoopId]>;
     }>,
+    actionGuardrails: {
+      defaultPolicy: squireMasterConfig.permissions.actionGuardrails.defaultPolicy,
+      toolPolicies: { ...squireMasterConfig.permissions.actionGuardrails.toolPolicies },
+    },
   };
 
   try {
@@ -72,7 +78,10 @@ async function withRuntimePolicy<T>(
       squireMasterConfig.loops[loopId].allowedCapabilities = original.loops[loopId].allowedCapabilities;
       squireMasterConfig.loops[loopId].allowedTools = original.loops[loopId].allowedTools;
       squireMasterConfig.permissions.loopPolicies[loopId] = original.loops[loopId].policy;
+      squireMasterConfig.permissions.actionGuardrails.loopActionPolicies[loopId] = original.loops[loopId].actionPolicies;
     }
+    squireMasterConfig.permissions.actionGuardrails.defaultPolicy = original.actionGuardrails.defaultPolicy;
+    squireMasterConfig.permissions.actionGuardrails.toolPolicies = original.actionGuardrails.toolPolicies;
   }
 }
 
@@ -214,6 +223,56 @@ describe('runtime policy enforcement surfaces', () => {
 
         assert.strictEqual(parsed.cleanContent, 'visible');
         assert.deepStrictEqual(parsed.toolCalls.map((call) => call.function.name), ['bash_execute']);
+      }
+    );
+  });
+
+  it('blocks high-impact tool execution when action guardrails require drafts or approval', async () => {
+    await withRuntimePolicy(
+      () => {
+        squireMasterConfig.permissions.actionGuardrails.toolPolicies.email_send = 'draft';
+        squireMasterConfig.permissions.actionGuardrails.loopActionPolicies.http_chat = {
+          'delete.permanent': 'require_approval',
+        };
+      },
+      async () => {
+        const [emailResult] = await executeTools([
+          {
+            id: 'call-email-send',
+            type: 'function',
+            function: {
+              name: 'email_send',
+              arguments: JSON.stringify({
+                to: 'person@example.com',
+                subject: 'Draft me',
+                body: 'Hold this message',
+              }),
+            },
+          },
+        ], {
+          sourceLoop: 'http_chat',
+          triggerReason: 'test guardrail',
+        });
+
+        assert.strictEqual(emailResult.success, false);
+        assert.match(emailResult.result, /held as a draft/);
+
+        const [deleteResult] = await executeTools([
+          {
+            id: 'call-delete-note',
+            type: 'function',
+            function: {
+              name: 'delete_note',
+              arguments: JSON.stringify({ note_title: 'Important' }),
+            },
+          },
+        ], {
+          sourceLoop: 'http_chat',
+          triggerReason: 'test guardrail',
+        });
+
+        assert.strictEqual(deleteResult.success, false);
+        assert.match(deleteResult.result, /requires approval/);
       }
     );
   });

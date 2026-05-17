@@ -199,7 +199,13 @@ Begin working on your goal now.`;
       const notifyMessage = `🎯 *Goal Worker*\nWorked on: _${goal.title}_\nTurns: ${result.turnCount} | Status: ${result.state}\n${result.content.substring(0, 200)}`;
       
       try {
-        await notify(notifyMessage, { channels: ['telegram'] });
+        await notify(notifyMessage, {
+          channels: ['telegram'],
+          sourceLoop: 'goal_worker',
+          traceId,
+          triggerReason: 'courier scheduled goal worker task',
+          metadata: { goalId: goal.id },
+        });
         await recordActivityEvent({
           traceId,
           sourceLoop: 'goal_worker',
