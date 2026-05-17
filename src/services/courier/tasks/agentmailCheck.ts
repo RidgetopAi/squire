@@ -66,13 +66,6 @@ export const agentmailCheckTask: CourierTask = {
       const footer = '\n\n─────────────────\nUse squire_email_list to see all messages';
       const message = header + body + footer;
 
-      // TEMP DIAGNOSTIC — pinpoint the failing entity offset.
-      const messageBytes = Buffer.from(message, 'utf8');
-      console.log(`[AgentMailCheckDebug] msg ${message.length} chars / ${messageBytes.length} bytes`);
-      if (messageBytes.length > 2150) {
-        console.log('[AgentMailCheckDebug] bytes 2150..2260:', JSON.stringify(messageBytes.slice(2150, 2260).toString('utf8')));
-      }
-
       // Send Telegram notification
       await notify(message, { channels: ['telegram'] });
 
