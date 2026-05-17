@@ -148,14 +148,20 @@ export async function notifyEmailSummary(emails: EmailSummary[]): Promise<void> 
   // Build message with better formatting
   const header = `📧 *Email Summary* (${emails.length} new)\n\n`;
 
-  // Format each email with spacing and structure
-  // Escape subject and summary to prevent markdown parsing errors
+  // Format each email with spacing and structure.
+  // Strip markdown-breaking characters from EVERY user-controlled field —
+  // sender name was previously left raw, so a sender like
+  // "Welcome_to_Service" or "[Notice]" would leave an unclosed Telegram
+  // entity and trip the markdown parser at whatever byte offset hit it,
+  // forcing the no-markdown retry path. Escape sender alongside subject
+  // and summary so the original send succeeds with formatting intact.
+  const stripMd = (s: string) => s.replace(/[*_`\[\]]/g, '');
   const body = emails.map((e, i) => {
     const senderPart = e.from.split('<')[0];
-    const sender = senderPart?.trim() || e.from;
-    // Escape markdown-breaking characters in user content
-    const safeSubject = e.subject.replace(/[*_`\[\]]/g, '');
-    const safeSummary = e.summary.replace(/[*_`\[\]]/g, '');
+    const rawSender = senderPart?.trim() || e.from;
+    const sender = stripMd(rawSender);
+    const safeSubject = stripMd(e.subject);
+    const safeSummary = stripMd(e.summary);
     return `*${i + 1}. ${sender}*\n${safeSubject}\n${safeSummary}\n_ID: ${e.id}_`;
   }).join('\n\n');
 
