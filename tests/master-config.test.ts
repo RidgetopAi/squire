@@ -37,8 +37,9 @@ describe('Squire master config', () => {
     assert.deepStrictEqual(config.permissions.actionGuardrails.toolPolicies, {});
 
     assert.strictEqual(config.mandrel.project, 'squire-agent');
-    assert.strictEqual(config.mandrel.transport, 'mcp');
+    assert.strictEqual(config.mandrel.transport, 'http-bridge');
     assert.strictEqual(config.mandrel.requireStableConnectionId, true);
+    assert.strictEqual(config.mandrel.allowHttpFallback, false);
   });
 
   it('applies env overrides without exposing secrets directly', () => {

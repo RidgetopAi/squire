@@ -78,6 +78,7 @@ export async function callMandrelTool<T = unknown>(
         arguments: args,
         connectionId,
         transport: config.master.mandrel.transport,
+        configuredTransport: config.master.mandrel.transport,
         allowHttpFallback: config.master.mandrel.allowHttpFallback,
       },
     });
@@ -112,6 +113,9 @@ export async function callMandrelTool<T = unknown>(
           arguments: args,
           connectionId,
           transport: 'http-bridge',
+          configuredTransport: config.master.mandrel.transport,
+          allowHttpFallback: config.master.mandrel.allowHttpFallback,
+          httpFallback: config.master.mandrel.transport === 'mcp',
           httpStatus: response.status,
           responseText: text || response.statusText,
         },
@@ -134,6 +138,9 @@ export async function callMandrelTool<T = unknown>(
         arguments: args,
         connectionId,
         transport: 'http-bridge',
+        configuredTransport: config.master.mandrel.transport,
+        allowHttpFallback: config.master.mandrel.allowHttpFallback,
+        httpFallback: config.master.mandrel.transport === 'mcp',
       },
     });
     return { success: true, data: data as T };
@@ -150,6 +157,9 @@ export async function callMandrelTool<T = unknown>(
         arguments: args,
         connectionId,
         transport: 'http-bridge',
+        configuredTransport: config.master.mandrel.transport,
+        allowHttpFallback: config.master.mandrel.allowHttpFallback,
+        httpFallback: config.master.mandrel.transport === 'mcp',
         error: message,
       },
     });

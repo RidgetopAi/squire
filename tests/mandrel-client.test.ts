@@ -7,10 +7,14 @@ process.env.MANDREL_CONNECTION_SCOPE = 'runtime';
 process.env.ACTIVITY_LOGGING_ENABLED = 'false';
 
 const { callMandrelTool, canUseMandrelHttpBridge, getMandrelConnectionId } = await import('../src/services/mandrel/client.js');
+const { config } = await import('../src/config/index.js');
 
 describe('Mandrel client identity', () => {
+  const originalMandrelPolicy = { ...config.master.mandrel };
+
   afterEach(() => {
     delete process.env.NODE_ENV;
+    Object.assign(config.master.mandrel, originalMandrelPolicy);
   });
 
   it('builds a stable Squire connection id with environment, scope, and project', () => {
@@ -77,5 +81,32 @@ describe('Mandrel client identity', () => {
       requireStableConnectionId: true,
       allowHttpFallback: false,
     }), true);
+  });
+
+  it('does not call the HTTP bridge when strict MCP policy disables fallback', async () => {
+    const originalFetch = globalThis.fetch;
+    let fetchCalled = false;
+
+    Object.assign(config.master.mandrel, {
+      project: 'squire-agent',
+      transport: 'mcp',
+      requireStableConnectionId: true,
+      allowHttpFallback: false,
+    });
+
+    globalThis.fetch = async () => {
+      fetchCalled = true;
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    };
+
+    try {
+      const result = await callMandrelTool('project_current', {});
+
+      assert.strictEqual(fetchCalled, false);
+      assert.strictEqual(result.success, false);
+      assert.match(result.error ?? '', /HTTP bridge disabled/);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

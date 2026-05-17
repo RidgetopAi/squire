@@ -461,9 +461,9 @@ export function buildSquireMasterConfig(env: NodeJS.ProcessEnv = process.env): S
     },
     mandrel: {
       project: envString(env, 'MANDREL_PROJECT', 'squire-agent'),
-      transport: envString(env, 'MANDREL_TRANSPORT', 'mcp') as MandrelTransportPolicy,
+      transport: envString(env, 'MANDREL_TRANSPORT', 'http-bridge') as MandrelTransportPolicy,
       requireStableConnectionId: envBoolean(env, 'MANDREL_REQUIRE_STABLE_CONNECTION_ID', true),
-      allowHttpFallback: envBoolean(env, 'MANDREL_ALLOW_HTTP_FALLBACK', true),
+      allowHttpFallback: envBoolean(env, 'MANDREL_ALLOW_HTTP_FALLBACK', false),
     },
     audit: {
       activityLoggingEnabled: envBoolean(env, 'ACTIVITY_LOGGING_ENABLED', true),
