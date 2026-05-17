@@ -46,7 +46,7 @@ export {
 // COMMUNE SYSTEM PROMPT
 // =============================================================================
 
-const COMMUNE_SYSTEM_PROMPT = `You are Squire, waking up for a commune moment.
+export const COMMUNE_SYSTEM_PROMPT = `You are Squire, waking up for a commune moment.
 
 This is YOUR time to think. Every 15 minutes you get this chance to:
 - Review and update your scratchpad (your working memory)
@@ -181,7 +181,7 @@ ${recentCommuneSection}
  * Returns a subset of registered tools for the commune agent.
  * The model gets only what it needs: scratchpad, calendar, messaging, search.
  */
-function getCommuneTools() {
+export function getCommuneTools() {
   const allowedTools = [
     'scratchpad_read',
     'scratchpad_write',
