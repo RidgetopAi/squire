@@ -5,15 +5,13 @@
  * lines. Uses the courier-summarizer runtime slot.
  *
  * The caller passes the formatted email batch (From/Subject/Snippet blocks
- * separated by '---') as args.input.
+ * separated by '---') as args.input. The agent uses buildMessages so the
+ * instructions ship in the single user message — preserves byte parity
+ * with the legacy SUMMARIZE_PROMPT.replace('{emails}', formatted) call.
  */
 
 import { registerAgent } from './registry.js';
 import type { AgentDefinition } from './types.js';
-
-const SYSTEM_PROMPT = `Summarize each email in 1-2 lines. Be concise. Highlight the key point or action needed.
-
-Format each as: "• [Sender Name] - [Summary]"`;
 
 export const courierSummarizerAgent: AgentDefinition = registerAgent({
   id: 'courier_summarizer',
@@ -22,6 +20,15 @@ export const courierSummarizerAgent: AgentDefinition = registerAgent({
   description: 'Summarizes unread emails for the courier notifier. Returns "• Sender - Summary" lines.',
 
   runtimeSlot: 'courier-summarizer',
-  systemPrompt: SYSTEM_PROMPT,
-  buildPrompt: (args) => `Emails:\n${args.input ?? ''}`,
+  buildMessages: (args) => [
+    {
+      role: 'user',
+      content: `Summarize each email in 1-2 lines. Be concise. Highlight the key point or action needed.
+
+Format each as: "• [Sender Name] - [Summary]"
+
+Emails:
+${args.input ?? ''}`,
+    },
+  ],
 });

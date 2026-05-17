@@ -1,6 +1,5 @@
-import { callLLM } from '../llm/index.js';
+import { runAgent } from '../../agents/index.js';
 import type { Email } from '../google/gmail.js';
-import { getLLMRuntime } from '../runtime/index.js';
 
 export interface EmailSummary {
   id: string;
@@ -8,13 +7,6 @@ export interface EmailSummary {
   subject: string;
   summary: string;
 }
-
-const SUMMARIZE_PROMPT = `Summarize each email in 1-2 lines. Be concise. Highlight the key point or action needed.
-
-Format each as: "• [Sender Name] - [Summary]"
-
-Emails:
-{emails}`;
 
 export async function summarizeEmails(emails: Email[]): Promise<EmailSummary[]> {
   if (emails.length === 0) return [];
@@ -24,19 +16,8 @@ export async function summarizeEmails(emails: Email[]): Promise<EmailSummary[]> 
   ).join('\n\n---\n\n');
 
   try {
-    const runtime = getLLMRuntime('courier-summarizer');
-    const response = await callLLM(
-      [{ role: 'user', content: SUMMARIZE_PROMPT.replace('{emails}', formatted) }],
-      undefined,
-      {
-        provider: runtime.provider,
-        model: runtime.model,
-        maxTokens: runtime.maxTokens,
-        temperature: runtime.temperature,
-      }
-    );
-
-    const summaryText = response.content || '';
+    const result = await runAgent('courier_summarizer', { input: formatted });
+    const summaryText = result.content || '';
 
     // Parse summaries back to structured format
     // Each line is "• [Sender] - [Summary]"
