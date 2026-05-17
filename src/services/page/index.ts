@@ -55,7 +55,7 @@ export async function page(request: PageRequest): Promise<PageResult> {
   const { task, cwd, maxTurns = 20, signal } = request;
 
   // Get page tools
-  const pageTools: PageTool[] = getPageTools();
+  const pageTools: PageTool[] = getPageTools('page');
   const toolDefs: ToolDefinition[] = pageTools.map(t => t.definition);
 
   // Build initial messages
@@ -88,6 +88,7 @@ export async function page(request: PageRequest): Promise<PageResult> {
         maxTokens: runtime.maxTokens,
         temperature: runtime.temperature,
         signal,
+        sourceLoop: 'page',
       });
 
       lastContent = response.content || '';

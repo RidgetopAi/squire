@@ -240,7 +240,7 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
     const tools = getHttpChatToolDefinitions(hasImages);
 
     // Call LLM with tools
-    let result: LLMCompletionResult = await complete(messages, { tools });
+    let result: LLMCompletionResult = await complete(messages, { tools, sourceLoop: 'http_chat' });
 
     // Tool calling loop - handle tool calls until we get a final response
     const maxToolIterations = 50; // Prevent infinite loops
@@ -283,7 +283,7 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
       }
 
       // Re-prompt LLM with tool results
-      result = await complete(messages, { tools });
+      result = await complete(messages, { tools, sourceLoop: 'http_chat' });
     }
 
     if (iterations >= maxToolIterations) {

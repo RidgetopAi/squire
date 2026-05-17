@@ -36,6 +36,7 @@ export interface LLMCompletionOptions {
   stopSequences?: string[];
   tools?: ToolDefinition[];
   toolChoice?: 'auto' | 'none' | 'required';
+  sourceLoop?: string;
 }
 
 export interface LLMCompletionResult {
@@ -78,6 +79,7 @@ export async function complete(
   const response: LLMResponse = await callLLM(unifiedMessages, options?.tools, {
     maxTokens: options?.maxTokens,
     temperature: options?.temperature,
+    sourceLoop: options?.sourceLoop,
   });
 
   const promptTokens = response.usage?.promptTokens ?? 0;

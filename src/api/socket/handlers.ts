@@ -1146,7 +1146,7 @@ async function streamWithToolLoop(
           });
         },
       },
-      { signal, ...providerOverride }
+      { signal, ...providerOverride, sourceLoop: activityContext?.sourceLoop }
     );
 
     fullContent += response.content;

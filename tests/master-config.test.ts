@@ -25,7 +25,14 @@ describe('Squire master config', () => {
     assert.strictEqual(config.loops.goal_worker.schedule?.intervalMs, 3600000);
     assert.ok(config.loops.goal_worker.allowedCapabilities.includes('mandrel'));
     assert.ok(config.loops.commune.externalEffects.includes('telegram_send'));
+    assert.deepStrictEqual(config.loops.page.allowedTools, ['read_file', 'grep_search', 'glob_files', 'bash_read']);
+    assert.deepStrictEqual(config.loops.scout.allowedTools, ['read_file', 'grep_search', 'glob_files', 'bash_read']);
+    assert.strictEqual(config.loops.worker_agent.runtime, 'coding');
+    assert.strictEqual(config.loops.sandbox_worker.runtime, 'sandbox');
+    assert.ok(config.loops.codex_chat.allowedCapabilities.includes('mandrel'));
     assert.strictEqual(config.permissions.loopPolicies.courier, 'allow_list');
+    assert.strictEqual(config.permissions.loopPolicies.page, 'allow_list');
+    assert.strictEqual(config.permissions.loopPolicies.scout, 'allow_list');
 
     assert.strictEqual(config.mandrel.project, 'squire-agent');
     assert.strictEqual(config.mandrel.transport, 'mcp');
@@ -56,6 +63,8 @@ describe('Squire master config', () => {
     assert.strictEqual(config.audit.retentionDays, 14);
     assert.strictEqual(config.loops.goal_worker.schedule?.intervalMs, 120000);
     assert.strictEqual(config.loops.telegram.enabled, false);
+    assert.strictEqual(config.loops.page.enabled, true);
+    assert.strictEqual(config.loops.scout.enabled, true);
     assert.strictEqual(config.providers.llm.default.provider, 'anthropic');
     assert.strictEqual(config.providers.llm.default.model, 'claude-test');
     assert.deepStrictEqual(config.connectors.telegram.requiredSecrets, [
@@ -75,5 +84,6 @@ describe('Squire master config', () => {
     assert.strictEqual(config.capabilities.calendar.enabled, false);
     assert.strictEqual(config.capabilities.dealer_foundation.enabled, false);
     assert.deepStrictEqual(config.loops.socket_chat.allowedCapabilities, ['time', 'notes', 'lists']);
+    assert.deepStrictEqual(config.loops.codex_chat.allowedCapabilities, ['time', 'notes', 'lists']);
   });
 });

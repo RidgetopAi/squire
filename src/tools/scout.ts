@@ -50,7 +50,7 @@ async function scoutCall(args: ScoutArgs): Promise<string> {
   }
 
   const maxTurns = max_turns ?? 15;
-  const scoutTools: PageTool[] = getPageTools();
+  const scoutTools: PageTool[] = getPageTools('scout');
   const toolDefs: ToolDefinition[] = scoutTools.map(t => t.definition);
 
   const messages: LLMMessage[] = [
@@ -71,6 +71,7 @@ async function scoutCall(args: ScoutArgs): Promise<string> {
         model: runtime.model,
         maxTokens: runtime.maxTokens,
         temperature: runtime.temperature,
+        sourceLoop: 'scout',
       });
 
       lastContent = response.content || '';

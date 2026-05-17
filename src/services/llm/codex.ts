@@ -2,6 +2,7 @@ import { exec } from 'child_process';
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { userInfo } from 'os';
 import { config } from '../../config/index.js';
+import { isToolNameAllowedForLoop } from '../../config/runtime-policy.js';
 import type { CallOptions, LLMMessage, LLMResponse, StreamCallbacks, ToolDefinition } from './types.js';
 
 const DEFAULTS = {
@@ -195,19 +196,21 @@ function toToolCalls(
 
 export function parseCodexToolCalls(
   content: string,
-  tools?: ToolDefinition[]
+  tools?: ToolDefinition[],
+  options?: { sourceLoop?: string }
 ): { cleanContent: string; toolCalls: LLMResponse['toolCalls'] } {
   if (!tools || tools.length === 0) {
     return { cleanContent: content, toolCalls: [] };
   }
 
+  const availableTools = getCodexToolDefinitionsForLoop(tools, options?.sourceLoop);
   const envelopePattern = /SQUIRE_TOOL_CALLS_JSON\s*([\s\S]*?)\s*END_SQUIRE_TOOL_CALLS_JSON/g;
   const matches = Array.from(content.matchAll(envelopePattern));
   if (matches.length === 0) {
     return { cleanContent: content, toolCalls: [] };
   }
 
-  const allowedTools = new Set(tools.map((tool) => tool.function.name));
+  const allowedTools = new Set(availableTools.map((tool) => tool.function.name));
   const cleanContent = content.replace(envelopePattern, '').trim();
   const toolCalls: LLMResponse['toolCalls'] = [];
 
@@ -228,6 +231,23 @@ export function parseCodexToolCalls(
   }
 
   return { cleanContent, toolCalls };
+}
+
+export function getCodexToolDefinitionsForLoop(
+  tools: ToolDefinition[] | undefined,
+  sourceLoop?: string
+): ToolDefinition[] {
+  if (!tools || tools.length === 0) {
+    return [];
+  }
+
+  if (!sourceLoop) {
+    return tools;
+  }
+
+  return tools.filter((tool) => (
+    isToolNameAllowedForLoop(config.master, sourceLoop, tool.function.name)
+  ));
 }
 
 function chunkText(text: string, size = 160): string[] {
@@ -288,7 +308,9 @@ export async function callCodex(
   const promptFile = `/tmp/squire-codex-chat-prompt-${sessionId}`;
   const outputFile = `/tmp/squire-codex-chat-output-${sessionId}`;
   const jsonlFile = `/tmp/squire-codex-chat-events-${sessionId}.jsonl`;
-  const prompt = buildCodexPrompt(messages, tools);
+  const sourceScopedTools = getCodexToolDefinitionsForLoop(tools, options?.sourceLoop);
+  const scopedTools = getCodexToolDefinitionsForLoop(sourceScopedTools, 'codex_chat');
+  const prompt = buildCodexPrompt(messages, scopedTools);
   writeFileSync(promptFile, prompt, { mode: 0o644 });
 
   const codexCommand = [
@@ -323,7 +345,7 @@ export async function callCodex(
     const { stdout } = await runCommand(command, timeout, options?.signal);
     const content = existsSync(outputFile) ? readFileSync(outputFile, 'utf-8') : stdout;
     const finalContent = content.trim();
-    const parsed = parseCodexToolCalls(finalContent, tools);
+    const parsed = parseCodexToolCalls(finalContent, scopedTools, { sourceLoop: options?.sourceLoop });
 
     if (parsed.toolCalls.length === 0) {
       for (const chunk of chunkText(parsed.cleanContent)) {

@@ -2,6 +2,8 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { existsSync, writeFileSync, unlinkSync, readFileSync } from 'fs';
 import { userInfo } from 'os';
+import { config } from '../../config/index.js';
+import { isLoopEnabled } from '../../config/runtime-policy.js';
 import { getWorkerModel, getWorkerRuntime, type WorkerRuntimeId } from './index.js';
 
 const execAsync = promisify(exec);
@@ -51,6 +53,10 @@ function getSessionId(providedId?: string): string {
     return providedId;
   }
   return crypto.randomUUID();
+}
+
+function getWorkerSourceLoop(runtimeId: WorkerRuntimeId): 'worker_agent' | 'sandbox_worker' {
+  return runtimeId === 'sandbox' ? 'sandbox_worker' : 'worker_agent';
 }
 
 function shellQuote(value: string): string {
@@ -252,18 +258,31 @@ async function runCodex(options: WorkerAgentOptions, model: string, timeout: num
 }
 
 export async function runWorkerAgent(options: WorkerAgentOptions): Promise<WorkerAgentResult> {
+  const runtime = getWorkerRuntime(options.runtimeId);
+  const sourceLoop = getWorkerSourceLoop(options.runtimeId);
+
+  if (!isLoopEnabled(config.master, sourceLoop)) {
+    return {
+      result: '',
+      sessionId: options.sessionId ?? '',
+      success: false,
+      error: `${sourceLoop} is disabled by Squire master config policy`,
+      provider: runtime.provider,
+      model: '',
+    };
+  }
+
   if (!options.prompt || options.prompt.trim().length === 0) {
     return {
       result: '',
       sessionId: '',
       success: false,
       error: 'prompt is required',
-      provider: getWorkerRuntime(options.runtimeId).provider,
+      provider: runtime.provider,
       model: '',
     };
   }
 
-  const runtime = getWorkerRuntime(options.runtimeId);
   const model = getWorkerModel(options.runtimeId, options.model);
   const timeout = Math.min(options.timeout || DEFAULTS.timeout, DEFAULTS.timeout);
 

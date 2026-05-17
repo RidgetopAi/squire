@@ -12,6 +12,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { glob } from 'glob';
 import { config } from '../../config/index.js';
+import { isToolNameAllowedForLoop } from '../../config/runtime-policy.js';
 import type { ToolDefinition } from '../../tools/types.js';
 import {
   resolvePath,
@@ -650,11 +651,13 @@ Use this for directory listings, file metadata, system info, etc.`,
 
 // === EXPORT ===
 
-export function getPageTools(): PageTool[] {
+export function getPageTools(sourceLoop?: string): PageTool[] {
   return [
     { definition: readFileDefinition, handler: readFile },
     { definition: grepSearchDefinition, handler: grepSearch },
     { definition: globFilesDefinition, handler: globFiles },
     { definition: bashReadDefinition, handler: bashRead },
-  ];
+  ].filter((tool) => (
+    isToolNameAllowedForLoop(config.master, sourceLoop, tool.definition.function.name)
+  ));
 }

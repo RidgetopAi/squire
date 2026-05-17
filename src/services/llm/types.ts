@@ -60,6 +60,7 @@ export interface CallOptions {
   model?: string;
   maxTokens?: number;
   temperature?: number;
+  sourceLoop?: string;
 }
 
 /**

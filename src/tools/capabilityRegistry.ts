@@ -4,7 +4,8 @@ import type {
   ToolHandler,
   ToolSpec,
 } from './types.js';
-import type { LoopId, SquireMasterConfig, ToolPolicy } from '../config/master.js';
+import type { SquireMasterConfig } from '../config/master.js';
+import { isToolNameAllowedByPolicy, normalizeLoopId } from '../config/runtime-policy.js';
 
 export type CapabilityVisibility = 'public' | 'private';
 
@@ -179,40 +180,6 @@ export class CapabilityRegistry {
       return false;
     }
 
-    return isToolNameAllowed(name, loopConfig.allowedTools, policy);
+    return isToolNameAllowedByPolicy(name, loopConfig.allowedTools, policy);
   }
-}
-
-function normalizeLoopId(sourceLoop: string | undefined): LoopId | undefined {
-  if (!sourceLoop) {
-    return undefined;
-  }
-
-  if (sourceLoop === 'socket_document_chat') {
-    return 'socket_chat';
-  }
-
-  switch (sourceLoop) {
-    case 'socket_chat':
-    case 'http_chat':
-    case 'telegram':
-    case 'goal_worker':
-    case 'courier':
-    case 'commune':
-      return sourceLoop;
-    default:
-      return undefined;
-  }
-}
-
-function isToolNameAllowed(name: string, allowedTools: string[], policy: ToolPolicy): boolean {
-  if (allowedTools.includes('*')) {
-    return true;
-  }
-
-  if (policy === 'allow_list') {
-    return allowedTools.includes(name);
-  }
-
-  return allowedTools.length === 0 || allowedTools.includes(name);
 }

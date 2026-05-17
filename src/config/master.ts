@@ -1,7 +1,18 @@
 export type ConfigMode = 'public-core' | 'private';
 export type CapabilityVisibility = 'public' | 'private';
 export type ConnectorId = 'mandrel' | 'telegram' | 'google' | 'agentmail' | 'object_storage';
-export type LoopId = 'socket_chat' | 'http_chat' | 'telegram' | 'goal_worker' | 'courier' | 'commune';
+export type LoopId =
+  | 'socket_chat'
+  | 'http_chat'
+  | 'telegram'
+  | 'goal_worker'
+  | 'courier'
+  | 'commune'
+  | 'page'
+  | 'scout'
+  | 'worker_agent'
+  | 'sandbox_worker'
+  | 'codex_chat';
 export type MandrelTransportPolicy = 'mcp' | 'http-bridge';
 export type ToolPolicy = 'allow_registered' | 'allow_list' | 'deny_all';
 
@@ -325,6 +336,46 @@ export function buildSquireMasterConfig(env: NodeJS.ProcessEnv = process.env): S
         externalEffects: ['telegram_send', 'tool_calls'],
         audit: { traceActivity: true, retentionDays: auditRetentionDays },
       },
+      page: {
+        enabled: envBoolean(env, 'PAGE_AGENT_ENABLED', true),
+        runtime: 'page',
+        allowedCapabilities: ['page'],
+        allowedTools: ['read_file', 'grep_search', 'glob_files', 'bash_read'],
+        externalEffects: ['read_only_file_access'],
+        audit: { traceActivity: true, retentionDays: auditRetentionDays },
+      },
+      scout: {
+        enabled: envBoolean(env, 'SCOUT_AGENT_ENABLED', true),
+        runtime: 'scout',
+        allowedCapabilities: ['scout'],
+        allowedTools: ['read_file', 'grep_search', 'glob_files', 'bash_read'],
+        externalEffects: ['read_only_file_access'],
+        audit: { traceActivity: true, retentionDays: auditRetentionDays },
+      },
+      worker_agent: {
+        enabled: envBoolean(env, 'WORKER_AGENT_ENABLED', true),
+        runtime: 'coding',
+        allowedCapabilities: ['coding'],
+        allowedTools: [],
+        externalEffects: ['filesystem_write', 'shell_exec', 'git_operations'],
+        audit: { traceActivity: true, retentionDays: auditRetentionDays },
+      },
+      sandbox_worker: {
+        enabled: envBoolean(env, 'SANDBOX_WORKER_ENABLED', true),
+        runtime: 'sandbox',
+        allowedCapabilities: ['sandbox'],
+        allowedTools: [],
+        externalEffects: ['sandbox_filesystem_write', 'shell_exec'],
+        audit: { traceActivity: true, retentionDays: auditRetentionDays },
+      },
+      codex_chat: {
+        enabled: envBoolean(env, 'CODEX_CHAT_ENABLED', true),
+        runtime: 'smart',
+        allowedCapabilities: allEnabledCapabilities,
+        allowedTools: ['*'],
+        externalEffects: ['tool_calls'],
+        audit: { traceActivity: true, retentionDays: auditRetentionDays },
+      },
     },
     mandrel: {
       project: envString(env, 'MANDREL_PROJECT', 'squire-agent'),
@@ -346,6 +397,11 @@ export function buildSquireMasterConfig(env: NodeJS.ProcessEnv = process.env): S
         goal_worker: 'allow_registered',
         courier: 'allow_list',
         commune: 'allow_registered',
+        page: 'allow_list',
+        scout: 'allow_list',
+        worker_agent: 'allow_registered',
+        sandbox_worker: 'allow_registered',
+        codex_chat: 'allow_registered',
       },
     },
     visibility: {
