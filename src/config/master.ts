@@ -275,6 +275,7 @@ function enabledCapabilityNames(capabilities: Record<string, CapabilityConfig>):
 export function buildSquireMasterConfig(env: NodeJS.ProcessEnv = process.env): SquireMasterConfig {
   const capabilities = buildCapabilities(env);
   const allEnabledCapabilities = enabledCapabilityNames(capabilities);
+  const agentLoopCapabilities = allEnabledCapabilities.filter((name) => name !== 'browser');
   const auditRetentionDays = envNumber(env, 'ACTIVITY_RETENTION_DAYS', 90);
 
   return {
@@ -376,7 +377,7 @@ export function buildSquireMasterConfig(env: NodeJS.ProcessEnv = process.env): S
       telegram: {
         enabled: envBoolean(env, 'TELEGRAM_ENABLED', true),
         runtime: 'smart',
-        allowedCapabilities: allEnabledCapabilities,
+        allowedCapabilities: agentLoopCapabilities,
         allowedTools: ['*'],
         externalEffects: ['telegram_send', 'tool_calls'],
         audit: { traceActivity: true, retentionDays: auditRetentionDays },
@@ -387,7 +388,7 @@ export function buildSquireMasterConfig(env: NodeJS.ProcessEnv = process.env): S
         schedule: {
           intervalMs: envNumber(env, 'GOAL_WORKER_INTERVAL_MS', 3600000),
         },
-        allowedCapabilities: allEnabledCapabilities,
+        allowedCapabilities: agentLoopCapabilities,
         allowedTools: ['*'],
         externalEffects: ['telegram_send', 'mandrel_call', 'tool_calls'],
         audit: { traceActivity: true, retentionDays: auditRetentionDays },
@@ -413,7 +414,7 @@ export function buildSquireMasterConfig(env: NodeJS.ProcessEnv = process.env): S
           quietHoursStart: envNumber(env, 'COMMUNE_QUIET_START', 22),
           quietHoursEnd: envNumber(env, 'COMMUNE_QUIET_END', 7),
         },
-        allowedCapabilities: allEnabledCapabilities,
+        allowedCapabilities: agentLoopCapabilities,
         allowedTools: ['commune_send', '*'],
         externalEffects: ['telegram_send', 'tool_calls'],
         audit: { traceActivity: true, retentionDays: auditRetentionDays },

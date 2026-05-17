@@ -115,6 +115,20 @@ describe('runtime policy enforcement surfaces', () => {
     );
   });
 
+  it('keeps AgentEngine default tool surfaces under the OpenAI tool limit', () => {
+    for (const sourceLoop of ['telegram', 'goal_worker', 'commune']) {
+      const engine = new AgentEngine({
+        conversationId: `runtime-policy-${sourceLoop}-tool-limit`,
+        sourceLoop,
+      });
+      const names = engine.getAvailableToolNames();
+
+      assert.ok(names.length <= 128, `${sourceLoop} exposes ${names.length} tools`);
+      assert.ok(!names.includes('browser_navigate'), `${sourceLoop} should not expose browser automation tools`);
+      assert.ok(names.includes('web_search'), `${sourceLoop} should keep lightweight web search`);
+    }
+  });
+
   it('enforces background-loop policy at tool exposure and execution lookup time', async () => {
     await withRuntimePolicy(
       () => {
