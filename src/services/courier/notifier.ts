@@ -175,6 +175,14 @@ export async function notifyEmailSummary(emails: EmailSummary[]): Promise<void> 
   const footer = '\n\n─────────────────\n_Say "check email" for full details_';
   const message = header + body + footer;
 
+  // TEMP DIAGNOSTIC — dump the bytes around the offset Telegram keeps complaining about.
+  const messageBytes = Buffer.from(message, 'utf8');
+  console.log(`[NotifierDebug] message length=${message.length} chars, ${messageBytes.length} bytes`);
+  if (messageBytes.length > 2150) {
+    const around = messageBytes.slice(2150, 2260).toString('utf8');
+    console.log('[NotifierDebug] bytes 2150..2260:', JSON.stringify(around));
+  }
+
   // Send to Telegram
   await sendTelegram(message, true, { sourceLoop: 'courier' });
 
