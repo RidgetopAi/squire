@@ -1,21 +1,21 @@
 /**
  * Phase 2 — Parity tests for the Agent Runtime Registry.
  *
- * For each loop agent currently constructed inline (commune, goal_worker,
- * telegram), assert that the registry definition produces the same runtime
- * shape the call site builds today. These tests gate Phase 3 migration:
- * if any of them fail, `runAgent('<id>', ...)` would diverge from the
- * existing AgentEngine construction.
+ * For each loop agent still constructed inline (goal_worker, telegram),
+ * assert that the registry definition produces the same runtime shape the
+ * call site builds today. These tests gate each Phase 3 migration: if any
+ * of them fail, `runAgent('<id>', ...)` would diverge from the existing
+ * AgentEngine construction.
+ *
+ * Commune is no longer covered here — its call site has already been
+ * migrated to runAgent('commune', ...) in Phase 3. Commune shape is
+ * still asserted in tests/agents-registry.test.ts.
  */
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { getAgent } from '../src/agents/index.js';
-import {
-  COMMUNE_SYSTEM_PROMPT,
-  getCommuneTools,
-} from '../src/services/commune.js';
 import { hasTools, getToolDefinitions } from '../src/tools/index.js';
 import { config } from '../src/config/index.js';
 
@@ -23,36 +23,7 @@ function toolNames(tools: { function: { name: string } }[]): string[] {
   return tools.map((t) => t.function.name).sort();
 }
 
-describe('Agent Runtime Registry — Phase 2 parity (commune, goal_worker, telegram)', () => {
-  // ---------------------------------------------------------------------------
-  // commune  →  services/commune.ts :: attemptOutreach() AgentEngine
-  // ---------------------------------------------------------------------------
-
-  test('commune: runtime knobs match services/commune.ts call site', () => {
-    const def = getAgent('commune');
-    assert.equal(def.kind, 'loop_llm');
-    assert.equal(def.forceTier, 'fast');
-    assert.equal(def.maxTurns, 8);
-    assert.equal(def.sourceLoop, 'commune');
-  });
-
-  test('commune: systemPrompt is identical to COMMUNE_SYSTEM_PROMPT at call site', () => {
-    const def = getAgent('commune');
-    assert.equal(typeof def.systemPrompt, 'string');
-    assert.equal(def.systemPrompt, COMMUNE_SYSTEM_PROMPT);
-  });
-
-  test('commune: tools resolver returns the same tool name set as getCommuneTools()', () => {
-    const def = getAgent('commune');
-    assert.equal(typeof def.tools, 'function', 'commune.tools must be a resolver function');
-    const registry = toolNames(def.tools!({}));
-    const callSite = toolNames(getCommuneTools());
-    assert.deepEqual(registry, callSite);
-    // Sanity: list is non-empty and includes tools the call site allowlists.
-    assert.ok(registry.includes('commune_send'), 'commune tools should include commune_send');
-    assert.ok(registry.includes('scratchpad_read'), 'commune tools should include scratchpad_read');
-  });
-
+describe('Agent Runtime Registry — Phase 2 parity (goal_worker, telegram)', () => {
   // ---------------------------------------------------------------------------
   // goal_worker  →  services/courier/tasks/goalWorker.ts AgentEngine
   // ---------------------------------------------------------------------------

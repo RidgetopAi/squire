@@ -89,6 +89,7 @@ async function runLoopLLM(def: AgentDefinition, args: AgentRunArgs): Promise<Age
       success: result.success,
       content: result.content,
       turnCount: result.turnCount,
+      state: result.state,
       error: result.error,
     };
   } finally {

@@ -10,6 +10,7 @@ import type { LoopId } from '../config/master.js';
 import type { LLMRuntimeId, WorkerRuntimeId } from '../services/runtime/index.js';
 import type { ModelTier } from '../services/routing/index.js';
 import type { ToolDefinition, LLMMessage } from '../services/llm/types.js';
+import type { AgentState } from '../services/agent/engine.js';
 
 // =============================================================================
 // Kinds
@@ -60,6 +61,8 @@ export interface AgentRunResult {
   content: string;
   /** Number of LLM turns (loop_llm only); 1 for single_llm; 0 otherwise */
   turnCount: number;
+  /** Final loop_llm engine state ('complete' | 'cancelled' | 'error' | ...). Only set for loop_llm kind. */
+  state?: AgentState;
   /** Optional structured result (used by deterministic/connector kinds) */
   data?: unknown;
   error?: string;
