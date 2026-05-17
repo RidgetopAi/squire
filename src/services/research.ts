@@ -6,7 +6,7 @@
  */
 
 import { pool } from '../db/pool.js';
-import { completeText } from '../providers/llm.js';
+import { runAgent } from '../agents/lazy.js';
 
 // === TYPES: GAPS ===
 
@@ -182,44 +182,7 @@ async function detectGaps(
     return [];
   }
 
-  const systemPrompt = `You are a knowledge gap detector. Given a person's data, identify what is MISSING or UNKNOWN.
-
-A knowledge gap is NOT what we know - it's what we DON'T know but SHOULD know.
-
-Gap types:
-- entity: Missing facts about a person/project/place ("We don't know Sarah's role")
-- relationship: Don't know how two entities relate ("Unclear how Project X connects to Team Y")
-- timeline: Missing when something happened ("When did the promotion happen?")
-- outcome: Know something started but not how it ended ("The interview - what was the result?")
-- context: Have facts but lack why/how ("Why was this decision made?")
-- commitment: Open promise without resolution ("Promised to help with X - still pending?")
-- preference: Don't know user's stance on something ("Unclear preference on remote vs office")
-- history: Missing backstory ("How did you meet Sarah?")
-
-Priority levels: low, medium, high, critical
-Severity: 0.0 (minor) to 1.0 (critical gap)
-
-Requirements:
-1. Focus on ACTIONABLE gaps - things worth knowing
-2. Avoid trivial gaps ("We don't know their shoe size")
-3. Prioritize gaps about frequently mentioned entities
-4. Look for incomplete stories (started but no ending)
-5. Look for relationships without context
-
-Return ONLY a JSON array. If no meaningful gaps, return: []
-
-Format: [{
-  "content": "description of the gap",
-  "gap_type": "entity|relationship|timeline|outcome|context|commitment|preference|history",
-  "priority": "low|medium|high|critical",
-  "severity": 0.X,
-  "related_entity_name": "optional entity name",
-  "secondary_entity_name": "optional for relationship gaps",
-  "sources": [
-    {"type": "memory|belief|pattern|entity", "id": "uuid", "revelation": "indicates|primary|context|deepens", "explanation": "why this reveals the gap"}
-  ],
-  "reason": "why this gap matters"
-}]`;
+  // System prompt now owned by agents/gap_detector.ts.
 
   // Build context string
   const entitiesStr = context.entities.length > 0
@@ -261,10 +224,9 @@ ${commitmentsStr}
 What's missing? What incomplete stories exist? What relationships lack context? Return JSON array only.`;
 
   try {
-    const response = await completeText(prompt, systemPrompt, {
-      temperature: 0.3,
-      maxTokens: 2000,
-    });
+    // Prompt + temperature + maxTokens come from agents/gap_detector.ts.
+    const result = await runAgent('gap_detector', { input: prompt });
+    const response = result.content;
 
     const jsonStr = extractJsonArray(response);
     if (!jsonStr) return [];
@@ -334,52 +296,7 @@ interface QuestionGenerationContext {
 async function generateQuestions(
   context: QuestionGenerationContext
 ): Promise<ExtractedQuestion[]> {
-  const systemPrompt = `You are a thoughtful question generator. Given knowledge gaps and context, generate smart questions to ask.
-
-A good question:
-- Is specific and answerable
-- Addresses an important gap
-- Is appropriately timed (not intrusive)
-- Shows the system "cares" about understanding the user
-
-Question types:
-- clarification: "What did you mean by X?"
-- follow_up: "How did the meeting with Sarah go?"
-- exploration: "Tell me more about Project Alpha"
-- verification: "Is it still true that X?"
-- deepening: "What made you feel that way about X?"
-- connection: "How does X relate to Y?"
-- outcome: "What happened with the interview?"
-- preference: "Do you prefer mornings or evenings for deep work?"
-
-Timing hints:
-- immediately: Ask right now (urgent or time-sensitive)
-- next_session: Ask at start of next conversation
-- when_relevant: Ask when the topic comes up naturally
-- periodic: Ask periodically to verify (preferences, ongoing situations)
-- before_deadline: Ask before a commitment deadline
-
-Requirements:
-1. Each question should address a specific gap or expand understanding
-2. Don't generate duplicate or very similar questions
-3. Prioritize questions about high-severity gaps
-4. Be conversational, not interrogative
-5. Maximum 5-7 questions per generation
-
-Return ONLY a JSON array. If no good questions, return: []
-
-Format: [{
-  "content": "the question to ask",
-  "question_type": "clarification|follow_up|exploration|verification|deepening|connection|outcome|preference",
-  "priority": "low|medium|high|critical",
-  "timing_hint": "immediately|next_session|when_relevant|periodic|before_deadline",
-  "for_gap_content": "optional - content of the gap this addresses",
-  "related_entity_name": "optional entity name",
-  "sources": [
-    {"type": "memory|belief|pattern|entity|insight|gap", "id": "uuid", "relation": "prompted|context|about", "explanation": "how this source relates"}
-  ],
-  "reason": "why this question matters"
-}]`;
+  // System prompt now owned by agents/question_generator.ts.
 
   // Build context string
   const gapsStr = context.gaps.length > 0
@@ -417,10 +334,9 @@ ${existingStr}
 What questions would help us understand them better? Return JSON array only.`;
 
   try {
-    const response = await completeText(prompt, systemPrompt, {
-      temperature: 0.4, // slightly higher for varied questions
-      maxTokens: 2000,
-    });
+    // Prompt + temperature + maxTokens come from agents/question_generator.ts.
+    const result = await runAgent('question_generator', { input: prompt });
+    const response = result.content;
 
     const jsonStr = extractJsonArray(response);
     if (!jsonStr) return [];

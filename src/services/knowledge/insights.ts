@@ -6,7 +6,7 @@
  */
 
 import { pool } from '../../db/pool.js';
-import { completeText } from '../../providers/llm.js';
+import { runAgent } from '../../agents/lazy.js';
 import { broadcastInsightCreated } from '../../api/socket/broadcast.js';
 
 // === TYPES ===
@@ -89,38 +89,8 @@ export async function generateInsights(
     return [];
   }
 
-  const systemPrompt = `You are an insight generator. Given a person's beliefs, patterns, and recent memories, identify higher-level insights.
-
-An insight is NOT just restating a belief or pattern - it's a NEW observation from CONNECTING different pieces of information.
-
-Insight types:
-- connection: Links between related concepts ("Your productivity pattern aligns with your belief about morning work")
-- contradiction: Inconsistencies between what someone believes vs does ("You value balance but patterns show 60+ hour weeks")
-- opportunity: Potential improvements based on the data ("Your high-energy mornings could be better used for creative work")
-- warning: Potential issues or risks to flag ("Stress patterns correlating with project deadlines suggest overcommitment")
-
-Priority levels: low, medium, high, critical
-
-Requirements:
-1. Each insight MUST reference at least 2 sources (beliefs, patterns, or memories)
-2. Only generate insights with confidence >= 0.5
-3. Focus on actionable or meaningful observations
-4. Avoid obvious or trivial connections
-
-Return ONLY a JSON array. If no meaningful insights, return: []
-
-Format: [{
-  "content": "insight statement",
-  "insight_type": "connection|contradiction|opportunity|warning",
-  "priority": "low|medium|high|critical",
-  "confidence": 0.X,
-  "sources": [
-    {"type": "belief|pattern|memory", "id": "uuid", "contribution": "primary|supports|context|contrasts", "explanation": "how this source relates"}
-  ],
-  "reason": "why this insight matters"
-}]`;
-
-  // Build context string
+  // Build context string. Prompt + temperature + maxTokens come from
+  // agents/insight_generator.ts.
   const beliefsStr = context.beliefs.length > 0
     ? `BELIEFS:\n${context.beliefs.map((b) => `- [${b.id}] (${b.type}, conf: ${b.confidence.toFixed(2)}): "${b.content}"`).join('\n')}`
     : 'BELIEFS: None recorded yet';
@@ -144,10 +114,8 @@ ${memoriesStr}
 What connections, contradictions, opportunities, or warnings do you see? Return JSON array only.`;
 
   try {
-    const response = await completeText(prompt, systemPrompt, {
-      temperature: 0.3,
-      maxTokens: 2000,
-    });
+    const result = await runAgent('insight_generator', { input: prompt });
+    const response = result.content;
 
     // Parse JSON response - find the JSON array by matching balanced brackets
     let jsonStr: string | null = null;
