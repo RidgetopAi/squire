@@ -42,12 +42,20 @@ export const agentmailCheckTask: CourierTask = {
       // Build notification message
       const header = `📬 *AgentMail* (${newMessages.length} new)\n\n`;
 
+      // Strip Telegram-Markdown delimiters from every user-controlled field.
+      // The `from` field was previously left raw, so a sender like
+      // "Newsletter_Service" or a "Name [Org]" combo would leave an
+      // unclosed italic/bold span and trip the markdown parser at the
+      // same byte offset on every run (reproducible ~byte 2207 for a
+      // 20-email digest), forcing the no-markdown retry path.
+      const stripMd = (s: string) => s.replace(/[*_`\[\]]/g, '');
       const body = newMessages.map((msg, i) => {
-        const from = typeof msg.from === 'string'
+        const fromRaw = typeof msg.from === 'string'
           ? msg.from
           : (msg.from as any[]).map((f: any) => f.name || f.email).join(', ');
-        const safeSubject = msg.subject.replace(/[*_`\[\]]/g, '');
-        const preview = (msg.text?.substring(0, 80) || msg.html?.substring(0, 80) || '(no content)').replace(/[*_`\[\]]/g, '');
+        const from = stripMd(fromRaw);
+        const safeSubject = stripMd(msg.subject);
+        const preview = stripMd(msg.text?.substring(0, 80) || msg.html?.substring(0, 80) || '(no content)');
         return `*${i + 1}. ${from}*\n${safeSubject}\n${preview}...`;
       }).join('\n\n');
 
