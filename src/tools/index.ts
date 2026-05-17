@@ -16,7 +16,7 @@ import { recordActivityEvent } from '../services/activity.js';
 import { evaluateAndRecordGuardrail, guardedActionForTool } from '../services/action-guardrails.js';
 import { squireMasterConfig } from '../config/master.js';
 import { CapabilityRegistry, type Capability, type ToolAccessContext } from './capabilityRegistry.js';
-import { capabilityBoundaries } from './capabilities.js';
+import { capabilityManifests } from './capabilities.js';
 
 // Re-export types for convenience
 export type {
@@ -370,13 +370,28 @@ import { tools as browserTools } from './browser/index.js';
 import { tools as dealerFoundationTools } from './dealerFoundation.js';
 
 function capability(name: string, tools: Capability['tools'], description?: string): Capability {
-  const boundary = capabilityBoundaries[name] ?? { visibility: 'public' as const, package: 'core' as const };
+  const manifest = capabilityManifests[name as keyof typeof capabilityManifests];
+  const visibility = manifest?.visibility ?? 'public';
+  const packageName = manifest?.package ?? 'core';
   return {
     name,
     description,
-    visibility: boundary.visibility,
+    visibility,
     tools,
-    metadata: { package: boundary.package },
+    metadata: {
+      package: packageName,
+      ...(manifest ? {
+        routes: manifest.routes,
+        schedulerTasks: manifest.schedulerTasks,
+        runtimeLoops: manifest.runtimeLoops,
+        connectors: manifest.connectors,
+        providers: manifest.providers,
+        lifecycleHooks: manifest.lifecycleHooks,
+        promptGuidance: manifest.promptGuidance,
+        permissions: manifest.permissions,
+        tags: manifest.tags,
+      } : {}),
+    },
   };
 }
 

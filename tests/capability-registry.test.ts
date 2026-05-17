@@ -10,7 +10,13 @@ const masterConfigModule = await import('../src/config/master.js');
 const toolsFacade = await import('../src/tools/index.js');
 
 const { CapabilityRegistry } = registryModule;
-const { privateBusinessCapabilityNames, publicCoreCapabilityNames } = capabilityManifests;
+const {
+  capabilityManifests: manifestsByName,
+  privateBusinessCapabilityManifests,
+  privateBusinessCapabilityNames,
+  publicCoreCapabilityManifests,
+  publicCoreCapabilityNames,
+} = capabilityManifests;
 const { buildSquireMasterConfig } = masterConfigModule;
 const {
   getCapabilities,
@@ -205,6 +211,12 @@ describe('tools facade capability registration', () => {
     assert.strictEqual(capabilities.get('notes')?.visibility, 'public');
     assert.strictEqual(capabilities.get('calendar')?.visibility, 'public');
     assert.strictEqual(capabilities.get('browser')?.metadata?.package, 'core');
+    assert.deepStrictEqual(capabilities.get('calendar')?.metadata?.connectors, ['google']);
+    assert.deepStrictEqual(capabilities.get('commune')?.metadata?.schedulerTasks, ['commune']);
+    assert.deepStrictEqual(capabilities.get('email')?.metadata?.permissions, {
+      externalEffects: ['email_read', 'email_send', 'email_delete'],
+      guardedActions: ['external.email_send', 'delete.email_trash'],
+    });
     assert.strictEqual(capabilities.get('squire_email')?.visibility, 'private');
     assert.strictEqual(capabilities.get('dealer_foundation')?.visibility, 'private');
     assert.strictEqual(capabilities.get('dealer_foundation')?.metadata?.package, 'private-business');
@@ -220,5 +232,19 @@ describe('tools facade capability registration', () => {
     assert.ok(privateNames.has('squire_email'));
     assert.ok(privateNames.has('dealer_foundation'));
     assert.strictEqual(publicNames.has('dealer_foundation'), false);
+  });
+
+  it('exports richer capability manifests for packaging and runtime policy', () => {
+    assert.strictEqual(publicCoreCapabilityManifests.length, publicCoreCapabilityNames.length);
+    assert.strictEqual(privateBusinessCapabilityManifests.length, privateBusinessCapabilityNames.length);
+    assert.strictEqual(manifestsByName.calendar.package, 'core');
+    assert.deepStrictEqual(manifestsByName.calendar.connectors, ['google']);
+    assert.deepStrictEqual(manifestsByName.commune.schedulerTasks, ['commune']);
+    assert.deepStrictEqual(manifestsByName.squire_email.permissions?.guardedActions, ['external.email_send']);
+    assert.strictEqual(manifestsByName.dealer_foundation.visibility, 'private');
+    assert.ok(
+      manifestsByName.dealer_foundation.promptGuidance?.includes('Brian-specific'),
+      'private business manifest should carry packaging guidance'
+    );
   });
 });
