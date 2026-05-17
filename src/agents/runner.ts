@@ -55,7 +55,7 @@ export async function runAgentDefinition(
 async function runLoopLLM(def: AgentDefinition, args: AgentRunArgs): Promise<AgentRunResult> {
   const conversationId = args.conversationId ?? randomUUID();
   const sourceLoop = def.sourceLoop ?? def.id;
-  const systemPrompt = resolvePrompt(def.systemPrompt, args);
+  const systemPrompt = await resolvePrompt(def.systemPrompt, args);
 
   const engine = new AgentEngine({
     conversationId,
@@ -107,7 +107,7 @@ async function runSingleLLM(def: AgentDefinition, args: AgentRunArgs): Promise<A
   // Resolve runtime slot if present. If absent, callLLM falls back to defaults —
   // identical to the current completeText behavior.
   const runtime = def.runtimeSlot ? getLLMRuntime(def.runtimeSlot) : undefined;
-  const systemPrompt = resolvePrompt(def.systemPrompt, args);
+  const systemPrompt = await resolvePrompt(def.systemPrompt, args);
 
   let messages: LLMMessage[];
   if (def.buildMessages) {
@@ -163,12 +163,12 @@ async function runHandler(def: AgentDefinition, args: AgentRunArgs): Promise<Age
 // helpers
 // =============================================================================
 
-function resolvePrompt(
+async function resolvePrompt(
   prompt: AgentDefinition['systemPrompt'],
   args: AgentRunArgs
-): string | undefined {
+): Promise<string | undefined> {
   if (!prompt) return undefined;
-  return typeof prompt === 'function' ? prompt(args) : prompt;
+  return typeof prompt === 'function' ? await prompt(args) : prompt;
 }
 
 // Re-export types so callers only need to import from './agents'

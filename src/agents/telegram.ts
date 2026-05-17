@@ -5,13 +5,13 @@
  * Squire tool surface filtered by sourceLoop:'telegram'. Uses model routing
  * (smart/fast classified per task).
  *
- * Note: telegram builds its systemPrompt dynamically via buildSystemPrompt()
- * in services/telegram/handler.ts (includes time-of-day, identity, etc.).
- * Phase 1 declares identity only — call site keeps owning prompt construction
- * until Phase 3 migration.
+ * The systemPrompt resolver is async — it composes base prompt + user
+ * identity + tool-calling instructions + current time at run time. The
+ * registry's PromptResolver supports `string | Promise<string>` return.
  */
 
 import { getToolDefinitions, hasTools } from '../tools/index.js';
+import { buildSystemPrompt } from '../services/telegram/systemPrompt.js';
 import { registerAgent } from './registry.js';
 import type { AgentDefinition } from './types.js';
 
@@ -26,11 +26,12 @@ export const telegramAgent: AgentDefinition = registerAgent({
   maxTurns: 200,
   sourceLoop: 'telegram',
 
+  systemPrompt: () => buildSystemPrompt(),
+
   tools: () =>
     hasTools({ sourceLoop: 'telegram' })
       ? getToolDefinitions({ sourceLoop: 'telegram' })
       : [],
 
-  // systemPrompt intentionally omitted in Phase 1 — see note above.
   guardedActions: ['external.telegram_send'],
 });

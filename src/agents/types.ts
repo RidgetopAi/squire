@@ -74,8 +74,10 @@ export interface AgentRunResult {
 // Resolver shapes
 // =============================================================================
 
-/** Prompt may be a static string or a function evaluated per-run. */
-export type PromptResolver = string | ((args: AgentRunArgs) => string);
+/** Prompt may be a static string or a (sync or async) function evaluated per-run. */
+export type PromptResolver =
+  | string
+  | ((args: AgentRunArgs) => string | Promise<string>);
 
 /** Tool list is always evaluated per-run (env can change, scoped by sourceLoop). */
 export type ToolsResolver = (args: AgentRunArgs) => ToolDefinition[];

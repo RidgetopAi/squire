@@ -3,20 +3,16 @@
  *
  * Originally added as parity tests to gate Phase 3 migrations: each
  * assertion compared the registry definition against the call site's
- * inline AgentEngine construction. After commune and goal_worker
- * migrated to runAgent(), only telegram remains pre-migration — so the
- * goal_worker tests below now serve as plain registry-shape guards
- * rather than literal parity checks (they continue to be useful, since
- * the call-site activity-event metadata and addGoalNote text still
- * depend on `config.goalWorker.maxExecutionMs` matching the registry).
+ * inline AgentEngine construction. After commune, goal_worker, and
+ * telegram migrated to runAgent(), every Phase 3 loop agent now owns
+ * its runtime knobs in src/agents/<id>.ts and the assertions below
+ * serve as plain registry-shape guards rather than literal parity
+ * checks. They continue to be useful because some call sites still
+ * read the same config values for activity-event metadata
+ * (config.goalWorker.* for goal_worker) and the telegram tool
+ * resolver remains the canonical scoping for the telegram bot.
  *
- * Telegram still has an inline AgentEngine in services/telegram/handler.ts
- * — its call site cannot migrate until PromptResolver is extended to
- * allow async resolvers (its buildSystemPrompt is async). Until then
- * the telegram tests here remain true parity checks.
- *
- * Commune is no longer represented in this file at all; structural
- * coverage lives in tests/agents-registry.test.ts.
+ * Commune-specific coverage lives in tests/agents-registry.test.ts.
  */
 
 import { test, describe } from 'node:test';
@@ -30,7 +26,7 @@ function toolNames(tools: { function: { name: string } }[]): string[] {
   return tools.map((t) => t.function.name).sort();
 }
 
-describe('Agent Runtime Registry — registry shape guards (goal_worker post-migration; telegram still inline)', () => {
+describe('Agent Runtime Registry — registry shape guards (post-Phase-3: commune/goal_worker/telegram all on runAgent)', () => {
   // ---------------------------------------------------------------------------
   // goal_worker  (post-Phase-3; call site now uses runAgent)
   //   The remaining assertions guard that the registry knobs still match
@@ -58,10 +54,13 @@ describe('Agent Runtime Registry — registry shape guards (goal_worker post-mig
   });
 
   // ---------------------------------------------------------------------------
-  // telegram  →  services/telegram/handler.ts AgentEngine (still inline; true parity)
+  // telegram  (post-Phase-3; call site now uses runAgent)
+  //   The systemPrompt resolver is async (composes base prompt + user
+  //   identity + tool-calling instructions + current time at run time)
+  //   and the runner awaits it before constructing AgentEngine.
   // ---------------------------------------------------------------------------
 
-  test('telegram: runtime knobs match services/telegram/handler.ts call site', () => {
+  test('telegram: runtime knobs declared by the registry', () => {
     const def = getAgent('telegram');
     assert.equal(def.kind, 'loop_llm');
     // No forceTier — routing classifies per task in AgentEngine.
@@ -70,21 +69,30 @@ describe('Agent Runtime Registry — registry shape guards (goal_worker post-mig
     assert.equal(def.sourceLoop, 'telegram');
   });
 
-  test('telegram: systemPrompt is intentionally undefined (async buildSystemPrompt() at call site)', () => {
+  test('telegram: systemPrompt is an async resolver returning a Promise', () => {
+    // Shape-only assertion: we cannot await the result here because the
+    // resolved prompt pulls user identity from Postgres, which is not
+    // available in the unit-test env. Asserting "returns a Promise" is
+    // enough to guard the runner's `await resolvePrompt(...)` contract.
     const def = getAgent('telegram');
-    assert.equal(def.systemPrompt, undefined);
+    assert.equal(typeof def.systemPrompt, 'function', 'telegram.systemPrompt must be a resolver function');
+    const resolved = (def.systemPrompt as (args: unknown) => unknown)({});
+    assert.ok(resolved instanceof Promise, 'telegram.systemPrompt() must return a Promise');
+    // Swallow the inevitable DB rejection so it doesn't surface as an
+    // unhandled-rejection warning in test output.
+    (resolved as Promise<unknown>).catch(() => {});
   });
 
-  test('telegram: tools resolver matches hasTools/getToolDefinitions logic at call site', () => {
+  test('telegram: tools resolver matches the canonical hasTools/getToolDefinitions scoping', () => {
     const def = getAgent('telegram');
     assert.equal(typeof def.tools, 'function', 'telegram.tools must be a resolver function');
     const registry = toolNames(def.tools!({}));
-    const callSite = toolNames(
+    const expected = toolNames(
       hasTools({ sourceLoop: 'telegram' })
         ? getToolDefinitions({ sourceLoop: 'telegram' })
         : []
     );
-    assert.deepEqual(registry, callSite);
+    assert.deepEqual(registry, expected);
   });
 
   test('telegram: guardedActions documents the outbound telegram_send effect', () => {
