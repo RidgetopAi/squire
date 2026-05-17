@@ -59,8 +59,19 @@ export const agentmailCheckTask: CourierTask = {
         return `*${i + 1}. ${from}*\n${safeSubject}\n${preview}...`;
       }).join('\n\n');
 
-      const footer = '\n\n─────────────────\n_Use squire\\_email\\_list to see all messages_';
+      // Footer kept plain: Telegram MarkdownV1 doesn't reliably honor `\_`
+      // as an escape inside an italic span, so wrapping a string that
+      // contains underscores like "squire_email_list" in `_..._` leaks
+      // an unclosed entity.
+      const footer = '\n\n─────────────────\nUse squire_email_list to see all messages';
       const message = header + body + footer;
+
+      // TEMP DIAGNOSTIC — pinpoint the failing entity offset.
+      const messageBytes = Buffer.from(message, 'utf8');
+      console.log(`[AgentMailCheckDebug] msg ${message.length} chars / ${messageBytes.length} bytes`);
+      if (messageBytes.length > 2150) {
+        console.log('[AgentMailCheckDebug] bytes 2150..2260:', JSON.stringify(messageBytes.slice(2150, 2260).toString('utf8')));
+      }
 
       // Send Telegram notification
       await notify(message, { channels: ['telegram'] });
