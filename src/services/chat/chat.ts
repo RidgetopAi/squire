@@ -228,7 +228,6 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
       attachmentReferences
     );
 
-    // Get available tools
     // For image-bearing requests, use a reduced tool set to avoid sending
     // the full registry to OpenAI (which has strict payload limits)
     const toolContext = { sourceLoop: 'http_chat' };
