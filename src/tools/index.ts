@@ -355,6 +355,7 @@ import { tools as memoryTools } from './memory/index.js';
 import { tools as emailTools } from './email/index.js';
 import { tools as squireEmailTools } from './squire-email/index.js';
 import { tools as searchTools } from './search.js';
+import { xSearchTool } from './x-search.js';
 import { tools as scratchpadTools } from './scratchpad.js';
 import { tools as communeTools } from './commune.js';
 import { tools as imageTools } from './images.js';
@@ -410,6 +411,7 @@ const allCapabilities: Capability[] = [
   capability('email', emailTools),
   capability('squire_email', squireEmailTools, 'RidgetopAI/Squire-specific email account tools.'),
   capability('search', searchTools),
+  capability('x_search', [xSearchTool], 'Enhanced web search tool (x-search)'),
   capability('scratchpad', scratchpadTools),
   capability('commune', communeTools),
   capability('images', imageTools),
