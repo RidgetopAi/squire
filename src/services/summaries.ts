@@ -6,7 +6,6 @@
  */
 
 import { pool } from '../db/pool.js';
-import { completeText } from '../providers/llm.js';
 import { runAgent } from '../agents/lazy.js';
 
 // === TYPES ===
@@ -386,40 +385,26 @@ export async function generateSummary(
   // This strips stale content (appointments from personality, relative dates, etc.)
   if (newMemories.length === 0 && force && current.content) {
     console.log(`[Summaries] Force-refreshing "${category}" through current prompt rules`);
-    const forceSystemPrompt = category === 'significant_dates'
-      ? `You are a personal memory summarizer. Clean up and refresh this chronological list of significant dates.
-
-Rules:
-1. Format each entry as: "**[Date]** - [What happened] | [Why it matters/emotional significance]"
-2. Remove any entries that are clearly routine appointments (not life-significant)
-3. ALWAYS use absolute dates — NEVER relative references
-4. Keep entries concise but meaningful
-5. Order chronologically, oldest to newest
-6. Use second person ("you")`
-      : `You are a personal memory summarizer. Clean up and refresh this summary of ${getCategoryDescription(category)}.
-
-Rules:
-1. Rewrite the summary with current rules applied
-2. ALWAYS use absolute dates (e.g., "Monday, March 3, 2026") — NEVER use relative references like "tomorrow", "next Tuesday", "this week", "yesterday"
-3. For "personality": Remove ALL appointments, calendar events, scheduled meetings, and time-bound items. Keep ONLY stable identity traits, background, values, work role, and personal characteristics
-4. For "commitments": Remove specific scheduled appointments. Keep ongoing obligations, promises, and goals
-5. Keep the summary concise but comprehensive (100-300 words)
-6. Use second person ("you")
-7. Write in a natural, conversational tone`;
-
+    // Force-refresh prompt + temperature + maxTokens come from
+    // agents/category_summarizer.ts; payload.force=true picks the
+    // refresh variant of the prompt.
     const forcePrompt = `Current summary to refresh:
 ${current.content}
 
 Rewrite this summary applying all the rules above. Return ONLY the updated summary text, no preamble.`;
 
-    const forceResponse = await completeText(forcePrompt, forceSystemPrompt, {
-      temperature: 0.3,
-      maxTokens: 500,
+    const forceResult = await runAgent('category_summarizer', {
+      input: forcePrompt,
+      payload: {
+        category,
+        categoryDescription: getCategoryDescription(category),
+        force: true,
+      },
     });
 
     const forceUpdated = await updateSummary(
       category,
-      forceResponse.trim(),
+      forceResult.content.trim(),
       'force-refresh',
       0
     );

@@ -1,16 +1,23 @@
 /**
  * Agent: category_summarizer
  *
- * Maintains an incrementally-updated summary for one of the memory
- * categories (personality, goals, relationships, etc.). The system
- * prompt branches per category — the caller picks via args.payload.
+ * Maintains a per-category memory summary. Used in two modes:
  *
- * payload shape: { category: string, categoryDescription: string }
- * args.input: the full user prompt (existing summary + new memories block).
+ *   incremental (default): merge new memories into the existing summary.
+ *   force-refresh:         re-run the existing summary through current
+ *                          prompt rules, no new memories.
+ *
+ * The caller picks the mode via args.payload:
+ *   { category: string, categoryDescription: string, force?: boolean }
+ *
+ * args.input must contain the user prompt (existing summary + new memories
+ * block, or the bare "rewrite this" prompt in force mode).
  */
 
 import { registerAgent } from './registry.js';
 import type { AgentDefinition } from './types.js';
+
+// --- Incremental (normal) variants ----------------------------------------
 
 const SIGNIFICANT_DATES_PROMPT = `You are a personal memory summarizer. Your job is to maintain a chronological list of significant dates and what they mean.
 
@@ -46,21 +53,56 @@ Rules:
 11. For the "commitments" category: DO NOT include specific scheduled appointments or calendar events. Focus on ongoing obligations, promises, and goals.`;
 }
 
+// --- Force-refresh variants -----------------------------------------------
+
+const FORCE_SIGNIFICANT_DATES_PROMPT = `You are a personal memory summarizer. Clean up and refresh this chronological list of significant dates.
+
+Rules:
+1. Format each entry as: "**[Date]** - [What happened] | [Why it matters/emotional significance]"
+2. Remove any entries that are clearly routine appointments (not life-significant)
+3. ALWAYS use absolute dates — NEVER relative references
+4. Keep entries concise but meaningful
+5. Order chronologically, oldest to newest
+6. Use second person ("you")`;
+
+function forceGeneralCategoryPrompt(categoryDescription: string): string {
+  return `You are a personal memory summarizer. Clean up and refresh this summary of ${categoryDescription}.
+
+Rules:
+1. Rewrite the summary with current rules applied
+2. ALWAYS use absolute dates (e.g., "Monday, March 3, 2026") — NEVER use relative references like "tomorrow", "next Tuesday", "this week", "yesterday"
+3. For "personality": Remove ALL appointments, calendar events, scheduled meetings, and time-bound items. Keep ONLY stable identity traits, background, values, work role, and personal characteristics
+4. For "commitments": Remove specific scheduled appointments. Keep ongoing obligations, promises, and goals
+5. Keep the summary concise but comprehensive (100-300 words)
+6. Use second person ("you")
+7. Write in a natural, conversational tone`;
+}
+
+// --- Definition -----------------------------------------------------------
+
 export const categorySummarizerAgent: AgentDefinition = registerAgent({
   id: 'category_summarizer',
   label: 'Category Summarizer',
   kind: 'single_llm',
   description:
-    'Incrementally updates the per-category memory summary (personality, goals, relationships, etc.).',
+    'Incrementally updates the per-category memory summary (personality, goals, relationships, etc.). Also supports a force-refresh mode that re-runs the existing summary through current prompt rules.',
 
   systemPrompt: (args) => {
     const payload = args.payload as
-      | { category?: string; categoryDescription?: string }
+      | { category?: string; categoryDescription?: string; force?: boolean }
       | undefined;
-    if (payload?.category === 'significant_dates') return SIGNIFICANT_DATES_PROMPT;
-    return generalCategoryPrompt(payload?.categoryDescription ?? 'this category');
+    const isSignificantDates = payload?.category === 'significant_dates';
+    if (payload?.force) {
+      return isSignificantDates
+        ? FORCE_SIGNIFICANT_DATES_PROMPT
+        : forceGeneralCategoryPrompt(payload?.categoryDescription ?? 'this category');
+    }
+    return isSignificantDates
+      ? SIGNIFICANT_DATES_PROMPT
+      : generalCategoryPrompt(payload?.categoryDescription ?? 'this category');
   },
-  // Caller passes the full user prompt (existing summary + new memories) as args.input.
+  // Caller passes the full user prompt (existing summary + new memories,
+  // or the "rewrite this summary" prompt in force mode) as args.input.
   temperature: 0.3,
   maxTokens: 500,
 });

@@ -5,13 +5,15 @@
  * entities, dates, relationships. Caller parses + persists.
  *
  * Caller composes the user prompt with chunk content + section + page;
- * pass via args.input.
+ * pass via args.input. To override the system prompt at runtime
+ * (extractor.ts supports `options.customPrompt`), pass the override
+ * as args.payload.systemPromptOverride.
  */
 
 import { registerAgent } from './registry.js';
 import type { AgentDefinition } from './types.js';
 
-const SYSTEM_PROMPT = `You are an expert information extraction system. Your job is to analyze text from documents and extract structured facts, entities, dates, and relationships.
+const DEFAULT_SYSTEM_PROMPT = `You are an expert information extraction system. Your job is to analyze text from documents and extract structured facts, entities, dates, and relationships.
 
 TASK: Extract meaningful facts from the provided text that would be valuable to remember long-term.
 
@@ -104,9 +106,14 @@ export const factExtractorAgent: AgentDefinition = registerAgent({
   label: 'Fact Extractor',
   kind: 'single_llm',
   description:
-    'Document fact/entity/date/relationship extractor. Returns structured JSON for downstream persistence.',
+    'Document fact/entity/date/relationship extractor. Returns structured JSON for downstream persistence. Supports a per-run systemPromptOverride via args.payload.',
 
-  systemPrompt: SYSTEM_PROMPT,
+  systemPrompt: (args) => {
+    const payload = args.payload as
+      | { systemPromptOverride?: string }
+      | undefined;
+    return payload?.systemPromptOverride ?? DEFAULT_SYSTEM_PROMPT;
+  },
   temperature: 0.2,
   maxTokens: 3000,
 });
