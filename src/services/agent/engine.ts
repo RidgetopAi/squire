@@ -340,8 +340,13 @@ export class AgentEngine {
         this.messages.push({ role: 'user', content: input });
       }
 
-      // Classify task for routing (once per conversation, skip if tier was preset)
-      if (!this.tier && isRoutingEnabled()) {
+      // Classify task for routing (once per conversation, skip if tier was
+      // preset). Also skip when providerOverride is set — the LLM call will
+      // bypass routing entirely and pin to the override, so classifying is
+      // wasted work and pollutes logs with a tier that won't be used.
+      if (this.providerOverride) {
+        // intentionally silent — caller has pinned the call
+      } else if (!this.tier && isRoutingEnabled()) {
         this.tier = classifyTask(input);
         console.log(`[Routing] Task classified as "${this.tier}" tier`);
       } else if (this.tier) {

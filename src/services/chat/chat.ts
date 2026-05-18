@@ -6,11 +6,11 @@
  * Includes tool calling support.
  */
 
-import { complete, type LLMMessage, type LLMCompletionResult } from '../../providers/llm.js';
+import type { LLMMessage } from '../../providers/llm.js';
 import type { ImageContent } from '../llm/types.js';
 import { generateContext, type ContextPackage } from './context.js';
 import { config } from '../../config/index.js';
-import { getToolDefinitions, executeTools, hasTools, type ToolAccessContext } from '../../tools/index.js';
+import { getToolDefinitions, hasTools, type ToolAccessContext } from '../../tools/index.js';
 import type { ToolDefinition } from '../../tools/types.js';
 import { SQUIRE_SYSTEM_PROMPT_BASE, TOOL_CALLING_INSTRUCTIONS } from '../../constants/prompts.js';
 import {
@@ -236,104 +236,42 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
     );
 
     // For image-bearing requests, use a reduced tool set to avoid sending
-    // the full registry to OpenAI (which has strict payload limits)
+    // the full registry to OpenAI (which has strict payload limits).
+    // The agent's tools resolver reads args.payload.hasImages to filter.
     const hasImages = (images && images.length > 0) ||
                       conversationHistory.some(msg => msg.images && msg.images.length > 0);
-    const tools = getHttpChatToolDefinitions(hasImages);
 
-    // Phase 6.6 — flag-gated dispatch through the agent registry.
-    // When HTTP_CHAT_USE_REGISTRY=1, the inner LLM + tool loop runs in
-    // AgentEngine via runAgent('http_chat', ...); when unset/0, the legacy
-    // path below runs unchanged.
-    const useRegistry = process.env.HTTP_CHAT_USE_REGISTRY === '1';
-    let result: LLMCompletionResult;
-    let iterations: number;
-
-    if (useRegistry) {
-      console.log('[HttpChat] dispatch path: registry (runAgent)');
-      // Pin to config.llm so AgentEngine bypasses tier routing (matches the
-      // pre-6.6 behavior where complete() falls through to config defaults).
-      const agentResult = await runAgent('http_chat', {
-        conversationId: conversationId ?? undefined,
-        traceId,
-        parentEventId: startEventId ?? undefined,
-        sourceLoop: 'http_chat',
-        actor: 'assistant',
-        triggerReason: 'HTTP /api/chat request',
-        messages: messages as UnifiedLLMMessage[],
-        providerOverride: { provider: config.llm.provider, model: config.llm.model },
-        payload: { hasImages },
-      });
-      const totalPrompt = agentResult.usage?.promptTokens ?? 0;
-      const totalCompletion = agentResult.usage?.completionTokens ?? 0;
-      result = {
-        content: agentResult.content,
-        usage: {
-          promptTokens: totalPrompt,
-          completionTokens: totalCompletion,
-          totalTokens: totalPrompt + totalCompletion,
-        },
-        model: config.llm.model,
-        provider: config.llm.provider,
-        finishReason: 'stop',
-      };
-      // turnCount-1 because the final no-tool turn doesn't count as an iteration
-      iterations = Math.max(0, agentResult.turnCount - 1);
-    } else {
-      // Legacy path — single-file tool loop. Untouched by 6.6 so existing
-      // callers stay bit-identical until the flag flips. Deleted in 6.7.
-      result = await complete(messages, { tools, sourceLoop: 'http_chat' });
-      const maxToolIterations = 50;
-      iterations = 0;
-
-      while (result.finishReason === 'tool_calls' && result.toolCalls?.length && iterations < maxToolIterations) {
-        iterations++;
-        console.log(`Tool call iteration ${iterations}: ${result.toolCalls.map((t) => t.function.name).join(', ')}`);
-
-        const toolResults = await executeTools(result.toolCalls, {
-          traceId,
-          parentId: startEventId,
-          sourceLoop: 'http_chat',
-          actor: 'assistant',
-          triggerReason: 'HTTP chat tool call',
-          runtimeProvider: result.provider,
-          model: result.model,
-          metadata: {
-            conversationId: conversationId ?? null,
-            iteration: iterations,
-          },
-        });
-
-        messages.push({
-          role: 'assistant',
-          content: result.content,
-          tool_calls: result.toolCalls,
-        });
-
-        for (const tr of toolResults) {
-          messages.push({
-            role: 'tool',
-            tool_call_id: tr.toolCallId,
-            content: tr.result,
-          });
-          console.log(`Tool ${tr.name} result: ${tr.success ? 'success' : 'failed'}`);
-        }
-
-        result = await complete(messages, { tools, sourceLoop: 'http_chat' });
-      }
-
-      if (iterations >= maxToolIterations) {
-        console.warn(`Tool calling reached max iterations (${maxToolIterations})`);
-      }
-    }
+    // Inner LLM + tool loop runs in AgentEngine. http_chat is always
+    // pinned to config.llm (no vision-runtime swap on this surface) so
+    // we pass providerOverride and AgentEngine skips classifyTask
+    // routing entirely.
+    const agentResult = await runAgent('http_chat', {
+      conversationId: conversationId ?? undefined,
+      traceId,
+      parentEventId: startEventId ?? undefined,
+      sourceLoop: 'http_chat',
+      actor: 'assistant',
+      triggerReason: 'HTTP /api/chat request',
+      messages: messages as UnifiedLLMMessage[],
+      providerOverride: { provider: config.llm.provider, model: config.llm.model },
+      payload: { hasImages },
+    });
+    const promptTokens = agentResult.usage?.promptTokens ?? 0;
+    const completionTokens = agentResult.usage?.completionTokens ?? 0;
+    // turnCount-1 because the final no-tool turn doesn't count as an iteration
+    const iterations = Math.max(0, agentResult.turnCount - 1);
 
     // Build response
     const response: ChatResponse = {
-      message: result.content,
+      message: agentResult.content,
       role: 'assistant',
-      usage: result.usage,
-      model: result.model,
-      provider: result.provider,
+      usage: {
+        promptTokens,
+        completionTokens,
+        totalTokens: promptTokens + completionTokens,
+      },
+      model: config.llm.model,
+      provider: config.llm.provider,
     };
 
     // Add context metadata if available
@@ -353,8 +291,8 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
       sourceLoop: 'http_chat',
       eventType: 'chat.message.completed',
       actor: 'assistant',
-      runtimeProvider: result.provider,
-      model: result.model,
+      runtimeProvider: response.provider,
+      model: response.model,
       triggerReason: 'HTTP /api/chat request',
       summary: `HTTP chat completed: ${conversationId ?? 'anonymous'}`,
       status: 'completed',
@@ -362,9 +300,9 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
       metadata: {
         conversationId: conversationId ?? null,
         iterations,
-        outputLength: result.content.length,
-        promptTokens: result.usage.promptTokens,
-        completionTokens: result.usage.completionTokens,
+        outputLength: response.message.length,
+        promptTokens: response.usage.promptTokens,
+        completionTokens: response.usage.completionTokens,
         contextMemoryCount: contextPackage?.memories.length ?? 0,
       },
     });

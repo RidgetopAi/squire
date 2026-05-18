@@ -28,12 +28,10 @@ import {
 import {
   getToolDefinitions,
   hasTools,
-  executeTools,
   type ToolCall,
   type ToolDefinition,
   type ToolExecutionContext,
 } from '../../tools/index.js';
-import { streamLLM } from '../../services/llm/index.js';
 import { runAgent } from '../../agents/index.js';
 import type { LLMMessage } from '../../services/llm/types.js';
 import { buildMemoryContext } from '../../services/memory/index.js';
@@ -491,9 +489,7 @@ ${documentContent}
     const documentToolContext = { sourceLoop: 'socket_document_chat' };
     const tools = hasTools(documentToolContext) ? getToolDefinitions(documentToolContext) : undefined;
     console.log(`[Socket] Document discussion: streaming response (${tools?.length ?? 0} tools available)`);
-    const useRegistry = process.env.SOCKET_CHAT_USE_REGISTRY === '1';
-    const dispatch = useRegistry ? dispatchChatViaRegistry : streamWithToolLoop;
-    const streamResult = await dispatch(
+    const streamResult = await runChatAgent(
       socket,
       conversationId,
       messages,
@@ -893,12 +889,7 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
     
     console.log(`[Socket] Step 4: Starting ${providerName} stream... (${tools?.length ?? 0} tools available${hasImages ? ', with images' : ''})`);
     markLatency('starting_llm_stream');
-    const useRegistry = process.env.SOCKET_CHAT_USE_REGISTRY === '1';
-    const dispatch = useRegistry ? dispatchChatViaRegistry : streamWithToolLoop;
-    if (useRegistry) {
-      console.log('[Socket] dispatch path: registry (runAgent)');
-    }
-    const streamResult = await dispatch(
+    const streamResult = await runChatAgent(
       socket,
       conversationId,
       messages,
@@ -1070,218 +1061,31 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
   }
 }
 
-// === Streaming with Tool Loop ===
-
-const MAX_TOOL_ITERATIONS = 200;
-
 /**
- * Stream LLM response with iterative tool execution loop.
+ * Run the inner LLM + tool loop for socket_chat / socket_document_chat.
  *
- * Uses the unified streamLLM service — all provider-specific SSE parsing,
- * message formatting, and prompt caching is handled there.
+ * Both call sites in this file (handleChatMessage + handleDocumentDiscussion)
+ * own the outer orchestration — conversation persistence, image compression,
+ * story engine, RAG, memory context, real-time extraction, follow-up acks,
+ * activity events. Only the inner LLM + tool loop crosses into AgentEngine
+ * via runAgent('socket_chat', ...).
  *
- * The tool loop is iterative (not recursive), with a hard cap at
- * MAX_TOOL_ITERATIONS to prevent infinite loops.
+ * Wires the callbacks the chat surface needs:
+ *   onChunk     — forwards every token to socket.emit('chat:chunk', ...),
+ *                 preserves SQUIRE_STREAM_TRACE chunk metadata, fires the
+ *                 first_llm_chunk_emitted latency marker.
+ *   onToolTurn  — calls persistToolTurn(...) atomically (assistant +
+ *                 tool_result rows under one BEGIN/COMMIT so a concurrent
+ *                 user-message writer can't break sequence-number ordering)
+ *                 and captures the optional present_report tool output for
+ *                 chat:done.
+ *
+ * Defaults providerOverride to config.llm when the caller hasn't pinned one,
+ * so AgentEngine skips classifyTask + tier routing and stays on the
+ * configured chat provider. Vision-runtime swap still applies when the caller
+ * passes a providerOverride built from getLLMRuntime('vision').
  */
-async function streamWithToolLoop(
-  socket: TypedSocket,
-  conversationId: string,
-  messages: Array<{ role: string; content: string; images?: ImageContent[]; tool_calls?: ToolCall[]; tool_call_id?: string }>,
-  signal: AbortSignal,
-  tools?: ToolDefinition[],
-  providerOverride?: { provider: string; model: string },
-  conversationDbId?: string,
-  markLatency?: (label: string) => void,
-  activityContext?: ToolExecutionContext
-): Promise<{ content: string; usage?: { promptTokens: number; completionTokens: number }; reportData?: { title: string; summary: string; content: string; generatedAt: string }; usedTools: boolean; finalAssistantContent: string }> {
-  let fullContent = '';
-  let totalPromptTokens = 0;
-  let totalCompletionTokens = 0;
-  let reportData: { title: string; summary: string; content: string; generatedAt: string } | undefined;
-  let usedTools = false;
-  let finalAssistantContent = '';
-  const currentMessages = [...messages];
-  let firstChunkEmitted = false;
-  const traceStreaming = process.env.SQUIRE_STREAM_TRACE === '1';
-  let traceChunkSeq = 0;
-  let traceFirstChunkAtMs: number | null = null;
-  let tracePreviousChunkAtMs: number | null = null;
-
-  for (let iteration = 0; iteration <= MAX_TOOL_ITERATIONS; iteration++) {
-    // Stream one LLM response
-    const response = await streamLLM(
-      currentMessages as Parameters<typeof streamLLM>[0],
-      tools,
-      {
-        onChunk: (chunk) => {
-          const providerChunkAtMs = Date.now();
-          if (!firstChunkEmitted) {
-            firstChunkEmitted = true;
-            markLatency?.('first_llm_chunk_emitted');
-          }
-          traceChunkSeq += 1;
-          traceFirstChunkAtMs ??= providerChunkAtMs;
-          const sincePreviousChunkMs = tracePreviousChunkAtMs === null
-            ? null
-            : providerChunkAtMs - tracePreviousChunkAtMs;
-          tracePreviousChunkAtMs = providerChunkAtMs;
-          const serverEmitAtMs = Date.now();
-          if (
-            traceStreaming &&
-            (traceChunkSeq <= 5 || traceChunkSeq % 20 === 0 || (sincePreviousChunkMs ?? 0) > 250)
-          ) {
-            console.log('[Socket][StreamTrace] emit chat:chunk', {
-              conversationId,
-              seq: traceChunkSeq,
-              chars: chunk.length,
-              sincePreviousChunkMs,
-              elapsedSinceFirstChunkMs: providerChunkAtMs - traceFirstChunkAtMs,
-            });
-          }
-          socket.emit('chat:chunk', {
-            conversationId,
-            chunk,
-            done: false,
-            trace: traceStreaming
-              ? {
-                  seq: traceChunkSeq,
-                  chunkChars: chunk.length,
-                  providerChunkAtMs,
-                  serverEmitAtMs,
-                  sincePreviousChunkMs,
-                  elapsedSinceFirstChunkMs: providerChunkAtMs - traceFirstChunkAtMs,
-                }
-              : undefined,
-          });
-        },
-      },
-      { signal, ...providerOverride, sourceLoop: activityContext?.sourceLoop }
-    );
-
-    fullContent += response.content;
-    totalPromptTokens += response.usage?.promptTokens ?? 0;
-    totalCompletionTokens += response.usage?.completionTokens ?? 0;
-
-    // No tool calls → we're done. Remember this turn's text as the
-    // final assistant-visible content; the caller will persist it via
-    // addMessage so it gets memory-linkage + stats.
-    if (response.toolCalls.length === 0) {
-      finalAssistantContent = response.content;
-      break;
-    }
-    usedTools = true;
-
-    // Check iteration limit
-    if (iteration >= MAX_TOOL_ITERATIONS) {
-      console.warn(`[Socket] Tool loop hit max iterations (${MAX_TOOL_ITERATIONS}) for conversation ${conversationId}`);
-      socket.emit('chat:chunk', {
-        conversationId,
-        chunk: '\n\n[Tool execution limit reached.]',
-        done: false,
-      });
-      // Surface this iteration's text as the final row so the user isn't
-      // left with a blank assistant turn in history.
-      finalAssistantContent = response.content || '[Tool execution limit reached.]';
-      break;
-    }
-
-    // Execute tool calls
-    console.log(`[Socket] Tool iteration ${iteration + 1}: ${response.toolCalls.map((t) => t.function.name).join(', ')}`);
-    const toolResults = await executeTools(response.toolCalls, {
-      ...activityContext,
-      model: response.model ?? activityContext?.model,
-      metadata: {
-        ...(activityContext?.metadata ?? {}),
-        conversationId,
-        iteration: iteration + 1,
-      },
-    });
-
-    for (const result of toolResults) {
-      console.log(`[Socket] Tool ${result.name}: ${result.success ? 'success' : 'failed'}`);
-
-      // Check for present_report tool result
-      if (result.name === 'present_report' && result.success) {
-        try {
-          const parsed = JSON.parse(result.result);
-          if (parsed.type === 'report') {
-            reportData = {
-              title: parsed.title,
-              summary: parsed.summary,
-              content: parsed.content,
-              generatedAt: parsed.generatedAt,
-            };
-            console.log(`[Socket] Report data captured: "${reportData.title}"`);
-          }
-        } catch {
-          console.warn('[Socket] Failed to parse present_report result');
-        }
-      }
-    }
-
-    // Add assistant message with tool calls + tool results to conversation
-    currentMessages.push({
-      role: 'assistant',
-      content: response.content,
-      tool_calls: response.toolCalls,
-    });
-
-    for (const result of toolResults) {
-      currentMessages.push({
-        role: 'tool',
-        tool_call_id: result.toolCallId,
-        content: result.result,
-      });
-    }
-
-    // Persist the assistant(tool_calls) row + all tool_result rows as one
-    // atomic transaction so sequence numbers stay contiguous even if the
-    // user fires another message concurrently. Awaited (not fire-and-forget)
-    // so the next loop iteration and the post-loop addMessage see the rows
-    // in the right order — but this is fast: one BEGIN/COMMIT on one client.
-    if (conversationDbId) {
-      try {
-        await persistToolTurn({
-          conversationId: conversationDbId,
-          assistantContent: response.content,
-          toolCalls: response.toolCalls,
-          results: toolResults.map((r) => ({
-            toolCallId: r.toolCallId,
-            toolName: r.name,
-            content: r.result,
-          })),
-        });
-      } catch (err) {
-        console.error('[Socket] Failed to persist tool turn:', err);
-      }
-    }
-
-    // Loop continues — will stream next LLM response with tool results
-  }
-
-  return {
-    content: fullContent,
-    usage: { promptTokens: totalPromptTokens, completionTokens: totalCompletionTokens },
-    reportData,
-    usedTools,
-    finalAssistantContent,
-  };
-}
-
-/**
- * Phase 6.5 — Alternate dispatch via the agent registry.
- *
- * Same signature and return shape as streamWithToolLoop, but routes the
- * inner LLM + tool loop through runAgent('socket_chat', ...). The chat
- * surface keeps all 460+ lines of orchestration (history persistence,
- * image compression, story engine, RAG, memory context, real-time
- * extraction, follow-up acks, activity events); only the inner loop
- * crosses into AgentEngine.
- *
- * Gated by SOCKET_CHAT_USE_REGISTRY=1. When unset/0, callers fall back
- * to streamWithToolLoop above.
- */
-async function dispatchChatViaRegistry(
+async function runChatAgent(
   socket: TypedSocket,
   conversationId: string,
   messages: Array<{ role: string; content: string; images?: ImageContent[]; tool_calls?: ToolCall[]; tool_call_id?: string }>,
