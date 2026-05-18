@@ -1,16 +1,58 @@
 /**
  * Agent: worker_agent (coding worker)
  *
- * Shell-backed worker exposed through the backward-compatible `claude_code`
- * tool. The registry definition is a catalog entry; actual dispatch stays
- * in src/services/runtime/worker.ts and src/tools/coding/claude-code.ts.
+ * Shell-backed worker also exposed through the backward-compatible
+ * `claude_code` tool. The registry handler dispatches to
+ * src/services/runtime/worker.ts::runWorkerAgent so that
+ * runAgent('worker_agent', { input, conversationId, payload }) runs the
+ * same underlying worker as tools/coding/claude-code.ts.
  *
- * The handler is intentionally a thin error — Phase 1 just declares the
- * identity. Phase 5 wires the handler to dispatchWorker(...).
+ * Worker-specific options (workingDir, model, timeout, sandboxMode) ride
+ * on args.payload — args.input carries the prompt, args.conversationId
+ * carries the session id.
  */
 
+import { runWorkerAgent } from '../services/runtime/worker.js';
 import { registerAgent } from './registry.js';
-import type { AgentDefinition } from './types.js';
+import type { AgentDefinition, AgentRunArgs, AgentRunResult } from './types.js';
+
+interface WorkerCodingPayload {
+  workingDir?: string;
+  model?: string;
+  timeout?: number;
+  sandboxMode?: 'read-only' | 'workspace-write' | 'danger-full-access';
+}
+
+async function codingWorkerHandler(args: AgentRunArgs): Promise<AgentRunResult> {
+  if (!args.input || args.input.trim().length === 0) {
+    return {
+      success: false,
+      content: '',
+      turnCount: 0,
+      error: 'prompt is required (pass via args.input)',
+    };
+  }
+
+  const payload = (args.payload ?? {}) as WorkerCodingPayload;
+
+  const result = await runWorkerAgent({
+    runtimeId: 'coding',
+    prompt: args.input,
+    workingDir: payload.workingDir,
+    model: payload.model,
+    sessionId: args.conversationId,
+    timeout: payload.timeout,
+    sandboxMode: payload.sandboxMode ?? 'workspace-write',
+  });
+
+  return {
+    success: result.success,
+    content: result.result,
+    turnCount: 0,
+    data: result,
+    error: result.error,
+  };
+}
 
 export const codingWorkerAgent: AgentDefinition = registerAgent({
   id: 'worker_agent',
@@ -20,10 +62,5 @@ export const codingWorkerAgent: AgentDefinition = registerAgent({
     'Heavy code-modification worker. Edits files, runs tests/builds, uses git. Backed by Claude Code or Codex CLI.',
 
   workerSlot: 'coding',
-
-  handler: async () => {
-    throw new Error(
-      "[agents] coding worker agent has no handler yet — dispatch through tools/coding/claude-code.ts. Phase 5 wires this."
-    );
-  },
+  handler: codingWorkerHandler,
 });
