@@ -7,7 +7,6 @@
 
 import { pool } from '../../db/pool.js';
 import { generateEmbedding } from '../../providers/embeddings.js';
-import { complete } from '../../providers/llm.js';
 import { runAgent } from '../../agents/lazy.js';
 
 // =============================================================================
@@ -418,13 +417,7 @@ async function llmDisambiguate(
     .replace('{candidates}', candidateList);
 
   try {
-    const result = await complete(
-      [
-        { role: 'system', content: 'You disambiguate entity mentions. Respond with only a number or "NEW".' },
-        { role: 'user', content: prompt },
-      ],
-      { temperature: 0.1, maxTokens: 10 }
-    );
+    const result = await runAgent('entity_disambiguator', { input: prompt });
 
     const response = result.content.trim().toUpperCase();
 

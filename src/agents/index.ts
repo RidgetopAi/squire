@@ -48,6 +48,7 @@ import './chat_episode_extractor.js';
 import './commitments_summarizer.js';
 import './courier_summarizer.js';
 import './emotional_synthesis.js';
+import './entity_disambiguator.js';
 import './entity_extractor.js';
 import './fact_extractor.js';
 import './gap_detector.js';
