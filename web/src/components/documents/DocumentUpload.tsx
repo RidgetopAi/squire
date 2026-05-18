@@ -71,8 +71,8 @@ export function DocumentUpload({
       setError(`Unsupported file type. Supported: ${SUPPORTED_EXTENSIONS.join(', ')}`);
       return false;
     }
-    if (file.size > 50 * 1024 * 1024) {
-      setError('File size must be less than 50MB');
+    if (file.size > 100 * 1024 * 1024) {
+      setError('File size must be less than 100MB');
       return false;
     }
     return true;
@@ -321,7 +321,7 @@ export function DocumentUpload({
                         Drop file here or click to browse
                       </p>
                       <p className="text-sm text-foreground-muted mt-1">
-                        PDF, Word, Text, Markdown, CSV, or Images (max 50MB)
+                        PDF, Word, Text, Markdown, CSV, or Images (max 100MB)
                       </p>
                     </div>
                   </div>

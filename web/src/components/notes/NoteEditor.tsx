@@ -138,8 +138,8 @@ export function NoteEditor({ note, isOpen, onClose, onSave, onNoteUpdated }: Not
         return;
       }
 
-      if (file.size > 50 * 1024 * 1024) {
-        errors.push(`${file.name}: exceeds 50MB limit`);
+      if (file.size > 100 * 1024 * 1024) {
+        errors.push(`${file.name}: exceeds 100MB limit`);
         return;
       }
 
