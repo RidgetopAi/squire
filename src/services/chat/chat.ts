@@ -19,6 +19,8 @@ import {
 } from './attachments.js';
 import { recordActivityEvent } from '../activity.js';
 import { tools as imageTools } from '../../tools/images.js';
+import { runAgent } from '../../agents/index.js';
+import type { LLMMessage as UnifiedLLMMessage } from '../llm/types.js';
 
 // === TYPES ===
 
@@ -239,55 +241,90 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
                       conversationHistory.some(msg => msg.images && msg.images.length > 0);
     const tools = getHttpChatToolDefinitions(hasImages);
 
-    // Call LLM with tools
-    let result: LLMCompletionResult = await complete(messages, { tools, sourceLoop: 'http_chat' });
+    // Phase 6.6 — flag-gated dispatch through the agent registry.
+    // When HTTP_CHAT_USE_REGISTRY=1, the inner LLM + tool loop runs in
+    // AgentEngine via runAgent('http_chat', ...); when unset/0, the legacy
+    // path below runs unchanged.
+    const useRegistry = process.env.HTTP_CHAT_USE_REGISTRY === '1';
+    let result: LLMCompletionResult;
+    let iterations: number;
 
-    // Tool calling loop - handle tool calls until we get a final response
-    const maxToolIterations = 50; // Prevent infinite loops
-    let iterations = 0;
-
-    while (result.finishReason === 'tool_calls' && result.toolCalls?.length && iterations < maxToolIterations) {
-      iterations++;
-      console.log(`Tool call iteration ${iterations}: ${result.toolCalls.map((t) => t.function.name).join(', ')}`);
-
-      // Execute all tool calls in parallel
-      const toolResults = await executeTools(result.toolCalls, {
+    if (useRegistry) {
+      console.log('[HttpChat] dispatch path: registry (runAgent)');
+      // Pin to config.llm so AgentEngine bypasses tier routing (matches the
+      // pre-6.6 behavior where complete() falls through to config defaults).
+      const agentResult = await runAgent('http_chat', {
+        conversationId: conversationId ?? undefined,
         traceId,
-        parentId: startEventId,
+        parentEventId: startEventId ?? undefined,
         sourceLoop: 'http_chat',
         actor: 'assistant',
-        triggerReason: 'HTTP chat tool call',
-        runtimeProvider: result.provider,
-        model: result.model,
-        metadata: {
-          conversationId: conversationId ?? null,
-          iteration: iterations,
+        triggerReason: 'HTTP /api/chat request',
+        messages: messages as UnifiedLLMMessage[],
+        providerOverride: { provider: config.llm.provider, model: config.llm.model },
+        payload: { hasImages },
+      });
+      const totalPrompt = agentResult.usage?.promptTokens ?? 0;
+      const totalCompletion = agentResult.usage?.completionTokens ?? 0;
+      result = {
+        content: agentResult.content,
+        usage: {
+          promptTokens: totalPrompt,
+          completionTokens: totalCompletion,
+          totalTokens: totalPrompt + totalCompletion,
         },
-      });
+        model: config.llm.model,
+        provider: config.llm.provider,
+        finishReason: 'stop',
+      };
+      // turnCount-1 because the final no-tool turn doesn't count as an iteration
+      iterations = Math.max(0, agentResult.turnCount - 1);
+    } else {
+      // Legacy path — single-file tool loop. Untouched by 6.6 so existing
+      // callers stay bit-identical until the flag flips. Deleted in 6.7.
+      result = await complete(messages, { tools, sourceLoop: 'http_chat' });
+      const maxToolIterations = 50;
+      iterations = 0;
 
-      // Add assistant message with tool calls to conversation
-      messages.push({
-        role: 'assistant',
-        content: result.content,
-        tool_calls: result.toolCalls,
-      });
+      while (result.finishReason === 'tool_calls' && result.toolCalls?.length && iterations < maxToolIterations) {
+        iterations++;
+        console.log(`Tool call iteration ${iterations}: ${result.toolCalls.map((t) => t.function.name).join(', ')}`);
 
-      // Add tool results to conversation
-      for (const tr of toolResults) {
-        messages.push({
-          role: 'tool',
-          tool_call_id: tr.toolCallId,
-          content: tr.result,
+        const toolResults = await executeTools(result.toolCalls, {
+          traceId,
+          parentId: startEventId,
+          sourceLoop: 'http_chat',
+          actor: 'assistant',
+          triggerReason: 'HTTP chat tool call',
+          runtimeProvider: result.provider,
+          model: result.model,
+          metadata: {
+            conversationId: conversationId ?? null,
+            iteration: iterations,
+          },
         });
-        console.log(`Tool ${tr.name} result: ${tr.success ? 'success' : 'failed'}`);
+
+        messages.push({
+          role: 'assistant',
+          content: result.content,
+          tool_calls: result.toolCalls,
+        });
+
+        for (const tr of toolResults) {
+          messages.push({
+            role: 'tool',
+            tool_call_id: tr.toolCallId,
+            content: tr.result,
+          });
+          console.log(`Tool ${tr.name} result: ${tr.success ? 'success' : 'failed'}`);
+        }
+
+        result = await complete(messages, { tools, sourceLoop: 'http_chat' });
       }
 
-      // Re-prompt LLM with tool results
-      result = await complete(messages, { tools, sourceLoop: 'http_chat' });
-    }
-
-    if (iterations >= maxToolIterations) {
-      console.warn(`Tool calling reached max iterations (${maxToolIterations})`);
+      if (iterations >= maxToolIterations) {
+        console.warn(`Tool calling reached max iterations (${maxToolIterations})`);
+      }
     }
 
     // Build response
