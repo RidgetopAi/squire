@@ -2,6 +2,8 @@ export { start as startCourier, stop as stopCourier, isRunning, getStats, runNow
 export { registerTask, unregisterTask, listTasks } from './tasks/index.js';
 export type { CourierTask, TaskResult } from './tasks/index.js';
 
+import { runAgent } from '../../agents/lazy.js';
+
 // Register built-in tasks
 import { emailCheckTask } from './tasks/emailCheck.js';
 import { registerTask } from './tasks/index.js';
@@ -16,9 +18,21 @@ registerTask('goal-worker', goalWorkerTask);
 import { dailyBriefTask } from './tasks/dailyBrief.js';
 registerTask('daily-brief', dailyBriefTask);
 
-// Register AgentMail check task (if configured)
+// Register AgentMail check task (if configured) — dispatched via agent registry
 if (process.env['AGENTMAIL_API_KEY']) {
-  import('./tasks/agentmailCheck.js').then(({ agentmailCheckTask }) => {
-    registerTask('agentmail-check', agentmailCheckTask);
+  registerTask('agentmail-check', {
+    name: 'agentmail-check',
+    enabled: true,
+    async execute() {
+      const result = await runAgent('agentmail_check', {
+        actor: 'scheduler',
+        triggerReason: 'courier tick',
+      });
+      return {
+        success: result.success,
+        message: result.content,
+        data: result.data,
+      };
+    },
   });
 }
