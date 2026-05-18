@@ -55,6 +55,20 @@ export interface AgentRunArgs {
   payload?: unknown;
   /** Optional engine callbacks (loop_llm only — onStateChange/onToolCall/onError). */
   callbacks?: AgentCallbacks;
+  /**
+   * Pre-built message array (loop_llm only). When present, the engine uses
+   * these messages directly and skips its built-in memory-context + system-prompt
+   * assembly. Used by chat surfaces (socket_chat/http_chat) that build their
+   * own message list including conversation history, dynamic context, images,
+   * and tool-call history loaded from the DB.
+   */
+  messages?: LLMMessage[];
+  /**
+   * Per-call LLM provider override (loop_llm only). When present, bypasses
+   * routing entirely and pins the call to {provider, model}. Used by
+   * socket_chat to switch to the vision runtime when images are attached.
+   */
+  providerOverride?: { provider: string; model: string };
 }
 
 export interface AgentRunResult {

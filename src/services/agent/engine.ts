@@ -82,6 +82,21 @@ export interface AgentEngineOptions {
   tools?: ToolDefinition[];
   /** Force a specific model tier, bypassing task classification */
   tier?: ModelTier;
+  /**
+   * Pre-built message array. When present, the engine uses these messages
+   * directly as the starting conversation state and skips its built-in
+   * system-prompt + memory-context assembly. Used by chat surfaces that
+   * already build their own message list (with conversation history,
+   * dynamic context, images, tool-call history) before invoking the engine.
+   */
+  messages?: LLMMessage[];
+  /**
+   * Per-call LLM provider override. When set, bypasses tier-based routing
+   * for every LLM call in this run and pins to {provider, model}. Used by
+   * chat surfaces that switch runtime per call (e.g. socket_chat → vision
+   * runtime when images are attached).
+   */
+  providerOverride?: { provider: string; model: string };
 }
 
 // === AgentEngine Class ===
@@ -123,6 +138,8 @@ export class AgentEngine {
   private readonly tools: ToolDefinition[];
   private messages: LLMMessage[] = [];
   private tier: ModelTier | undefined;
+  private readonly preBuiltMessages: LLMMessage[] | undefined;
+  private readonly providerOverride: { provider: string; model: string } | undefined;
 
   /**
    * Create a new AgentEngine instance
@@ -151,6 +168,14 @@ export class AgentEngine {
 
     // Allow callers to force a model tier (bypasses task classification)
     this.tier = options.tier;
+
+    // Pre-built message array (chat-surface callers build their own).
+    // Cloned so the engine can mutate `this.messages` freely without
+    // bleeding state back into the caller's array.
+    this.preBuiltMessages = options.messages ? [...options.messages] : undefined;
+
+    // Per-call provider override (bypasses tier routing for every LLM call).
+    this.providerOverride = options.providerOverride;
   }
 
   /**
@@ -197,23 +222,31 @@ export class AgentEngine {
         return this.createResult('cancelled', '');
       }
 
-      // Retrieve relevant memory context
-      const memoryContext = await buildMemoryContext(input);
+      if (this.preBuiltMessages) {
+        // Caller (typically a chat surface) has built the full message list
+        // already — with conversation history, dynamic system context, images,
+        // and any tool-call history. Use it as-is and skip the engine's
+        // built-in system-prompt + memory-context assembly.
+        this.messages = [...this.preBuiltMessages];
+      } else {
+        // Retrieve relevant memory context
+        const memoryContext = await buildMemoryContext(input);
 
-      // System prompt split into two messages for Anthropic prompt caching:
-      // Message 1 (static): personality + instructions — identical every call, gets cached
-      // Message 2 (dynamic): memory context + additional context — changes per call, uncached
-      this.messages.push({ role: 'system', content: this.systemPrompt });
+        // System prompt split into two messages for Anthropic prompt caching:
+        // Message 1 (static): personality + instructions — identical every call, gets cached
+        // Message 2 (dynamic): memory context + additional context — changes per call, uncached
+        this.messages.push({ role: 'system', content: this.systemPrompt });
 
-      // Build dynamic context block (if any)
-      const dynamicParts: string[] = [];
-      if (memoryContext) dynamicParts.push(memoryContext);
-      if (context) dynamicParts.push(context);
+        // Build dynamic context block (if any)
+        const dynamicParts: string[] = [];
+        if (memoryContext) dynamicParts.push(memoryContext);
+        if (context) dynamicParts.push(context);
 
-      if (dynamicParts.length > 0) {
-        this.messages.push({ role: 'system', content: dynamicParts.join('\n\n---\n\n') });
+        if (dynamicParts.length > 0) {
+          this.messages.push({ role: 'system', content: dynamicParts.join('\n\n---\n\n') });
+        }
+        this.messages.push({ role: 'user', content: input });
       }
-      this.messages.push({ role: 'user', content: input });
 
       // Classify task for routing (once per conversation, skip if tier was preset)
       if (!this.tier && isRoutingEnabled()) {
@@ -243,6 +276,8 @@ export class AgentEngine {
           response = await callLLM(this.messages, this.tools, {
             signal: this.abortController.signal,
             tier: this.tier,
+            providerOverride: this.providerOverride,
+            sourceLoop: this.sourceLoop,
           });
         } catch (error) {
           // Check if this was an abort
