@@ -41,6 +41,7 @@ import './socket_chat.js';
 import './telegram.js';
 
 // --- single_llm ---
+import './affect_inferrer.js';
 import './belief_conflict_detector.js';
 import './belief_extractor.js';
 import './category_summarizer.js';
