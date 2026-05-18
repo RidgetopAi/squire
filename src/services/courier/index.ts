@@ -14,9 +14,22 @@ registerTask('email-check', emailCheckTask);
 import { goalWorkerTask } from './tasks/goalWorker.js';
 registerTask('goal-worker', goalWorkerTask);
 
-// Register Daily Brief task (sends 7 AM EDT)
-import { dailyBriefTask } from './tasks/dailyBrief.js';
-registerTask('daily-brief', dailyBriefTask);
+// Register Daily Brief task (sends 7 AM EDT) — dispatched via agent registry
+registerTask('daily-brief', {
+  name: 'daily-brief',
+  enabled: true,
+  async execute() {
+    const result = await runAgent('daily_brief', {
+      actor: 'scheduler',
+      triggerReason: 'courier tick',
+    });
+    return {
+      success: result.success,
+      message: result.content,
+      data: result.data,
+    };
+  },
+});
 
 // Register AgentMail check task (if configured) — dispatched via agent registry
 if (process.env['AGENTMAIL_API_KEY']) {
