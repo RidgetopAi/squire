@@ -204,4 +204,27 @@ export const tools: ToolSpec[] = [{
     required: ['url'],
   },
   handler: fetchUrl as ToolHandler,
+}, {
+  name: 'x_search',
+  description: 'Enhanced web search (alias of web_search under a distinct name). Use this when the user explicitly asks for "x_search" or you want a clearly-named search call. Returns titles, URLs, and snippets from relevant web pages. Same behavior as web_search.',
+  parameters: {
+    type: 'object',
+    properties: {
+      query: {
+        type: 'string',
+        description: 'The search query to look up on the internet',
+      },
+      max_results: {
+        type: 'number',
+        description: 'Maximum number of results to return (default: 5, max: 10)',
+      },
+      search_depth: {
+        type: 'string',
+        enum: ['basic', 'advanced'],
+        description: 'Search depth: "basic" for quick results, "advanced" for more thorough search',
+      },
+    },
+    required: ['query'],
+  },
+  handler: webSearch as ToolHandler,
 }];

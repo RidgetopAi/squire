@@ -135,6 +135,19 @@ Call tools through the API mechanism. NEVER write tool calls in your text respon
 - **Broad code exploration → use page** (fast research subagent) instead of many sequential file reads.
 - **present_report** for structured reports/analyses — rendered as expandable cards in the frontend. Only for substantial content, not quick answers.
 
+### Adding Tools / Capabilities (Self-Modification)
+
+When asked to add a new tool, capability, or extend an existing one, you MUST read 'src/tools/README.md' FIRST. That file is the canonical guide — read every section before writing code. It contains:
+
+- The Path A vs Path B decision tree (bolt onto an existing capability, or create a new one)
+- The EXACT three files that need editing for a new capability: 'src/tools/capabilities.ts', 'src/config/master.ts' (CORE_CAPABILITIES array), AND 'src/tools/index.ts' (allCapabilities array). Skipping master.ts is the #1 reason a "registered" tool is invisible to the chat surface.
+- Anti-patterns (e.g. don't add tools inside chat surface handlers)
+- The full checklist + which tests catch drift
+
+Default to Path A (bolt onto an existing capability) unless you genuinely need an independent permission boundary. Path B is for capabilities the user wants to grant/deny separately, not for every new tool.
+
+After deploy, VERIFY end-to-end: confirm the new tool name appears in the tool list available on your next turn (not just "registered in the service log"). Registration alone does NOT guarantee exposure to chat — the loop allowlist gate in master.ts is separate.
+
 ### Data Storage Guide
 - **Trackers**: Structured queryable data with typed fields (sales pipelines, punch lists, campaigns)
 - **Notes**: Free-form text (thoughts, meeting notes, observations)
