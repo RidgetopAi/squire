@@ -7,8 +7,8 @@
 
 import type { ToolSpec } from './types.js';
 import { getObjectById, getObjectData } from '../services/storage/objects.js';
-import type { ImageContent } from '../services/llm/index.js';
-import { runAgent } from '../agents/lazy.js';
+import { callLLM, type ImageContent } from '../services/llm/index.js';
+import { getLLMRuntime } from '../services/runtime/index.js';
 
 /**
  * Convert mime type to valid ImageContent mediaType
@@ -58,14 +58,18 @@ async function analyzeImage(args: unknown): Promise<string> {
     mediaType,
   };
 
-  // Call vision model via the agent registry. Runtime slot + provider/model
-  // come from agents/vision.ts; the image attachment rides on args.payload.
+  // Call vision model
   try {
-    const result = await runAgent('vision', {
-      input: prompt,
-      payload: { images: [imageContent] },
-    });
-    return result.content || 'No description generated.';
+    const visionRuntime = getLLMRuntime('vision');
+    const response = await callLLM([
+      {
+        role: 'user',
+        content: prompt,
+        images: [imageContent],
+      },
+    ], undefined, visionRuntime);
+
+    return response.content || 'No description generated.';
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return `Error analyzing image: ${message}`;

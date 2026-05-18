@@ -6,7 +6,7 @@
  */
 
 import { pool } from '../db/pool.js';
-import { runAgent } from '../agents/lazy.js';
+import { completeText } from '../providers/llm.js';
 
 // === TYPES ===
 
@@ -124,10 +124,37 @@ export async function classifyMemoryCategories(
   // Pre-check: If this is clearly about a significant date, ensure significant_dates is included
   const isSignificantDate = isSignificantDateContent(content);
 
+  const systemPrompt = `You are a memory classifier. Given a memory/observation, determine which categories it touches.
+
+Categories:
+- personality: Identity, self-story, who you are, personal traits, values, name, age, job, core facts about the user
+- goals: Aspirations, objectives, things being worked toward
+- relationships: People, social connections, family, friends, colleagues
+- projects: Active work, tasks, professional or personal projects
+- interests: Hobbies, passions, things enjoyed, entertainment preferences
+- wellbeing: Health, mood, emotional states, physical/mental wellness
+- commitments: Promises, obligations, things owed to others or by others
+- significant_dates: Key dates in life and what they mean (birthdays, anniversaries, pivotal events, turning points, origin stories)
+
+IMPORTANT: Memories about the user's name, age, job, or core identity MUST include "personality" with high relevance (0.9+).
+Memories about the user's relationships (wife, husband, children) should include BOTH "personality" AND "relationships".
+Memories about specific meaningful dates (birthdays, anniversaries, pivotal moments, "the day X happened") should include "significant_dates".
+
+Return ONLY a JSON array of relevant categories with relevance scores (0.0-1.0).
+Only include categories that are clearly relevant (relevance >= 0.3).
+Format: [{"category": "...", "relevance": 0.X, "reason": "brief reason"}]
+
+If the memory doesn't clearly relate to any category, return an empty array: []`;
+
+  const prompt = `Memory: "${content}"
+
+Which categories does this memory touch? Return JSON array only.`;
+
   try {
-    // Prompt + temperature + maxTokens come from agents/memory_classifier.ts.
-    const agentResult = await runAgent('memory_classifier', { input: content });
-    const response = agentResult.content;
+    const response = await completeText(prompt, systemPrompt, {
+      temperature: 0.1, // Low temperature for consistent classification
+      maxTokens: 300,
+    });
 
     // Parse JSON response
     const jsonMatch = response.match(/\[[\s\S]*?\]/);
@@ -385,26 +412,40 @@ export async function generateSummary(
   // This strips stale content (appointments from personality, relative dates, etc.)
   if (newMemories.length === 0 && force && current.content) {
     console.log(`[Summaries] Force-refreshing "${category}" through current prompt rules`);
-    // Force-refresh prompt + temperature + maxTokens come from
-    // agents/category_summarizer.ts; payload.force=true picks the
-    // refresh variant of the prompt.
+    const forceSystemPrompt = category === 'significant_dates'
+      ? `You are a personal memory summarizer. Clean up and refresh this chronological list of significant dates.
+
+Rules:
+1. Format each entry as: "**[Date]** - [What happened] | [Why it matters/emotional significance]"
+2. Remove any entries that are clearly routine appointments (not life-significant)
+3. ALWAYS use absolute dates — NEVER relative references
+4. Keep entries concise but meaningful
+5. Order chronologically, oldest to newest
+6. Use second person ("you")`
+      : `You are a personal memory summarizer. Clean up and refresh this summary of ${getCategoryDescription(category)}.
+
+Rules:
+1. Rewrite the summary with current rules applied
+2. ALWAYS use absolute dates (e.g., "Monday, March 3, 2026") — NEVER use relative references like "tomorrow", "next Tuesday", "this week", "yesterday"
+3. For "personality": Remove ALL appointments, calendar events, scheduled meetings, and time-bound items. Keep ONLY stable identity traits, background, values, work role, and personal characteristics
+4. For "commitments": Remove specific scheduled appointments. Keep ongoing obligations, promises, and goals
+5. Keep the summary concise but comprehensive (100-300 words)
+6. Use second person ("you")
+7. Write in a natural, conversational tone`;
+
     const forcePrompt = `Current summary to refresh:
 ${current.content}
 
 Rewrite this summary applying all the rules above. Return ONLY the updated summary text, no preamble.`;
 
-    const forceResult = await runAgent('category_summarizer', {
-      input: forcePrompt,
-      payload: {
-        category,
-        categoryDescription: getCategoryDescription(category),
-        force: true,
-      },
+    const forceResponse = await completeText(forcePrompt, forceSystemPrompt, {
+      temperature: 0.3,
+      maxTokens: 500,
     });
 
     const forceUpdated = await updateSummary(
       category,
-      forceResult.content.trim(),
+      forceResponse.trim(),
       'force-refresh',
       0
     );
@@ -412,9 +453,39 @@ Rewrite this summary applying all the rules above. Return ONLY the updated summa
     return { summary: forceUpdated, memoriesProcessed: 0 };
   }
 
-  // Build prompt for incremental update. The agent's systemPrompt resolver
-  // (in agents/category_summarizer.ts) picks the right variant based on
-  // payload.category — significant_dates vs general categories.
+  // Build prompt for incremental update - use special format for significant_dates
+  const systemPrompt = category === 'significant_dates'
+    ? `You are a personal memory summarizer. Your job is to maintain a chronological list of significant dates and what they mean.
+
+Rules:
+1. Format as a chronological list - each date on its own line
+2. Format each entry as: "**[Date]** - [What happened] | [Why it matters/emotional significance]"
+3. If the exact date is unknown, use approximate dates or seasons (e.g., "Early 2025", "Spring 2024")
+4. Preserve all existing dates unless they are clearly duplicates
+5. Add new dates from the new memories
+6. Use second person ("you") when referring to the person
+7. Focus on emotional significance - why this date matters
+8. Keep entries concise but meaningful
+9. Order chronologically, oldest to newest
+
+Example format:
+**February 16, 2025** - First conversation with AI at Mills Floor Covering | The moment your journey with AI companions began
+**March 15, 2025** - Started building Squire | When you decided to create your own memory system`
+    : `You are a personal memory summarizer. Your job is to maintain a living summary of ${getCategoryDescription(category)}.
+
+Rules:
+1. If there's an existing summary, UPDATE it incrementally - don't rewrite from scratch
+2. Preserve important existing information unless it's clearly outdated
+3. Add new information from the new memories
+4. Keep the summary concise but comprehensive (aim for 100-300 words)
+5. Use second person ("you") when referring to the person
+6. Focus on what's most relevant and actionable
+7. If information conflicts, prefer the newer information
+8. Write in a natural, conversational tone
+9. ALWAYS use absolute dates (e.g., "Monday, March 3, 2026") — NEVER use relative references like "tomorrow", "next Tuesday", "this week", "yesterday". This summary may be read days after generation.
+10. For the "personality" category: DO NOT include appointments, calendar events, scheduled meetings, or any time-bound items. Focus ONLY on stable identity traits, background, values, work role, and personal characteristics. Appointments belong in the schedule system.
+11. For the "commitments" category: DO NOT include specific scheduled appointments or calendar events. Focus on ongoing obligations, promises, and goals.`;
+
   const existingPart = current.content
     ? `Current summary:\n${current.content}\n\n`
     : 'No existing summary yet.\n\n';
@@ -425,11 +496,10 @@ Rewrite this summary applying all the rules above. Return ONLY the updated summa
 
   const prompt = `${existingPart}New memories to incorporate:\n${memoriesPart}\n\nGenerate the updated summary for "${category}". Return ONLY the summary text, no preamble.`;
 
-  const result = await runAgent('category_summarizer', {
-    input: prompt,
-    payload: { category, categoryDescription: getCategoryDescription(category) },
+  const response = await completeText(prompt, systemPrompt, {
+    temperature: 0.3,
+    maxTokens: 500,
   });
-  const response = result.content;
 
   // Update the summary
   const updated = await updateSummary(
@@ -594,18 +664,28 @@ export async function refreshCommitmentsSummary(): Promise<LivingSummary> {
     }).join('\n');
   }
 
-  // Prompt + temperature + maxTokens come from agents/commitments_summarizer.ts.
-  // The agent's systemPrompt resolver interpolates dateStr from payload.
+  const systemPrompt = `You are a personal assistant summarizing someone's current commitments and obligations.
+
+Rules:
+1. ONLY describe commitments that are currently OPEN - not past ones
+2. Use ABSOLUTE dates (e.g., "Monday, Feb 10" or "Thu, Feb 13") - NEVER use relative references like "tomorrow", "this Wednesday", or "next week" because this summary may be read on a different day than when it was generated
+3. Keep it concise but actionable
+4. Use second person ("you have", "you need to")
+5. Group by urgency if possible (today, this week, upcoming, no deadline)
+6. DO NOT mention any dates that have already passed
+7. Keep it to 100-200 words maximum
+
+Today's date is: ${dateStr} (this summary was generated on this date)`;
+
   const prompt = `Current open commitments:
 ${commitmentList}
 
 Generate a fresh summary of current commitments. Return ONLY the summary text, no preamble.`;
 
-  const result = await runAgent('commitments_summarizer', {
-    input: prompt,
-    payload: { dateStr },
+  const response = await completeText(prompt, systemPrompt, {
+    temperature: 0.3,
+    maxTokens: 400,
   });
-  const response = result.content;
 
   // Update the summary
   const updated = await updateSummary(

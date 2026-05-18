@@ -6,7 +6,7 @@
  */
 
 import { pool } from '../../db/pool.js';
-import { runAgent } from '../../agents/index.js';
+import { completeText } from '../../providers/llm.js';
 import { inferAffectFromRecent, type AffectSignals } from './affect.js';
 
 // =============================================================================
@@ -329,9 +329,13 @@ async function generateNarrativeSummary(
       threadsActive > 0 ? `Active threads: ${threadsActive}` : null,
     ].filter(Boolean).join('\n');
 
-    const result = await runAgent('state_snapshot_narrator', { input: context });
+    const response = await completeText(
+      context,
+      `Write a 2-3 sentence narrative summary of how this person seems to be doing. Write as if you know them well. Use "they" pronouns. Be warm but honest. No bullet points, just flowing prose. Return ONLY the narrative text.`,
+      { temperature: 0.6, maxTokens: 150 }
+    );
 
-    return result.content.trim();
+    return response.trim();
   } catch (error) {
     console.error('[StateSnapshots] Narrative generation failed:', error);
     return `Emotional tone: ${affect.emotional_tone}.`;

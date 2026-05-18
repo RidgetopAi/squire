@@ -1,21 +1,22 @@
 /**
  * Goal Worker - Background autonomous execution of Squire's personal goals
- *
+ * 
  * Runs as a Courier task. Picks the highest-priority active goal,
- * dispatches the `goal_worker` agent (via runAgent) with a goal-focused
- * prompt, lets it work for up to maxTurns / maxExecutionMs, then logs
- * what happened. Runtime knobs (tier, maxTurns, maxExecutionMs) come
- * from the agent registry definition in src/agents/goal_worker.ts.
+ * spins up an AgentEngine with a goal-focused prompt, lets it work
+ * for up to 15 turns, then logs what happened.
  */
 
 import { getNextGoal, markGoalWorkedOn, addGoalNote } from '../../planning/goals.js';
-import { runAgent } from '../../../agents/index.js';
+import { AgentEngine } from '../../agent/index.js';
 import { notify } from '../notifier.js';
 import { createEntry } from '../../storage/scratchpad.js';
 import type { CourierTask, TaskResult } from './index.js';
 import { config } from '../../../config/index.js';
 import { callMandrelTool } from '../../mandrel/index.js';
 import { recordActivityEvent } from '../../activity.js';
+
+// Time cap: configurable, defaults to 5 minutes
+const MAX_EXECUTION_MS = config.goalWorker.maxExecutionMs;
 
 // Track last execution to throttle to hourly even though Courier ticks every 30min
 let lastExecutionAt: Date | null = null;
@@ -129,15 +130,14 @@ ${previousNotes}
 
 Begin working on your goal now.`;
 
-      // 4. Run the goal worker agent — registry owns tier, maxTurns,
-      // and maxExecutionMs. The runner cancels the engine when the
-      // execution budget is up; the result comes back with state='cancelled'.
-      const result = await runAgent('goal_worker', {
-        input: prompt,
+      // 4. Run the agent with a timeout
+      const engine = new AgentEngine({
         conversationId: traceId,
-        traceId,
+        sourceLoop: 'goal_worker',
         actor: 'assistant',
         triggerReason: 'goal worker background session',
+        maxTurns: config.goalWorker.maxTurns,
+        tier: 'fast',
         callbacks: {
           onStateChange: (state, turn) => console.log(`[GoalWorker] State: ${state}, Turn: ${turn}`),
           onToolCall: (name) => console.log(`[GoalWorker] Tool: ${name}`),
@@ -145,19 +145,31 @@ Begin working on your goal now.`;
         },
       });
 
+      // Race the engine against timeout
+      const timeoutPromise = new Promise<null>((resolve) => {
+        setTimeout(() => {
+          engine.cancel();
+          resolve(null);
+        }, MAX_EXECUTION_MS);
+      });
+
+      const result = await Promise.race([
+        engine.run(prompt),
+        timeoutPromise,
+      ]);
+
       // 5. Log what happened
-      if (result.state === 'cancelled') {
-        // Runner cancelled the engine after maxExecutionMs — treat as timeout.
-        const timeoutMs = config.goalWorker.maxExecutionMs;
-        await addGoalNote(goal.id, `[Auto] Background session timed out after ${timeoutMs / 1000}s`);
+      if (result === null) {
+        // Timed out
+        await addGoalNote(goal.id, `[Auto] Background session timed out after ${MAX_EXECUTION_MS / 1000}s`);
         await recordActivityEvent({
           traceId,
           sourceLoop: 'goal_worker',
           eventType: 'loop.timed_out',
           summary: `Goal worker timed out: ${goal.title}`,
           status: 'timed_out',
-          durationMs: timeoutMs,
-          metadata: { goalId: goal.id, maxExecutionMs: timeoutMs },
+          durationMs: MAX_EXECUTION_MS,
+          metadata: { goalId: goal.id, maxExecutionMs: MAX_EXECUTION_MS },
         });
         console.log('[GoalWorker] Session timed out');
         return { success: true, message: `Goal "${goal.title}" - timed out` };

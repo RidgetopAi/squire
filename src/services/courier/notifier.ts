@@ -148,28 +148,15 @@ export async function notifyEmailSummary(emails: EmailSummary[]): Promise<void> 
   // Build message with better formatting
   const header = `📧 *Email Summary* (${emails.length} new)\n\n`;
 
-  // Format each email with spacing and structure.
-  // Strip markdown-breaking characters from EVERY user-controlled field —
-  // sender name was previously left raw, so a sender like
-  // "Welcome_to_Service" or "[Notice]" would leave an unclosed Telegram
-  // entity and trip the markdown parser at whatever byte offset hit it,
-  // forcing the no-markdown retry path. Escape sender alongside subject
-  // and summary so the original send succeeds with formatting intact.
-  // Strip markdown-breaking characters from EVERY user-controlled field —
-  // sender, subject, summary, AND id. AgentMail ids look like
-  // "msg_xxxxxxxxxxxx" and the embedded underscore breaks the italic span
-  // around `_ID: ..._`. With 20 emails per digest the per-entry parity
-  // misalignments cascade and trip the markdown parser deep in the
-  // message (~byte 2207), forcing the no-markdown retry path.
-  const stripMd = (s: string) => s.replace(/[*_`\[\]]/g, '');
+  // Format each email with spacing and structure
+  // Escape subject and summary to prevent markdown parsing errors
   const body = emails.map((e, i) => {
     const senderPart = e.from.split('<')[0];
-    const rawSender = senderPart?.trim() || e.from;
-    const sender = stripMd(rawSender);
-    const safeSubject = stripMd(e.subject);
-    const safeSummary = stripMd(e.summary);
-    const safeId = stripMd(e.id);
-    return `*${i + 1}. ${sender}*\n${safeSubject}\n${safeSummary}\n_ID: ${safeId}_`;
+    const sender = senderPart?.trim() || e.from;
+    // Escape markdown-breaking characters in user content
+    const safeSubject = e.subject.replace(/[*_`\[\]]/g, '');
+    const safeSummary = e.summary.replace(/[*_`\[\]]/g, '');
+    return `*${i + 1}. ${sender}*\n${safeSubject}\n${safeSummary}\n_ID: ${e.id}_`;
   }).join('\n\n');
 
   const footer = '\n\n─────────────────\n_Say "check email" for full details_';

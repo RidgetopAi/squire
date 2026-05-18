@@ -10,7 +10,9 @@
 
 import { pool } from '../../db/pool.js';
 import { config } from '../../config/index.js';
-import { runAgent } from '../../agents/index.js';
+import { callLLM } from '../llm/call.js';
+import type { LLMMessage } from '../llm/types.js';
+import { getLLMRuntime } from '../runtime/index.js';
 
 // ---------------------------------------------------------------------------
 // Interfaces
@@ -575,11 +577,16 @@ async function rerankerJudge(
 ): Promise<boolean> {
   try {
     const prompt = `User message: '${query}'\n\nMemory: '${memoryContent}'\n\nIs this memory relevant to the user's message? Answer only 'yes' or 'no'.`;
-    const result = await runAgent('reranker', {
-      input: prompt,
+    const messages: LLMMessage[] = [{ role: 'user', content: prompt }];
+    const runtime = getLLMRuntime('reranker');
+    const response = await callLLM(messages, undefined, {
+      provider: runtime.provider,
+      model: runtime.model,
+      maxTokens: runtime.maxTokens,
+      temperature: runtime.temperature,
       signal: AbortSignal.timeout(5000),
     });
-    return result.content.toLowerCase().trim().startsWith('yes');
+    return response.content.toLowerCase().trim().startsWith('yes');
   } catch (error) {
     console.error('[Recall] Reranker error:', error);
     return false;

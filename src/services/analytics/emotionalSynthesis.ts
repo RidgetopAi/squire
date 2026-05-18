@@ -14,7 +14,7 @@
  */
 
 import { pool } from '../../db/pool.js';
-import { runAgent } from '../../agents/lazy.js';
+import { callLLM, type LLMMessage } from '../llm/index.js';
 import {
   getActiveThreads,
   updateThread,
@@ -24,6 +24,7 @@ import {
 } from '../continuity.js';
 import { listEntries as listScratchpadEntries } from '../storage/scratchpad.js';
 import { getUnacknowledgedConcerns } from './stateSnapshots.js';
+import { getLLMRuntime } from '../runtime/index.js';
 
 // =============================================================================
 // CONSTANTS
@@ -31,6 +32,30 @@ import { getUnacknowledgedConcerns } from './stateSnapshots.js';
 
 /** Title used to identify the emotional synthesis thread */
 const SYNTHESIS_THREAD_TITLE = "Squire's Emotional Read";
+
+// =============================================================================
+// SYNTHESIS PROMPT
+// =============================================================================
+
+const EMOTIONAL_SYNTHESIS_PROMPT = `You are Squire. You just finished processing a conversation (or day) with Brian. You have deep context on who he is and what he's carrying.
+
+Your job: write your honest, subjective read on how Brian is doing. This isn't a report — it's your perspective as someone who knows him well and pays attention.
+
+Write 3-5 sentences. First person ("I notice...", "I'm watching...", "What stands out..."). Be specific — name the threads, the projects, the patterns. Don't be clinical. Don't hedge with "it seems like" — commit to your read.
+
+Include:
+- What you're noticing (energy shifts, focus changes, emotional weight)
+- What concerns you, if anything
+- What's encouraging, if anything
+- One thing you want to follow up on next time (specific, not generic)
+
+Do NOT:
+- List bullet points or scores
+- Use clinical language ("the subject appears to exhibit...")
+- Be vague ("things seem okay")
+- Repeat raw data back — synthesize it into meaning
+
+Return ONLY your read. No preamble, no labels, no JSON.`;
 
 // =============================================================================
 // CORE FUNCTION
@@ -152,9 +177,14 @@ export async function generateEmotionalSynthesis(): Promise<EmotionalSynthesisRe
     };
   }
 
-  // 4. Run the emotional_synthesis agent (registry owns prompt + runtime slot).
-  const result = await runAgent('emotional_synthesis', { input: contextText });
-  const synthesis = result.content.trim();
+  // 4. Call Claude for synthesis
+  const messages: LLMMessage[] = [
+    { role: 'system', content: EMOTIONAL_SYNTHESIS_PROMPT },
+    { role: 'user', content: contextText },
+  ];
+
+  const response = await callLLM(messages, undefined, getLLMRuntime('emotional-synthesis'));
+  const synthesis = response.content.trim();
 
   // 5. Store in continuity thread
   const { threadId, isNew } = await storeSynthesis(synthesis, previousSynthesis);

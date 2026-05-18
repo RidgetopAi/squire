@@ -42,28 +42,16 @@ export const agentmailCheckTask: CourierTask = {
       // Build notification message
       const header = `📬 *AgentMail* (${newMessages.length} new)\n\n`;
 
-      // Strip Telegram-Markdown delimiters from every user-controlled field.
-      // The `from` field was previously left raw, so a sender like
-      // "Newsletter_Service" or a "Name [Org]" combo would leave an
-      // unclosed italic/bold span and trip the markdown parser at the
-      // same byte offset on every run (reproducible ~byte 2207 for a
-      // 20-email digest), forcing the no-markdown retry path.
-      const stripMd = (s: string) => s.replace(/[*_`\[\]]/g, '');
       const body = newMessages.map((msg, i) => {
-        const fromRaw = typeof msg.from === 'string'
+        const from = typeof msg.from === 'string'
           ? msg.from
           : (msg.from as any[]).map((f: any) => f.name || f.email).join(', ');
-        const from = stripMd(fromRaw);
-        const safeSubject = stripMd(msg.subject);
-        const preview = stripMd(msg.text?.substring(0, 80) || msg.html?.substring(0, 80) || '(no content)');
+        const safeSubject = msg.subject.replace(/[*_`\[\]]/g, '');
+        const preview = (msg.text?.substring(0, 80) || msg.html?.substring(0, 80) || '(no content)').replace(/[*_`\[\]]/g, '');
         return `*${i + 1}. ${from}*\n${safeSubject}\n${preview}...`;
       }).join('\n\n');
 
-      // Footer kept plain: Telegram MarkdownV1 doesn't reliably honor `\_`
-      // as an escape inside an italic span, so wrapping a string that
-      // contains underscores like "squire_email_list" in `_..._` leaks
-      // an unclosed entity.
-      const footer = '\n\n─────────────────\nUse squire_email_list to see all messages';
+      const footer = '\n\n─────────────────\n_Use squire\\_email\\_list to see all messages_';
       const message = header + body + footer;
 
       // Send Telegram notification

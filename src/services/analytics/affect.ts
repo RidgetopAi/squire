@@ -6,7 +6,7 @@
  */
 
 import { pool } from '../../db/pool.js';
-import { runAgent } from '../../agents/index.js';
+import { completeText } from '../../providers/llm.js';
 
 // =============================================================================
 // TYPES
@@ -24,6 +24,25 @@ export interface AffectSignals {
 // =============================================================================
 // INFERENCE
 // =============================================================================
+
+const AFFECT_INFERENCE_PROMPT = `You are analyzing recent context about a person to infer their current emotional state.
+Based on the memories and active threads below, estimate:
+
+Return JSON only:
+{
+  "stress": 1-10 (1=calm, 10=overwhelmed) or null if insufficient data,
+  "energy": 1-10 (1=depleted, 10=energized) or null if insufficient data,
+  "motivation": 1-10 (1=unmotivated, 10=driven) or null if insufficient data,
+  "emotional_tone": "a 2-4 word description like 'cautiously optimistic' or 'overwhelmed but determined'",
+  "pressures": ["top 1-3 sources of stress/pressure"],
+  "energizers": ["top 1-3 sources of energy/motivation"]
+}
+
+Guidelines:
+- Only rate what you can reasonably infer. Use null for dimensions with no signal.
+- Be specific in pressures/energizers — "permit application deadline" not just "work"
+- emotional_tone should feel human, not clinical
+- If there's very little emotional content, default to neutral (stress: 4, energy: 5, motivation: 5)`;
 
 /**
  * Infer affect signals from recent memories and active threads.
@@ -83,11 +102,13 @@ export async function inferAffectFromRecent(
       }
     }
 
-    const result = await runAgent('affect_inferrer', {
-      input: contextParts.join('\n'),
-    });
+    const response = await completeText(
+      contextParts.join('\n'),
+      AFFECT_INFERENCE_PROMPT,
+      { temperature: 0.3, maxTokens: 200 }
+    );
 
-    const jsonMatch = result.content.match(/\{[\s\S]*\}/);
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return defaults;
 
     const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
