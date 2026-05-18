@@ -22,6 +22,7 @@
 
 import { registerAgent } from './registry.js';
 import { getToolDefinitions } from '../tools/index.js';
+import { tools as imageTools } from '../tools/images.js';
 import type { AgentDefinition } from './types.js';
 
 export const socketChatAgent: AgentDefinition = registerAgent({
@@ -36,5 +37,16 @@ export const socketChatAgent: AgentDefinition = registerAgent({
 
   // Honor args.sourceLoop so handlers.ts can route socket_document_chat
   // through this same agent with the document-scoped tool list.
-  tools: (args) => getToolDefinitions({ sourceLoop: args.sourceLoop ?? 'socket_chat' }),
+  // When images are attached, restrict to image-specific tools — same
+  // pattern as http_chat. Keeps payload under OpenAI's 128-tool cap and
+  // keeps the model focused on the visual task.
+  tools: (args) => {
+    const all = getToolDefinitions({ sourceLoop: args.sourceLoop ?? 'socket_chat' });
+    const hasImages = Boolean(
+      (args.payload as { hasImages?: boolean } | undefined)?.hasImages
+    );
+    if (!hasImages) return all;
+    const imageToolNames = new Set(imageTools.map((t) => t.name));
+    return all.filter((d) => imageToolNames.has(d.function.name));
+  },
 });

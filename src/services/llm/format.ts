@@ -139,6 +139,28 @@ export function toAnthropicMessages(messages: LLMMessage[]): {
  * Convert canonical tool definitions to Anthropic format.
  * Adds cache_control to last tool for prompt caching.
  */
+/**
+ * OpenAI rejects requests with more than 128 tool definitions
+ * (`tools: array too long. Expected an array with maximum length 128`).
+ * The other OpenAI-compatible providers (xAI, Groq, Gemini, Ollama)
+ * have their own caps but 128 is the safe lower bound. Truncating
+ * keeps insertion order so behavior is deterministic; loops that need
+ * a tighter set should filter at the agent layer (see http_chat).
+ */
+const OPENAI_TOOL_LIMIT = 128;
+
+export function capTools(
+  tools: ToolDefinition[] | undefined,
+  provider: string
+): ToolDefinition[] | undefined {
+  if (!tools || tools.length <= OPENAI_TOOL_LIMIT) return tools;
+  const dropped = tools.slice(OPENAI_TOOL_LIMIT).map((t) => t.function.name);
+  console.warn(
+    `[llm] ${provider}: tools list (${tools.length}) exceeds ${OPENAI_TOOL_LIMIT} cap — dropped: ${dropped.join(', ')}`
+  );
+  return tools.slice(0, OPENAI_TOOL_LIMIT);
+}
+
 export function toAnthropicTools(tools: ToolDefinition[]): AnthropicToolDef[] {
   return tools.map((tool, index) => {
     const def: AnthropicToolDef = {

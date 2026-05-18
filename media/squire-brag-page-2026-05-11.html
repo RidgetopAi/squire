@@ -1,0 +1,573 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Squire Progress Log - May 11, 2026</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #15191f;
+      --muted: #5d6978;
+      --line: #d9e0e7;
+      --paper: #f7f8f8;
+      --panel: #ffffff;
+      --green: #2e7d5b;
+      --blue: #2f6f9f;
+      --gold: #a66f1f;
+      --red: #a9453c;
+      --shadow: 0 18px 50px rgba(28, 37, 48, 0.11);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background:
+        linear-gradient(180deg, rgba(47, 111, 159, 0.12), rgba(247, 248, 248, 0) 360px),
+        var(--paper);
+      color: var(--ink);
+      font: 16px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 42px 0 70px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+      gap: 28px;
+      align-items: stretch;
+      min-height: 520px;
+    }
+
+    .hero-copy {
+      padding: 34px 0 18px;
+    }
+
+    .eyebrow {
+      margin: 0 0 14px;
+      color: var(--blue);
+      font-weight: 800;
+      letter-spacing: 0;
+      text-transform: uppercase;
+      font-size: 0.82rem;
+    }
+
+    h1 {
+      margin: 0;
+      max-width: 900px;
+      font-size: clamp(3.1rem, 8vw, 6.8rem);
+      line-height: 0.92;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      max-width: 720px;
+      margin: 24px 0 0;
+      color: #33404d;
+      font-size: 1.2rem;
+    }
+
+    .hero-panel {
+      background: var(--panel);
+      border: 1px solid rgba(21, 25, 31, 0.08);
+      box-shadow: var(--shadow);
+      padding: 22px;
+      align-self: center;
+    }
+
+    .signal {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .stat {
+      min-height: 122px;
+      border: 1px solid var(--line);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      background: #fbfcfd;
+    }
+
+    .stat strong {
+      font-size: 2.15rem;
+      line-height: 1;
+      letter-spacing: 0;
+    }
+
+    .stat span {
+      color: var(--muted);
+      font-size: 0.91rem;
+    }
+
+    .wide {
+      grid-column: 1 / -1;
+    }
+
+    .bar-wrap {
+      margin-top: 16px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .bar-row {
+      display: grid;
+      grid-template-columns: 116px 1fr 58px;
+      gap: 12px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .bar {
+      height: 12px;
+      background: #e8edf1;
+      overflow: hidden;
+    }
+
+    .bar i {
+      display: block;
+      height: 100%;
+      background: linear-gradient(90deg, var(--green), var(--blue));
+    }
+
+    section {
+      margin-top: 48px;
+    }
+
+    h2 {
+      margin: 0 0 18px;
+      font-size: clamp(1.7rem, 3vw, 2.35rem);
+      letter-spacing: 0;
+    }
+
+    .section-lede {
+      max-width: 820px;
+      margin: -6px 0 22px;
+      color: var(--muted);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      padding: 20px;
+      min-height: 210px;
+    }
+
+    .card h3 {
+      margin: 0 0 10px;
+      font-size: 1.1rem;
+    }
+
+    .card p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .tag {
+      border: 1px solid var(--line);
+      background: #f9fbfb;
+      color: #2b3744;
+      padding: 6px 9px;
+      font-size: 0.86rem;
+      white-space: nowrap;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 14px;
+    }
+
+    .phase {
+      display: grid;
+      grid-template-columns: 128px 1fr 122px;
+      gap: 18px;
+      align-items: start;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      padding: 18px;
+    }
+
+    .phase .label {
+      font-weight: 800;
+      color: var(--blue);
+    }
+
+    .phase h3 {
+      margin: 0 0 6px;
+      font-size: 1.08rem;
+    }
+
+    .phase p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .loc {
+      text-align: right;
+      color: var(--green);
+      font-weight: 800;
+    }
+
+    .capability-map {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .capability {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      padding: 18px;
+    }
+
+    .capability h3 {
+      margin: 0 0 8px;
+      font-size: 1rem;
+    }
+
+    .capability ul {
+      margin: 0;
+      padding-left: 20px;
+      color: var(--muted);
+    }
+
+    .proof {
+      display: grid;
+      grid-template-columns: 1.05fr 0.95fr;
+      gap: 16px;
+      align-items: stretch;
+    }
+
+    .code-box {
+      background: #17202a;
+      color: #dce7ef;
+      padding: 20px;
+      overflow: auto;
+      font: 0.92rem/1.55 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+
+    .code-box .green {
+      color: #7bd89c;
+    }
+
+    .code-box .blue {
+      color: #8cc8ff;
+    }
+
+    .note {
+      background: #fff9ed;
+      border: 1px solid #efd8ad;
+      padding: 18px;
+      color: #60491f;
+    }
+
+    .footer {
+      margin-top: 48px;
+      padding-top: 24px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    @media (max-width: 860px) {
+      main {
+        width: min(100% - 22px, 1180px);
+        padding-top: 24px;
+      }
+
+      .hero,
+      .grid,
+      .capability-map,
+      .proof {
+        grid-template-columns: 1fr;
+      }
+
+      .phase {
+        grid-template-columns: 1fr;
+      }
+
+      .loc {
+        text-align: left;
+      }
+
+      .bar-row {
+        grid-template-columns: 94px 1fr 48px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Squire progress log | May 11, 2026</p>
+        <h1>Squire became a lifecycle engine.</h1>
+        <p class="subtitle">
+          Today moved Squire past capture and recall. Notes, lists, reminders, calendar events,
+          and commitments can now be maintained by voice: create, read, update, archive, cancel,
+          delete, reorder, snooze, complete, and disambiguate.
+        </p>
+      </div>
+
+      <aside class="hero-panel" aria-label="Project stats">
+        <div class="signal">
+          <div class="stat">
+            <strong>6</strong>
+            <span>commits shipped today</span>
+          </div>
+          <div class="stat">
+            <strong>4,550</strong>
+            <span>insertions across today's Squire work</span>
+          </div>
+          <div class="stat">
+            <strong>2,703</strong>
+            <span>insertions in lifecycle-control work</span>
+          </div>
+          <div class="stat">
+            <strong>128</strong>
+            <span>named tool definitions found in source</span>
+          </div>
+          <div class="stat wide">
+            <strong>9cf61b4</strong>
+            <span>deployed production HEAD after the lifecycle push</span>
+          </div>
+        </div>
+
+        <div class="bar-wrap" aria-label="Lines added by lifecycle phase">
+          <div class="bar-row"><span>Notes/lists</span><div class="bar"><i style="width: 100%"></i></div><span>1,188</span></div>
+          <div class="bar-row"><span>Reminders</span><div class="bar"><i style="width: 36%"></i></div><span>428</span></div>
+          <div class="bar-row"><span>Calendar</span><div class="bar"><i style="width: 37%"></i></div><span>434</span></div>
+          <div class="bar-row"><span>Commitments</span><div class="bar"><i style="width: 42%"></i></div><span>497</span></div>
+          <div class="bar-row"><span>Tests/prompt</span><div class="bar"><i style="width: 13%"></i></div><span>156</span></div>
+        </div>
+      </aside>
+    </header>
+
+    <section>
+      <h2>What Changed</h2>
+      <p class="section-lede">
+        The big shift: Squire is no longer an append-only memory surface. It now has object lifecycle
+        control over the everyday things Brian actually needs managed while moving through life.
+      </p>
+      <div class="grid">
+        <article class="card">
+          <h3>Voice-first mutation</h3>
+          <p>Existing objects can be changed by ID or by natural title/name matching, with structured ambiguity choices instead of silent wrong-target edits.</p>
+          <div class="tags">
+            <span class="tag">update</span><span class="tag">rename</span><span class="tag">reschedule</span><span class="tag">reorder</span>
+          </div>
+        </article>
+        <article class="card">
+          <h3>Safer cleanup</h3>
+          <p>Archive and cancel paths are available where they belong. Permanent delete exists, but the prompt guidance now tells Squire to use it only for explicit delete requests.</p>
+          <div class="tags">
+            <span class="tag">archive</span><span class="tag">cancel</span><span class="tag">delete</span><span class="tag">clear completed</span>
+          </div>
+        </article>
+        <article class="card">
+          <h3>Schedule control</h3>
+          <p>Reminders and Google Calendar events can now be moved, shortened, renamed, canceled, deleted, or snoozed through explicit tools.</p>
+          <div class="tags">
+            <span class="tag">snooze</span><span class="tag">duration</span><span class="tag">location</span><span class="tag">all-day</span>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <h2>Lifecycle Timeline</h2>
+      <div class="timeline">
+        <article class="phase">
+          <div class="label">Phase 1</div>
+          <div>
+            <h3>Notes became maintainable</h3>
+            <p>Added full-body updates, metadata changes, section replacement, archive, delete, and attachment removal.</p>
+          </div>
+          <div class="loc">part of 1,188 lines</div>
+        </article>
+        <article class="phase">
+          <div class="label">Phase 2</div>
+          <div>
+            <h3>Lists became editable work surfaces</h3>
+            <p>Added list rename/archive/delete, item edits, item delete, reorder, clear completed, and real item moves between lists.</p>
+          </div>
+          <div class="loc">part of 1,188 lines</div>
+        </article>
+        <article class="phase">
+          <div class="label">Phase 3</div>
+          <div>
+            <h3>Reminders got lifecycle control</h3>
+            <p>Added update and delete tools with fuzzy title matching, safe cancel-by-default behavior, status updates, time changes, notes, and snooze support.</p>
+          </div>
+          <div class="loc">428 lines</div>
+        </article>
+        <article class="phase">
+          <div class="label">Phase 4</div>
+          <div>
+            <h3>Calendar events became editable</h3>
+            <p>Added update and delete tools for writable Google events, plus service support for location, duration-only changes, all-day conversion, and cache updates.</p>
+          </div>
+          <div class="loc">434 lines</div>
+        </article>
+        <article class="phase">
+          <div class="label">Phase 5</div>
+          <div>
+            <h3>Commitments became first-class tasks</h3>
+            <p>Added direct create, update, cancel, and delete tools with active-first resolution, due date edits, status edits, snooze, and cancellation outcomes.</p>
+          </div>
+          <div class="loc">497 lines</div>
+        </article>
+        <article class="phase">
+          <div class="label">Phase 6</div>
+          <div>
+            <h3>Disambiguation guidance and regression coverage</h3>
+            <p>Added prompt rules for mutation behavior and a contract test that locks lifecycle tool availability across notes, lists, reminders, calendar, and commitments.</p>
+          </div>
+          <div class="loc">156 lines</div>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <h2>Squire Capability Map</h2>
+      <p class="section-lede">
+        Squire's tool surface is now broad enough to feel less like a chatbot and more like an operating layer:
+        memory, planning, calendar, browser, email, coding, documents, goals, and business workflows.
+      </p>
+      <div class="capability-map">
+        <article class="capability">
+          <h3>Memory and knowledge</h3>
+          <ul>
+            <li>Search, create, update, pin, archive, and delete notes.</li>
+            <li>Replace exact note sections and remove attachments.</li>
+            <li>Store/search lessons, preferences, Mandrel contexts, decisions, and project memory.</li>
+          </ul>
+        </article>
+        <article class="capability">
+          <h3>Planning and personal operations</h3>
+          <ul>
+            <li>Create, edit, archive, delete, reorder, and clean up lists.</li>
+            <li>Create, edit, complete, cancel, snooze, and delete commitments.</li>
+            <li>Create, update, snooze, cancel, and delete reminders.</li>
+          </ul>
+        </article>
+        <article class="capability">
+          <h3>Calendar and schedule</h3>
+          <ul>
+            <li>Read upcoming, today's, and due-soon calendar events.</li>
+            <li>Create Google Calendar events.</li>
+            <li>Update title, description, location, start time, duration, and all-day state.</li>
+          </ul>
+        </article>
+        <article class="capability">
+          <h3>Computer and code work</h3>
+          <ul>
+            <li>Run shell commands, read/edit/write files, grep, glob, and perform git operations.</li>
+            <li>Delegate coding work through worker agents.</li>
+            <li>Use sandbox, scout, page, jobs, and steward health checks for larger work.</li>
+          </ul>
+        </article>
+        <article class="capability">
+          <h3>Browser, documents, and reports</h3>
+          <ul>
+            <li>Navigate pages, inspect snapshots, click, fill, press, screenshot, and inspect browser console/network.</li>
+            <li>Analyze images, list images, work with PDFs, and present structured reports.</li>
+            <li>Search the web and fetch URLs when live information is needed.</li>
+          </ul>
+        </article>
+        <article class="capability">
+          <h3>Day-job business workflows</h3>
+          <ul>
+            <li>Import and query dealer display data.</li>
+            <li>Track display work, obligations, summaries, import history, and exports.</li>
+            <li>Turn spreadsheet data into queryable work state for flooring dealer follow-up.</li>
+          </ul>
+        </article>
+        <article class="capability">
+          <h3>Communication and continuity</h3>
+          <ul>
+            <li>Check, search, read, send, reply, archive, and delete email.</li>
+            <li>Use scratchpad, continuity notes, proactive goals, and commune messages.</li>
+            <li>Keep state across sessions instead of starting cold.</li>
+          </ul>
+        </article>
+        <article class="capability">
+          <h3>Structured data</h3>
+          <ul>
+            <li>Create trackers, add/update records, query trackers, summarize them, and archive them.</li>
+            <li>Use typed state for recurring business processes instead of burying everything in notes.</li>
+            <li>Bridge memory, tools, and operational workflows.</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <h2>Proof Of Work</h2>
+      <div class="proof">
+        <div class="code-box" aria-label="Git commit summary">
+<span class="green">Lifecycle-control commits</span>
+17d50c0  notes and lists mutation tools
+273ac60  reminder lifecycle mutation tools
+11f6a70  calendar event mutation tools
+144e808  commitment lifecycle tools
+9cf61b4  lifecycle mutation contract coverage
+
+<span class="blue">Lifecycle diff</span>
+11 files changed
+2,703 insertions
+68 deletions
+
+<span class="blue">Full Squire day</span>
+15 files changed
+4,550 insertions
+68 deletions
+        </div>
+        <div class="note">
+          <strong>Why this matters:</strong>
+          <p>
+            Capture is useful, but lifecycle control is what makes an assistant feel dependable.
+            A driving, voice-first user needs to say "move that to tomorrow," "take eggs off the list,"
+            "cancel that appointment," "rename that note," or "delete that reminder" without hunting IDs
+            or cleaning up duplicate junk later.
+          </p>
+          <p>
+            Today was the turn from memory intake toward practical maintenance. That is a real asset.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <span>Generated from local repo history in ~/projects/squire.</span>
+      <span>Production verified healthy at commit 9cf61b4.</span>
+    </footer>
+  </main>
+</body>
+</html>
