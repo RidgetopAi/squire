@@ -81,6 +81,12 @@ After making a decision:
 
 When tasked with modifying Squire's own code, **always work in staging**:
 
+### 0. Refresh staging from production (REQUIRED FIRST STEP)
+```bash
+sudo bash /opt/squire/scripts/setup-staging.sh
+```
+Rsyncs `/opt/squire` → `/opt/squire-staging` so staging starts as an exact mirror of current production. Skipping this is the most common cause of deploys that auto-commit unrelated drift left behind by previous sessions or other deploys. See `lessons/009-refresh-staging-before-deploy.md`. `self-deploy.sh` will abort below a configurable drift threshold to enforce this.
+
 ### 1. Make changes in staging
 ```bash
 cd /opt/squire-staging
@@ -124,6 +130,33 @@ tail -f /var/log/squire-deploy.log
 ### Refresh staging from production
 ```bash
 sudo bash /opt/squire/scripts/setup-staging.sh
+```
+
+### Recovery if `self-deploy.sh` aborts on stale-staging drift
+
+`self-deploy.sh` aborts before building if staging differs from production by more than `MAX_DRIFT_FILES` files (default 20) in tracked source paths (`src/`, `schema/`, `web/src/`). This catches the failure mode where staging carries unrelated changes from a previous session — exactly what produced the `2026-05-17` 66-file auto-deploy commit.
+
+If the drift check fires:
+
+1. **Save your in-flight edits** — copy any files you've been editing this session out of `/opt/squire-staging` to `/tmp/squire-edits/` (or another safe location).
+2. **Refresh staging:**
+   ```bash
+   sudo bash /opt/squire/scripts/setup-staging.sh
+   ```
+3. **Reapply your saved edits** to `/opt/squire-staging`.
+4. **Re-run the deploy:**
+   ```bash
+   sudo bash /opt/squire/scripts/self-deploy.sh
+   ```
+
+To bypass intentionally (e.g. a verified large refactor):
+```bash
+sudo bash /opt/squire/scripts/self-deploy.sh --allow-large-diff
+```
+
+Or override the threshold for one run:
+```bash
+sudo MAX_DRIFT_FILES=100 bash /opt/squire/scripts/self-deploy.sh
 ```
 
 ### ⚠️ IMPORTANT

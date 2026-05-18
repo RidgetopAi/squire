@@ -1,20 +1,25 @@
 #!/usr/bin/env bash
 # self-deploy.sh - Blue-green self-deployment for Squire
 #
-# Usage: bash /opt/squire/scripts/self-deploy.sh [--skip-web] [--dry-run]
+# Usage: bash /opt/squire/scripts/self-deploy.sh [--skip-web] [--dry-run] [--allow-large-diff]
 #
 # Called by Squire's agent after making changes in /opt/squire-staging.
 #
 # Workflow:
 #   1. Acquire deploy lock (prevent concurrent deploys)
-#   2. Build TypeScript in staging
-#   3. Smoke test staging API on temp port
-#   4. Backup current production dist
-#   5. Sync staging → production
-#   6. Schedule independent restart + verify + auto-rollback
+#   2. Stale-staging drift check (abort if staging carries unrelated drift)
+#   3. Build TypeScript in staging
+#   4. Smoke test staging API on temp port
+#   5. Backup current production dist
+#   6. Sync staging → production
+#   7. Schedule independent restart + verify + auto-rollback
 #
 # The restart runs in a separate systemd unit (survives Squire's death).
 # If production doesn't come back healthy, it auto-rolls back.
+#
+# Env vars:
+#   MAX_DRIFT_FILES  (default 20) — drift-check threshold for source files
+#                                   differing between staging and production.
 
 set -euo pipefail
 
@@ -29,11 +34,13 @@ LOCK_FILE="/tmp/squire-deploy.lock"
 
 SKIP_WEB=false
 DRY_RUN=false
+ALLOW_LARGE_DIFF=false
 
 for arg in "$@"; do
   case $arg in
     --skip-web) SKIP_WEB=true ;;
     --dry-run) DRY_RUN=true ;;
+    --allow-large-diff) ALLOW_LARGE_DIFF=true ;;
   esac
 done
 
@@ -158,6 +165,48 @@ trap 'rm -f "$LOCK_FILE"' EXIT
 [ -d "$STAGING/node_modules" ] || die "Staging missing node_modules. Run: cd $STAGING && npm install"
 
 log "=== Squire Self-Deploy ==="
+
+# --- Pre-flight: stale-staging drift check ---
+# Catches the failure mode from Lesson 009: if staging carries drift
+# unrelated to the current task, this deploy would auto-commit it along
+# with the intended change. Aborts unless --allow-large-diff is passed
+# or MAX_DRIFT_FILES is raised.
+log "[0/5] Drift check (staging vs production)..."
+DRIFT_FILES=0
+DRIFT_SAMPLE_FILE=$(mktemp)
+trap 'rm -f "$LOCK_FILE" "$DRIFT_SAMPLE_FILE"' EXIT
+
+# Compare tracked source paths: src/, schema/, web/src/
+for path in src schema web/src; do
+  if [ -d "$STAGING/$path" ] && [ -d "$PRODUCTION/$path" ]; then
+    n=$(diff -rq "$STAGING/$path" "$PRODUCTION/$path" 2>/dev/null | tee -a "$DRIFT_SAMPLE_FILE" | wc -l || true)
+    DRIFT_FILES=$((DRIFT_FILES + n))
+  fi
+done
+
+MAX_DRIFT_FILES="${MAX_DRIFT_FILES:-20}"
+
+if [ "$DRIFT_FILES" -gt "$MAX_DRIFT_FILES" ] && [ "$ALLOW_LARGE_DIFF" != "true" ]; then
+  log "✗ Drift check FAILED: $DRIFT_FILES files differ (threshold: $MAX_DRIFT_FILES)"
+  log ""
+  log "  Sample of drifted files (first 15):"
+  head -15 "$DRIFT_SAMPLE_FILE" | sed 's/^/    /' | while IFS= read -r line; do log "$line"; done
+  log ""
+  log "  This usually means staging was not refreshed before edits started."
+  log "  To recover:"
+  log "    1. Save in-flight edits from $STAGING to /tmp/squire-edits/ (or elsewhere safe)"
+  log "    2. sudo bash $PRODUCTION/scripts/setup-staging.sh"
+  log "    3. Reapply your saved edits to $STAGING"
+  log "    4. Re-run this deploy"
+  log ""
+  log "  Bypass (verified large refactor):"
+  log "    sudo bash $PRODUCTION/scripts/self-deploy.sh --allow-large-diff"
+  log ""
+  log "  Or raise threshold for one run:"
+  log "    sudo MAX_DRIFT_FILES=100 bash $PRODUCTION/scripts/self-deploy.sh"
+  die "aborting deploy due to suspicious staging drift"
+fi
+log "✓ Drift check passed ($DRIFT_FILES files differ from production)"
 
 # --- Step 1: Build ---
 log "[1/5] Building TypeScript in staging..."
