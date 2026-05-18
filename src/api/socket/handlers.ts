@@ -1299,6 +1299,17 @@ async function dispatchChatViaRegistry(
   let traceFirstChunkAtMs: number | null = null;
   let tracePreviousChunkAtMs: number | null = null;
 
+  // Pin provider for every LLM call in the run. Default to config.llm
+  // (matches pre-6.5 streamWithToolLoop, which called unified streamLLM with
+  // no provider/model → unified used config.llm defaults). Without this pin,
+  // AgentEngine falls through to classifyTask + tier routing, which routes
+  // socket_chat to "smart" tier even though config.llm.provider is what the
+  // chat surface actually wants — vision runtime only when images attach.
+  const effectiveProviderOverride = providerOverride ?? {
+    provider: config.llm.provider,
+    model: config.llm.model,
+  };
+
   const result = await runAgent('socket_chat', {
     conversationId: conversationDbId,
     traceId: activityContext?.traceId,
@@ -1308,7 +1319,7 @@ async function dispatchChatViaRegistry(
     triggerReason: activityContext?.triggerReason,
     signal,
     messages: messages as LLMMessage[],
-    providerOverride,
+    providerOverride: effectiveProviderOverride,
     callbacks: {
       onChunk: (chunk) => {
         const providerChunkAtMs = Date.now();
