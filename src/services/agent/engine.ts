@@ -11,6 +11,7 @@ import {
   executeTools,
   type ToolDefinition,
 } from '../../tools/index.js';
+import type { ToolCall, ToolResult } from '../../tools/types.js';
 import { SQUIRE_SYSTEM_PROMPT_BASE, TOOL_CALLING_INSTRUCTIONS } from '../../constants/prompts.js';
 import { classifyTask, type ModelTier, isRoutingEnabled } from '../routing/index.js';
 import { buildMemoryContext } from '../memory/index.js';
@@ -67,6 +68,34 @@ export interface AgentCallbacks {
    * loop_llm agents (commune, telegram, goal_worker) are unaffected.
    */
   onChunk?: (chunk: string) => void;
+  /**
+   * Called after each tool turn, immediately after executeTools resolves
+   * and AFTER the assistant(tool_calls) row + tool_result rows have been
+   * appended to the in-engine message array, but BEFORE the next LLM call
+   * begins. AWAITED — the engine pauses the loop until the callback's
+   * promise resolves.
+   *
+   * Chat surfaces hook this to atomically persist the turn:
+   *   handlers.ts → persistToolTurn({ conversationId, assistantContent,
+   *                                   toolCalls, results })
+   * which writes the assistant + tool rows under one BEGIN/COMMIT so a
+   * concurrent user-message writer cannot steal a sequence number and
+   * land a 'user' row between the assistant's tool_use and its
+   * tool_results — a shape Anthropic's API rejects.
+   *
+   * When ABSENT (commune / telegram / goal_worker), no per-turn callback
+   * fires; the engine's loop is unchanged.
+   */
+  onToolTurn?: (turn: {
+    /** The assistant message text that accompanied the tool_calls. */
+    assistantContent: string;
+    /** The tool calls the LLM emitted on this turn. */
+    toolCalls: ToolCall[];
+    /** The results from executing those tool calls, in order. */
+    toolResults: ToolResult[];
+    /** 1-indexed turn number within this run. */
+    turnNumber: number;
+  }) => Promise<void> | void;
 }
 
 /**
@@ -385,6 +414,20 @@ export class AgentEngine {
             role: 'tool',
             content: result.result,
             tool_call_id: result.toolCallId,
+          });
+        }
+
+        // Fire onToolTurn AFTER tool execution + message append, BEFORE the
+        // next LLM call. Awaited so the caller's persistence (handlers.ts →
+        // persistToolTurn for socket_chat) commits before the next turn
+        // begins — preserves the contiguous-sequence-number guarantee that
+        // a concurrent user-message writer would otherwise break.
+        if (this.callbacks.onToolTurn) {
+          await this.callbacks.onToolTurn({
+            assistantContent: response.content,
+            toolCalls: response.toolCalls,
+            toolResults,
+            turnNumber: this.turnCount,
           });
         }
 
