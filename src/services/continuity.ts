@@ -7,7 +7,6 @@
  */
 
 import { pool } from '../db/pool.js';
-import { completeText } from '../providers/llm.js';
 import { runAgent } from '../agents/lazy.js';
 import type { StateTransitionSignal } from './chat/chatExtraction.js';
 
@@ -507,13 +506,11 @@ export async function processThreadsForConsolidation(): Promise<{
 
   for (const thread of needFollowup.rows) {
     try {
-      const response = await completeText(
-        `Thread: "${thread.title}" (${thread.thread_type})\nState: ${thread.current_state_summary ?? 'active'}\nImportance: ${thread.importance}/10`,
-        `Generate a single caring, specific follow-up question for this ongoing thread. The question should show genuine interest and help the person reflect on progress or feelings. Return ONLY the question text, nothing else.`,
-        { temperature: 0.7, maxTokens: 100 }
-      );
+      const result = await runAgent('followup_question_generator', {
+        input: `Thread: "${thread.title}" (${thread.thread_type})\nState: ${thread.current_state_summary ?? 'active'}\nImportance: ${thread.importance}/10`,
+      });
 
-      const question = response.trim().replace(/^["']|["']$/g, '');
+      const question = result.content.trim().replace(/^["']|["']$/g, '');
       if (question.length > 10 && question.length < 200) {
         await updateThread(thread.id, {
           next_followup_question: question,
