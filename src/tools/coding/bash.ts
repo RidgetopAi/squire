@@ -64,8 +64,10 @@ If you believe this is a false positive, please reconsider the command or ask fo
     const output = combineOutput(stdout, stderr);
 
     if (!output.trim()) {
-      return `Command completed successfully (no output).
-Working directory: ${workingDir}`;
+      return `Command exited 0 but produced NO output (stdout and stderr both empty).
+Working directory: ${workingDir}
+
+WARNING: Empty output does NOT confirm the operation worked. Many silent failures look like this (wrong endpoint, missing file, command did nothing meaningful, output piped away). If you expected results — search hits, an HTTP response body, file contents, a registration confirmation — re-run with explicit verification before reporting success.`;
     }
 
     return truncateOutput(`Working directory: ${workingDir}
