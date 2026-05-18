@@ -8,6 +8,7 @@
 
 import { pool } from '../db/pool.js';
 import { completeText } from '../providers/llm.js';
+import { runAgent } from '../agents/lazy.js';
 import type { StateTransitionSignal } from './chat/chatExtraction.js';
 
 // =============================================================================
@@ -308,24 +309,6 @@ export async function markDormant(id: string): Promise<ContinuityThread | null> 
 // STATE TRANSITION INTEGRATION
 // =============================================================================
 
-const THREAD_CLASSIFICATION_PROMPT = `Classify this subject into a continuity thread. Return JSON only.
-
-Thread types: project, work_pressure, family, health, relationship, identity, emotional_load, logistics, goal
-
-{
-  "thread_type": "one of the types above",
-  "importance": 1-10,
-  "emotional_weight": 0-10,
-  "next_followup_question": "a natural question to ask next time, or null",
-  "followup_delay_hours": 24-168
-}
-
-Guidelines:
-- importance: 8-10 for health, family crises, major deadlines. 5-7 for normal projects. 1-4 for minor logistics.
-- emotional_weight: How emotionally charged this is. 0 = neutral task, 10 = deeply personal.
-- followup_question: Something caring and specific, not generic. null if not needed.
-- followup_delay_hours: When to ask. 24h for urgent, 72h for normal, 168h for low-priority.`;
-
 async function classifyNewThread(
   subject: string,
   context: string
@@ -345,13 +328,11 @@ async function classifyNewThread(
   };
 
   try {
-    const response = await completeText(
-      `Subject: "${subject}"\nContext: "${context}"`,
-      THREAD_CLASSIFICATION_PROMPT,
-      { temperature: 0.2, maxTokens: 200 }
-    );
+    const result = await runAgent('thread_classifier', {
+      input: `Subject: "${subject}"\nContext: "${context}"`,
+    });
 
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    const jsonMatch = result.content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return defaults;
 
     const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;

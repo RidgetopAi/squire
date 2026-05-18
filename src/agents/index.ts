@@ -57,6 +57,7 @@ import './memory_classifier.js';
 import './pattern_detector.js';
 import './question_generator.js';
 import './reranker.js';
+import './thread_classifier.js';
 import './vision.js';
 
 // --- worker ---
