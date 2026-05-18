@@ -5,11 +5,24 @@ export type { CourierTask, TaskResult } from './tasks/index.js';
 import { runAgent } from '../../agents/lazy.js';
 
 // Register built-in tasks
-import { emailCheckTask } from './tasks/emailCheck.js';
 import { registerTask } from './tasks/index.js';
 
-// Auto-register email check task
-registerTask('email-check', emailCheckTask);
+// Auto-register email check task — dispatched via agent registry (connector)
+registerTask('email-check', {
+  name: 'email-check',
+  enabled: true,
+  async execute() {
+    const result = await runAgent('courier_email_check', {
+      actor: 'scheduler',
+      triggerReason: 'courier tick',
+    });
+    return {
+      success: result.success,
+      message: result.content,
+      data: result.data,
+    };
+  },
+});
 
 import { goalWorkerTask } from './tasks/goalWorker.js';
 registerTask('goal-worker', goalWorkerTask);
