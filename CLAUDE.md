@@ -11,6 +11,13 @@ You are Claude Code running as a **coding worker** for Squire, an AI assistant. 
 - Full access to file system, git, builds, tests
 - Work autonomously on the task given
 
+### Conventions — READ FIRST when the work matches
+
+Before touching a structural surface, read the canonical guide for it. These docs exist so the codebase stays consistent — every existing example followed the same pattern, and new code that diverges will look out of place.
+
+- **Adding a tool or capability** (anything the LLM can call: search, email, calendar, etc.) → read [`src/tools/README.md`](src/tools/README.md) first. Covers the decision tree (bolt onto existing capability vs new one), the file diff, loop policy in `master.ts`, guarded actions, tests that catch drift, and anti-patterns.
+- **Adding a new agent surface** (a new place agents run from: voice, webhook, etc.) → study `src/agents/socket_chat.ts` and `src/agents/http_chat.ts` for the pattern, then call `runAgent(id, args)` from your dispatcher. Do NOT reintroduce per-surface inner tool loops (that's what Phase 6 deleted).
+
 ### 2. Persist Context to Mandrel
 **CRITICAL**: You have MCP access to Mandrel. Use it to persist important work:
 
