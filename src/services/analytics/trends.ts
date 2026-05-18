@@ -6,7 +6,7 @@
  */
 
 import { pool } from '../../db/pool.js';
-import { completeText } from '../../providers/llm.js';
+import { runAgent } from '../../agents/index.js';
 
 // =============================================================================
 // TYPES
@@ -232,13 +232,12 @@ async function generateTrendNarrative(
       `Threads: ${threadsOpened} opened, ${threadsResolved} resolved, ${threadsStagnant} stagnant`,
     ].filter(Boolean).join('\n');
 
-    const response = await completeText(
-      context,
-      `Write a 2-3 sentence trend narrative about how this person has been doing over the ${periodType} period. Note any significant changes or patterns. Use "they" pronouns. Be warm and observational, not clinical. Return ONLY the narrative text.`,
-      { temperature: 0.6, maxTokens: 150 }
-    );
+    const result = await runAgent('trend_narrator', {
+      input: context,
+      payload: { periodType },
+    });
 
-    return response.trim();
+    return result.content.trim();
   } catch (error) {
     console.error('[Trends] Narrative generation failed:', error);
     return `Trend period: ${periodType}.`;

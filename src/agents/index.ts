@@ -60,6 +60,7 @@ import './question_generator.js';
 import './reranker.js';
 import './state_snapshot_narrator.js';
 import './thread_classifier.js';
+import './trend_narrator.js';
 import './vision.js';
 
 // --- worker ---
