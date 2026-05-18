@@ -45,6 +45,15 @@ export interface AgentResult {
   state: AgentState;
   /** Error message if state is 'error' */
   error?: string;
+  /**
+   * Token usage summed across every LLM turn in this run. Undefined if no
+   * turn reported usage (e.g. provider didn't return it, or run cancelled
+   * before any LLM call completed).
+   */
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+  };
 }
 
 /**
@@ -116,6 +125,14 @@ export interface AgentEngineOptions {
   conversationId: string;
   /** Activity trace ID for grouping this run with its tool calls */
   traceId?: string;
+  /**
+   * Parent activity event id. When set, the engine's `agent.run.started`
+   * event will be parented to this id — used by chat surfaces that record
+   * `chat.message.started` BEFORE invoking the engine, so the agent run
+   * appears as a child of the chat-message event in the activity tree.
+   * When absent, `agent.run.started` is a top-level event under traceId.
+   */
+  parentEventId?: string;
   /** Activity source loop that started this engine */
   sourceLoop?: string;
   /** Actor that triggered the run */
@@ -186,6 +203,7 @@ export class AgentEngine {
   private readonly maxTurns: number;
   private readonly conversationId: string;
   private readonly traceId: string;
+  private readonly parentEventId: string | undefined;
   private readonly sourceLoop: string;
   private readonly actor?: string;
   private readonly triggerReason?: string;
@@ -207,6 +225,7 @@ export class AgentEngine {
   constructor(options: AgentEngineOptions) {
     this.conversationId = options.conversationId;
     this.traceId = options.traceId ?? options.conversationId;
+    this.parentEventId = options.parentEventId;
     this.sourceLoop = options.sourceLoop ?? 'agent_engine';
     this.actor = options.actor;
     this.triggerReason = options.triggerReason;
@@ -258,11 +277,22 @@ export class AgentEngine {
     // Reset state for new run
     this.turnCount = 0;
     this.messages = [];
+    // Token usage summed across every LLM turn in this run. We only build
+    // the result.usage object when at least one turn reported non-zero
+    // usage — keeps the shape undefined for runs that produced no tokens.
+    let sawUsage = false;
+    let usagePromptTokens = 0;
+    let usageCompletionTokens = 0;
+    // Helper visible to both try and catch — builds the usage object for
+    // createResult/recordRunFinished, or undefined if no turn reported usage.
+    const buildUsage = () =>
+      sawUsage ? { promptTokens: usagePromptTokens, completionTokens: usageCompletionTokens } : undefined;
     this.setState('gathering');
 
     try {
       runEventId = await recordActivityEvent({
         traceId: this.traceId,
+        parentId: this.parentEventId,
         sourceLoop: this.sourceLoop,
         eventType: 'agent.run.started',
         actor: this.actor,
@@ -280,8 +310,8 @@ export class AgentEngine {
 
       // Check for cancellation
       if (this.abortController.signal.aborted) {
-        await this.recordRunFinished('agent.run.cancelled', 'cancelled', startedAt, runEventId, '');
-        return this.createResult('cancelled', '');
+        await this.recordRunFinished('agent.run.cancelled', 'cancelled', startedAt, runEventId, '', { usage: buildUsage() });
+        return this.createResult('cancelled', '', undefined, buildUsage());
       }
 
       if (this.preBuiltMessages) {
@@ -325,8 +355,8 @@ export class AgentEngine {
       while (this.turnCount < this.maxTurns) {
         // Check for cancellation at start of each turn
         if (this.abortController.signal.aborted) {
-          await this.recordRunFinished('agent.run.cancelled', 'cancelled', startedAt, runEventId, finalContent);
-          return this.createResult('cancelled', finalContent);
+          await this.recordRunFinished('agent.run.cancelled', 'cancelled', startedAt, runEventId, finalContent, { usage: buildUsage() });
+          return this.createResult('cancelled', finalContent, undefined, buildUsage());
         }
 
         this.turnCount++;
@@ -360,10 +390,19 @@ export class AgentEngine {
         } catch (error) {
           // Check if this was an abort
           if (this.abortController.signal.aborted) {
-            await this.recordRunFinished('agent.run.cancelled', 'cancelled', startedAt, runEventId, finalContent);
-            return this.createResult('cancelled', finalContent);
+            await this.recordRunFinished('agent.run.cancelled', 'cancelled', startedAt, runEventId, finalContent, { usage: buildUsage() });
+            return this.createResult('cancelled', finalContent, undefined, buildUsage());
           }
           throw error;
+        }
+
+        // Accumulate token usage across every LLM turn. Only set sawUsage
+        // when the provider actually reports counts so the result.usage is
+        // undefined for runs where no turn produced numbers.
+        if (response.usage) {
+          sawUsage = true;
+          usagePromptTokens += response.usage.promptTokens ?? 0;
+          usageCompletionTokens += response.usage.completionTokens ?? 0;
         }
 
         // Update final content with latest response
@@ -373,8 +412,8 @@ export class AgentEngine {
         if (response.toolCalls.length === 0) {
           // No tool calls - we're done
           this.setState('complete');
-          await this.recordRunFinished('agent.run.completed', 'completed', startedAt, runEventId, finalContent);
-          return this.createResult('complete', finalContent);
+          await this.recordRunFinished('agent.run.completed', 'completed', startedAt, runEventId, finalContent, { usage: buildUsage() });
+          return this.createResult('complete', finalContent, undefined, buildUsage());
         }
 
         // Have tool calls - execute them
@@ -438,10 +477,13 @@ export class AgentEngine {
       this.setState('complete');
       await this.recordRunFinished('agent.run.completed', 'completed', startedAt, runEventId, finalContent, {
         maxTurnsReached: true,
+        usage: buildUsage(),
       });
       return this.createResult(
         'complete',
-        finalContent || `[AgentEngine] Max turns (${this.maxTurns}) reached without final response`
+        finalContent || `[AgentEngine] Max turns (${this.maxTurns}) reached without final response`,
+        undefined,
+        buildUsage()
       );
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
@@ -449,8 +491,9 @@ export class AgentEngine {
       this.callbacks.onError?.(err);
       await this.recordRunFinished('agent.run.failed', 'failed', startedAt, runEventId, '', {
         error: err.message,
+        usage: buildUsage(),
       });
-      return this.createResult('error', '', err.message);
+      return this.createResult('error', '', err.message, buildUsage());
     }
   }
 
@@ -564,7 +607,8 @@ export class AgentEngine {
   private createResult(
     state: AgentState,
     content: string,
-    error?: string
+    error?: string,
+    usage?: { promptTokens: number; completionTokens: number }
   ): AgentResult {
     return {
       success: state === 'complete',
@@ -572,6 +616,7 @@ export class AgentEngine {
       turnCount: this.turnCount,
       state,
       error,
+      usage,
     };
   }
 }

@@ -54,12 +54,13 @@ export async function runAgentDefinition(
 
 async function runLoopLLM(def: AgentDefinition, args: AgentRunArgs): Promise<AgentRunResult> {
   const conversationId = args.conversationId ?? randomUUID();
-  const sourceLoop = def.sourceLoop ?? def.id;
+  const sourceLoop = args.sourceLoop ?? def.sourceLoop ?? def.id;
   const systemPrompt = await resolvePrompt(def.systemPrompt, args);
 
   const engine = new AgentEngine({
     conversationId,
     traceId: args.traceId ?? conversationId,
+    parentEventId: args.parentEventId,
     sourceLoop,
     actor: args.actor,
     triggerReason: args.triggerReason,
@@ -94,6 +95,7 @@ async function runLoopLLM(def: AgentDefinition, args: AgentRunArgs): Promise<Age
       turnCount: result.turnCount,
       state: result.state,
       error: result.error,
+      usage: result.usage,
     };
   } finally {
     if (timeoutHandle) clearTimeout(timeoutHandle);

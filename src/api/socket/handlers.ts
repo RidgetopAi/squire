@@ -34,6 +34,8 @@ import {
   type ToolExecutionContext,
 } from '../../tools/index.js';
 import { streamLLM } from '../../services/llm/index.js';
+import { runAgent } from '../../agents/index.js';
+import type { LLMMessage } from '../../services/llm/types.js';
 import { buildMemoryContext } from '../../services/memory/index.js';
 import { getLLMRuntime } from '../../services/runtime/index.js';
 import { recordActivityEvent } from '../../services/activity.js';
@@ -489,7 +491,9 @@ ${documentContent}
     const documentToolContext = { sourceLoop: 'socket_document_chat' };
     const tools = hasTools(documentToolContext) ? getToolDefinitions(documentToolContext) : undefined;
     console.log(`[Socket] Document discussion: streaming response (${tools?.length ?? 0} tools available)`);
-    const streamResult = await streamWithToolLoop(
+    const useRegistry = process.env.SOCKET_CHAT_USE_REGISTRY === '1';
+    const dispatch = useRegistry ? dispatchChatViaRegistry : streamWithToolLoop;
+    const streamResult = await dispatch(
       socket,
       conversationId,
       messages,
@@ -889,7 +893,12 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
     
     console.log(`[Socket] Step 4: Starting ${providerName} stream... (${tools?.length ?? 0} tools available${hasImages ? ', with images' : ''})`);
     markLatency('starting_llm_stream');
-    const streamResult = await streamWithToolLoop(
+    const useRegistry = process.env.SOCKET_CHAT_USE_REGISTRY === '1';
+    const dispatch = useRegistry ? dispatchChatViaRegistry : streamWithToolLoop;
+    if (useRegistry) {
+      console.log('[Socket] dispatch path: registry (runAgent)');
+    }
+    const streamResult = await dispatch(
       socket,
       conversationId,
       messages,
@@ -1256,6 +1265,139 @@ async function streamWithToolLoop(
     reportData,
     usedTools,
     finalAssistantContent,
+  };
+}
+
+/**
+ * Phase 6.5 — Alternate dispatch via the agent registry.
+ *
+ * Same signature and return shape as streamWithToolLoop, but routes the
+ * inner LLM + tool loop through runAgent('socket_chat', ...). The chat
+ * surface keeps all 460+ lines of orchestration (history persistence,
+ * image compression, story engine, RAG, memory context, real-time
+ * extraction, follow-up acks, activity events); only the inner loop
+ * crosses into AgentEngine.
+ *
+ * Gated by SOCKET_CHAT_USE_REGISTRY=1. When unset/0, callers fall back
+ * to streamWithToolLoop above.
+ */
+async function dispatchChatViaRegistry(
+  socket: TypedSocket,
+  conversationId: string,
+  messages: Array<{ role: string; content: string; images?: ImageContent[]; tool_calls?: ToolCall[]; tool_call_id?: string }>,
+  signal: AbortSignal,
+  _tools: ToolDefinition[] | undefined,
+  providerOverride: { provider: string; model: string } | undefined,
+  conversationDbId: string | undefined,
+  markLatency: ((label: string) => void) | undefined,
+  activityContext: ToolExecutionContext | undefined
+): Promise<{ content: string; usage?: { promptTokens: number; completionTokens: number }; reportData?: { title: string; summary: string; content: string; generatedAt: string }; usedTools: boolean; finalAssistantContent: string }> {
+  let reportData: { title: string; summary: string; content: string; generatedAt: string } | undefined;
+  let firstChunkEmitted = false;
+  const traceStreaming = process.env.SQUIRE_STREAM_TRACE === '1';
+  let traceChunkSeq = 0;
+  let traceFirstChunkAtMs: number | null = null;
+  let tracePreviousChunkAtMs: number | null = null;
+
+  const result = await runAgent('socket_chat', {
+    conversationId: conversationDbId,
+    traceId: activityContext?.traceId,
+    parentEventId: activityContext?.parentId ?? undefined,
+    sourceLoop: activityContext?.sourceLoop,
+    actor: activityContext?.actor,
+    triggerReason: activityContext?.triggerReason,
+    signal,
+    messages: messages as LLMMessage[],
+    providerOverride,
+    callbacks: {
+      onChunk: (chunk) => {
+        const providerChunkAtMs = Date.now();
+        if (!firstChunkEmitted) {
+          firstChunkEmitted = true;
+          markLatency?.('first_llm_chunk_emitted');
+        }
+        traceChunkSeq += 1;
+        traceFirstChunkAtMs ??= providerChunkAtMs;
+        const sincePreviousChunkMs = tracePreviousChunkAtMs === null
+          ? null
+          : providerChunkAtMs - tracePreviousChunkAtMs;
+        tracePreviousChunkAtMs = providerChunkAtMs;
+        const serverEmitAtMs = Date.now();
+        if (
+          traceStreaming &&
+          (traceChunkSeq <= 5 || traceChunkSeq % 20 === 0 || (sincePreviousChunkMs ?? 0) > 250)
+        ) {
+          console.log('[Socket][StreamTrace] emit chat:chunk', {
+            conversationId,
+            seq: traceChunkSeq,
+            chars: chunk.length,
+            sincePreviousChunkMs,
+            elapsedSinceFirstChunkMs: providerChunkAtMs - traceFirstChunkAtMs,
+          });
+        }
+        socket.emit('chat:chunk', {
+          conversationId,
+          chunk,
+          done: false,
+          trace: traceStreaming
+            ? {
+                seq: traceChunkSeq,
+                chunkChars: chunk.length,
+                providerChunkAtMs,
+                serverEmitAtMs,
+                sincePreviousChunkMs,
+                elapsedSinceFirstChunkMs: providerChunkAtMs - traceFirstChunkAtMs,
+              }
+            : undefined,
+        });
+      },
+      onToolTurn: async ({ assistantContent, toolCalls, toolResults }) => {
+        for (const r of toolResults) {
+          console.log(`[Socket] Tool ${r.name}: ${r.success ? 'success' : 'failed'}`);
+          if (r.name === 'present_report' && r.success) {
+            try {
+              const parsed = JSON.parse(r.result);
+              if (parsed.type === 'report') {
+                reportData = {
+                  title: parsed.title,
+                  summary: parsed.summary,
+                  content: parsed.content,
+                  generatedAt: parsed.generatedAt,
+                };
+                console.log(`[Socket] Report data captured: "${reportData.title}"`);
+              }
+            } catch {
+              console.warn('[Socket] Failed to parse present_report result');
+            }
+          }
+        }
+
+        if (conversationDbId) {
+          try {
+            await persistToolTurn({
+              conversationId: conversationDbId,
+              assistantContent,
+              toolCalls,
+              results: toolResults.map((r) => ({
+                toolCallId: r.toolCallId,
+                toolName: r.name,
+                content: r.result,
+              })),
+            });
+          } catch (err) {
+            console.error('[Socket] Failed to persist tool turn:', err);
+          }
+        }
+      },
+    },
+  });
+
+  return {
+    content: result.content,
+    usage: result.usage,
+    reportData,
+    usedTools: result.turnCount > 1,
+    finalAssistantContent: result.content,
   };
 }
 

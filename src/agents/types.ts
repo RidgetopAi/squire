@@ -45,6 +45,22 @@ export interface AgentRunArgs {
   conversationId?: string;
   /** Activity trace id (defaults to conversationId) */
   traceId?: string;
+  /**
+   * Parent activity event id (loop_llm only). When set, the engine's
+   * `agent.run.started` event is parented to this id — used by chat
+   * surfaces that record `chat.message.started` before invoking the
+   * engine so the run appears as a child in the activity tree.
+   */
+  parentEventId?: string;
+  /**
+   * Per-call source-loop override. When set, overrides the agent
+   * definition's sourceLoop for tool scoping, activity events, and
+   * permission checks on this run. Used by chat surfaces that route
+   * multiple sub-modes through one agent (e.g. socket_chat dispatches
+   * both 'socket_chat' and 'socket_document_chat' via the same agent
+   * definition but with different tool scopes).
+   */
+  sourceLoop?: string;
   /** Actor that triggered the run (e.g. 'user', 'scheduler', 'assistant') */
   actor?: string;
   /** Human-readable reason this run started */
@@ -82,6 +98,15 @@ export interface AgentRunResult {
   /** Optional structured result (used by deterministic/connector kinds) */
   data?: unknown;
   error?: string;
+  /**
+   * Token usage summed across every LLM turn (loop_llm only). Undefined when
+   * the run produced no usage (cancelled before first call, or provider
+   * didn't report counts).
+   */
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+  };
 }
 
 // =============================================================================
