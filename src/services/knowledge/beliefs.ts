@@ -6,7 +6,7 @@
  */
 
 import { pool } from '../../db/pool.js';
-import { completeText } from '../../providers/llm.js';
+import { runAgent } from '../../agents/index.js';
 import { generateEmbedding } from '../../providers/embeddings.js';
 import { searchEntities } from './entities.js';
 
@@ -79,48 +79,15 @@ interface ExtractedBelief {
 // === BELIEF EXTRACTION ===
 
 /**
- * Extract beliefs from a memory's content using LLM
+ * Extract beliefs from a memory's content using LLM.
+ * Prompt + temperature + maxTokens come from agents/belief_extractor.ts.
  */
 async function extractBeliefsFromContent(
   content: string
 ): Promise<ExtractedBelief[]> {
-  const systemPrompt = `You are a belief extractor. Given a memory/observation, identify any beliefs the person holds.
-
-A belief is a persistent conviction or understanding, NOT just a fact or observation.
-
-Belief types:
-- value: Core values ("I value honesty", "Family is important to me")
-- preference: Preferences ("I prefer working in the morning", "I like remote work")
-- self_knowledge: Self-understanding ("I work best under pressure", "I'm an introvert")
-- prediction: Expectations ("This project will succeed", "The market will recover")
-- about_person: Beliefs about others ("Sarah is reliable", "Tom is ambitious")
-- about_project: Beliefs about work/projects ("This codebase is well-designed")
-- about_world: General beliefs ("Remote work is the future", "AI will transform work")
-- should: Normative beliefs ("I should prioritize health", "One should always be honest")
-- support_preference: How they prefer to be supported ("I need space when stressed", "I want direct feedback")
-- trigger_sensitivity: What triggers negative reactions ("Being rushed makes me shut down", "I hate being micromanaged")
-- protective_priority: What they'll protect at all costs ("My family time is non-negotiable", "I won't compromise on quality")
-- vulnerability_theme: Deep fears/insecurities shaping behavior ("I worry I'm not doing enough", "I fear losing control")
-
-IMPORTANT for support types (support_preference, trigger_sensitivity, protective_priority, vulnerability_theme):
-- Only extract when CLEARLY demonstrated through behavior or explicit statement (not single offhand comments)
-- Start at LOW confidence (0.4) — these need 3+ reinforcements to reach the display threshold
-- These are deeply personal — be conservative in extraction
-
-Return ONLY a JSON array of beliefs found. Include confidence (0.0-1.0).
-If no beliefs are present, return an empty array: []
-
-Format: [{"content": "belief statement", "belief_type": "type", "confidence": 0.X, "entity_name": "name if about_person/about_project", "reason": "why this is a belief"}]`;
-
-  const prompt = `Memory: "${content}"
-
-What beliefs does this memory reveal? Return JSON array only.`;
-
   try {
-    const response = await completeText(prompt, systemPrompt, {
-      temperature: 0.2,
-      maxTokens: 500,
-    });
+    const result = await runAgent('belief_extractor', { input: content });
+    const response = result.content;
 
     // Parse JSON response
     const jsonMatch = response.match(/\[[\s\S]*?\]/);
@@ -447,19 +414,8 @@ async function detectConflicts(
 
   if (otherBeliefs.rows.length === 0) return [];
 
-  // Use LLM to detect conflicts
-  const systemPrompt = `You are a belief conflict detector. Given a new belief and a list of existing beliefs, identify any conflicts.
-
-Conflict types:
-- direct_contradiction: The beliefs cannot both be true
-- tension: The beliefs are in tension but could coexist in different contexts
-- evolution: The new belief appears to be an update/evolution of an older belief
-
-Return ONLY a JSON array of conflicts found.
-Format: [{"existing_belief_id": "...", "conflict_type": "...", "description": "brief explanation"}]
-
-If no conflicts, return: []`;
-
+  // Use LLM to detect conflicts.
+  // Prompt + temperature + maxTokens come from agents/belief_conflict_detector.ts.
   const existingList = otherBeliefs.rows
     .map((b) => `- ID: ${b.id}, Content: "${b.content}"`)
     .join('\n');
@@ -472,10 +428,8 @@ ${existingList}
 Identify any conflicts. Return JSON array only.`;
 
   try {
-    const response = await completeText(prompt, systemPrompt, {
-      temperature: 0.1,
-      maxTokens: 500,
-    });
+    const result = await runAgent('belief_conflict_detector', { input: prompt });
+    const response = result.content;
 
     const jsonMatch = response.match(/\[[\s\S]*?\]/);
     if (!jsonMatch) return [];

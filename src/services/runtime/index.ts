@@ -15,7 +15,8 @@ export type LLMRuntimeId =
   | 'scout'
   | 'emotional-synthesis'
   | 'courier-summarizer'
-  | 'vision';
+  | 'vision'
+  | 'expression-evaluator';
 
 export interface LLMRuntimeConfig {
   provider: LLMProviderName;
@@ -55,6 +56,11 @@ export function getLLMRuntime(id: LLMRuntimeId): LLMRuntimeConfig {
       return config.runtime.llm.courierSummarizer;
     case 'vision':
       return config.runtime.llm.vision;
+    case 'expression-evaluator':
+      return {
+        provider: config.expressionEvaluator.provider,
+        model: config.expressionEvaluator.model,
+      };
   }
 }
 

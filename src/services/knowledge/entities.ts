@@ -7,7 +7,7 @@
 
 import { pool } from '../../db/pool.js';
 import { generateEmbedding } from '../../providers/embeddings.js';
-import { complete, type LLMMessage } from '../../providers/llm.js';
+import { runAgent } from '../../agents/lazy.js';
 
 // =============================================================================
 // TYPES
@@ -417,13 +417,7 @@ async function llmDisambiguate(
     .replace('{candidates}', candidateList);
 
   try {
-    const result = await complete(
-      [
-        { role: 'system', content: 'You disambiguate entity mentions. Respond with only a number or "NEW".' },
-        { role: 'user', content: prompt },
-      ],
-      { temperature: 0.1, maxTokens: 10 }
-    );
+    const result = await runAgent('entity_disambiguator', { input: prompt });
 
     const response = result.content.trim().toUpperCase();
 
@@ -510,37 +504,9 @@ async function disambiguateEntity(
 // =============================================================================
 
 /**
- * System prompt for LLM entity extraction
- * Designed to catch entities regex misses, especially single names with relationship context
- */
-const ENTITY_EXTRACTION_SYSTEM_PROMPT = `You are an entity extractor analyzing personal memories and observations.
-
-Extract NAMED ENTITIES from the text. Focus on:
-- People (especially single names with relationship context like "my wife Sherrie", "my friend Tom")
-- Projects/Products (named work items)
-- Organizations/Companies
-- Places (specific locations)
-
-For each entity, identify:
-1. The entity name (use the most specific name available)
-2. Entity type: person, project, organization, place, concept
-3. Any relationship mentioned (e.g., "wife", "boss", "client", "friend")
-4. Confidence (0.0-1.0) based on how clear the entity identification is
-
-IMPORTANT:
-- Extract single-word names if relationship context is clear ("my sister Maria" -> Maria is a person)
-- Do NOT extract generic roles without names ("my boss" without a name -> skip)
-- Do NOT extract common words, days, months, or pronouns
-- Prefer specific over generic (extract "Sarah" not "sister")
-
-Return ONLY a JSON array. Format:
-[{"name": "EntityName", "type": "person|project|organization|place|concept", "relationship": "wife|friend|colleague|etc", "confidence": 0.X, "mentionText": "exact text containing the entity"}]
-
-If no entities found, return: []`;
-
-/**
  * Extract entities using LLM
- * Called when regex extraction is insufficient
+ * Called when regex extraction is insufficient.
+ * Prompt + temperature + maxTokens come from agents/entity_extractor.ts.
  */
 export async function extractEntitiesWithLLM(
   text: string
@@ -549,17 +515,8 @@ export async function extractEntitiesWithLLM(
     return [];
   }
 
-  const messages: LLMMessage[] = [
-    { role: 'system', content: ENTITY_EXTRACTION_SYSTEM_PROMPT },
-    { role: 'user', content: `Extract entities from:\n\n"${text}"` },
-  ];
-
   try {
-    const result = await complete(messages, {
-      temperature: 0.2, // Low temperature for consistent extraction
-      maxTokens: 1000,
-    });
-
+    const result = await runAgent('entity_extractor', { input: text });
     const content = result.content.trim();
 
     // Handle empty response

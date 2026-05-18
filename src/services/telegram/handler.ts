@@ -1,9 +1,10 @@
 /**
  * Telegram Message Handler
  *
- * Processes incoming Telegram messages and routes them through
- * Squire's AgentEngine. This is a thin routing layer between
- * Telegram and the agent infrastructure.
+ * Processes incoming Telegram messages and dispatches them via the
+ * agent runtime registry (runAgent('telegram', ...)). This is a thin
+ * routing layer — system prompt, tool surface, and runtime knobs are
+ * owned by src/agents/telegram.ts.
  */
 
 import { config } from '../../config/index.js';
@@ -12,11 +13,8 @@ import { detectStoryIntent, isStoryIntent } from '../story/storyIntent.js';
 import { generateStory } from '../story/storyEngine.js';
 import { getOrCreateConversation, addMessage, getMessages } from '../chat/conversations.js';
 import { processMessageRealTime } from '../chat/chatExtraction.js';
-import { AgentEngine } from '../agent/index.js';
-import { getUserIdentity } from '../identity.js';
+import { runAgent } from '../../agents/index.js';
 import { recordActivityEvent } from '../activity.js';
-import { SQUIRE_SYSTEM_PROMPT_BASE, TOOL_CALLING_INSTRUCTIONS } from '../../constants/prompts.js';
-import { hasTools, getToolDefinitions } from '../../tools/index.js';
 import {
   sendMessage,
   sendTypingAction,
@@ -34,46 +32,6 @@ const PRIMARY_CONVERSATION_ID = 'primary';
  */
 function getConversationId(_telegramUserId: number): string {
   return PRIMARY_CONVERSATION_ID;
-}
-
-/**
- * Get current timestamp for system prompt grounding
- */
-function getCurrentTimeContext(): string {
-  const now = new Date();
-  const options: Intl.DateTimeFormatOptions = {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZone: config.timezone,
-    timeZoneName: 'short',
-  };
-  const formatted = now.toLocaleString('en-US', options);
-  return `Current date and time: ${formatted}`;
-}
-
-/**
- * Build the system prompt with user identity and time context
- */
-async function buildSystemPrompt(): Promise<string> {
-  let prompt = SQUIRE_SYSTEM_PROMPT_BASE;
-
-  const identity = await getUserIdentity();
-  if (identity?.name) {
-    prompt = `You are talking to ${identity.name}.\n\n` + prompt;
-  }
-
-  if (hasTools({ sourceLoop: 'telegram' })) {
-    prompt += TOOL_CALLING_INSTRUCTIONS;
-  }
-
-  // Add time context
-  prompt += `\n\n${getCurrentTimeContext()}`;
-
-  return prompt;
 }
 
 /**
@@ -214,23 +172,43 @@ export async function handleTelegramMessage(message: TelegramMessage): Promise<v
       // Continue without context
     }
 
-    // Build system prompt with identity and time
-    const systemPrompt = await buildSystemPrompt();
+    // Build context for the engine (history + generated context)
+    const allMessages = await getMessages(conversation.id, { limit: 1000 });
+    const recentMessages = allMessages.slice(-10);
 
-    // Create AgentEngine with custom system prompt
-    // Track whether we've sent a progress update to avoid spamming
+    // Format history as context for the engine
+    let fullContext = '';
+
+    // Add conversation history
+    const historyExceptCurrent = recentMessages.slice(0, -1);
+    if (historyExceptCurrent.length > 0) {
+      fullContext += '## Recent Conversation\n\n';
+      for (const msg of historyExceptCurrent) {
+        const roleLabel = msg.role === 'user' ? 'User' : 'Assistant';
+        fullContext += `**${roleLabel}**: ${msg.content}\n\n`;
+      }
+    }
+
+    // Add generated context (story or RAG)
+    if (contextMarkdown) {
+      fullContext += contextMarkdown;
+    }
+
+    // Track typing indicator timing so callbacks can throttle refresh.
+    // Telegram's typing indicator lasts ~5 seconds; refresh every 4.
     let lastTypingTime = 0;
-    const TYPING_INTERVAL_MS = 4000; // Refresh typing indicator every 4 seconds
+    const TYPING_INTERVAL_MS = 4000;
 
-    const engine = new AgentEngine({
+    // Run the agent via the registry — systemPrompt, tools, maxTurns,
+    // and sourceLoop are owned by src/agents/telegram.ts.
+    console.log(`[Telegram] Running AgentEngine (${conversationId})`);
+    const result = await runAgent('telegram', {
+      input: text,
+      context: fullContext || undefined,
       conversationId,
       traceId,
-      maxTurns: 200,
-      systemPrompt,
-      sourceLoop: 'telegram',
       actor: 'assistant',
       triggerReason: 'Telegram message',
-      tools: hasTools({ sourceLoop: 'telegram' }) ? getToolDefinitions({ sourceLoop: 'telegram' }) : [],
       callbacks: {
         onStateChange: async (state, turn) => {
           console.log(`[Telegram] State: ${state}, Turn: ${turn}`);
@@ -268,32 +246,6 @@ export async function handleTelegramMessage(message: TelegramMessage): Promise<v
         },
       },
     });
-
-    // Build context for the engine (history + generated context)
-    const allMessages = await getMessages(conversation.id, { limit: 1000 });
-    const recentMessages = allMessages.slice(-10);
-
-    // Format history as context for the engine
-    let fullContext = '';
-
-    // Add conversation history
-    const historyExceptCurrent = recentMessages.slice(0, -1);
-    if (historyExceptCurrent.length > 0) {
-      fullContext += '## Recent Conversation\n\n';
-      for (const msg of historyExceptCurrent) {
-        const roleLabel = msg.role === 'user' ? 'User' : 'Assistant';
-        fullContext += `**${roleLabel}**: ${msg.content}\n\n`;
-      }
-    }
-
-    // Add generated context (story or RAG)
-    if (contextMarkdown) {
-      fullContext += contextMarkdown;
-    }
-
-    // Run the agent
-    console.log(`[Telegram] Running AgentEngine (${engine.getConversationId()})`);
-    const result = await engine.run(text, fullContext || undefined);
 
     if (!result.success) {
       throw new Error(result.error ?? 'Agent execution failed');

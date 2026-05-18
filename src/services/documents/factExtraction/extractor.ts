@@ -12,7 +12,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import { complete, type LLMMessage } from '../../../providers/llm.js';
+import { runAgent } from '../../../agents/index.js';
 import { config } from '../../../config/index.js';
 import type { DocumentChunk } from '../chunker/types.js';
 import {
@@ -38,109 +38,6 @@ const EXTRACTION_PROMPT_VERSION = '1.0.0';
  * System prompt for fact extraction
  * Designed for structured JSON output with comprehensive extraction
  */
-const FACT_EXTRACTION_SYSTEM_PROMPT = `You are an expert information extraction system. Your job is to analyze text from documents and extract structured facts, entities, dates, and relationships.
-
-TASK: Extract meaningful facts from the provided text that would be valuable to remember long-term.
-
-EXTRACTION CATEGORIES:
-
-1. FACT TYPES:
-   - biographical: Personal information about people (name, age, occupation, family)
-   - event: Something that happened (meeting, trip, accomplishment, milestone)
-   - relationship: Connections between entities (works at, married to, friends with)
-   - preference: Likes, dislikes, choices, opinions
-   - statement: General factual assertions from the document
-   - date: Significant dates mentioned (anniversaries, deadlines, birthdays)
-   - location: Geographic or place information
-   - organization: Company, institution, or group information
-
-2. ENTITY TYPES:
-   - person: Individual people (full names preferred)
-   - organization: Companies, institutions, government bodies
-   - project: Named projects, initiatives, products
-   - place: Locations, addresses, geographic areas
-   - concept: Abstract ideas, theories, named frameworks
-
-3. DATE TYPES:
-   - event_date: When something happened
-   - deadline: Due dates, target dates
-   - anniversary: Recurring significant dates
-   - birth_date: Birthdays
-   - death_date: Memorial dates
-   - start_date: Beginning of periods
-   - end_date: End of periods
-   - reference: General date mentions
-
-4. RELATIONSHIP PREDICATES (examples):
-   - works_at, employed_by
-   - married_to, spouse_of
-   - parent_of, child_of
-   - manages, reports_to
-   - founded, created
-   - located_in, based_in
-   - member_of, part_of
-
-OUTPUT FORMAT:
-Return a JSON object with this exact structure:
-
-{
-  "facts": [
-    {
-      "type": "biographical|event|relationship|preference|statement|date|location|organization",
-      "content": "Clear, standalone fact statement that makes sense without context",
-      "raw_text": "Exact quote from source text",
-      "confidence": 0.0-1.0,
-      "entities": [
-        {"name": "Entity Name", "type": "person|organization|project|place|concept", "role": "subject|object|mentioned", "confidence": 0.0-1.0}
-      ],
-      "dates": [
-        {"date": "YYYY-MM-DD", "type": "event_date|deadline|etc", "confidence": 0.0-1.0, "raw_text": "as written", "is_recurring": false}
-      ],
-      "relationships": [
-        {"subject": "Entity A", "predicate": "relationship_type", "object": "Entity B", "confidence": 0.0-1.0, "description": "Human readable"}
-      ]
-    }
-  ]
-}
-
-EXTRACTION GUIDELINES:
-
-1. QUALITY over QUANTITY:
-   - Only extract facts worth remembering
-   - Skip trivial or obvious information
-   - Each fact should be independently meaningful
-
-2. CONFIDENCE SCORING:
-   - 0.9-1.0: Explicitly stated, unambiguous
-   - 0.7-0.9: Strongly implied, high certainty
-   - 0.5-0.7: Reasonable inference, moderate certainty
-   - Below 0.5: Don't extract
-
-3. FACT CONTENT:
-   - Write clear, standalone statements
-   - Include enough context to understand without the source
-   - Use "The user" for first-person references if the document is personal
-   - Normalize names to full/proper form when possible
-
-4. ENTITY EXTRACTION:
-   - Prefer full names over nicknames
-   - Include role in context (subject, object, mentioned)
-   - Don't create entities for generic terms (pronouns, "the company")
-
-5. DATE NORMALIZATION:
-   - Convert all dates to YYYY-MM-DD format
-   - For partial dates, use best estimate (month only → first of month)
-   - Note recurring dates (birthdays, anniversaries)
-
-6. RELATIONSHIP EXTRACTION:
-   - Only extract explicit or strongly implied relationships
-   - Use consistent predicate naming (snake_case)
-   - Include human-readable description
-
-IMPORTANT:
-- Return ONLY valid JSON, no markdown, no explanation
-- If no facts worth extracting, return: {"facts": []}
-- Maximum 10 facts per chunk to maintain quality`;
 
 // === LLM RESPONSE TYPE ===
 
@@ -418,18 +315,12 @@ ${chunk.pageNumber ? `Page: ${chunk.pageNumber}` : ''}
 
 Extract all meaningful facts, entities, dates, and relationships from this text.`;
 
-    const messages: LLMMessage[] = [
-      {
-        role: 'system',
-        content: mergedOptions.customPrompt || FACT_EXTRACTION_SYSTEM_PROMPT,
-      },
-      { role: 'user', content: userPrompt },
-    ];
-
-    // Call LLM
-    const result = await complete(messages, {
-      temperature: 0.2, // Low temperature for consistent extraction
-      maxTokens: 3000,
+    // Prompt + temperature + maxTokens come from agents/fact_extractor.ts.
+    // mergedOptions.customPrompt overrides the registry's default system
+    // prompt via args.payload.systemPromptOverride.
+    const result = await runAgent('fact_extractor', {
+      input: userPrompt,
+      payload: { systemPromptOverride: mergedOptions.customPrompt },
     });
 
     // Parse response
