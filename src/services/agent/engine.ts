@@ -5,7 +5,7 @@
  * calls tools repeatedly until the task is complete.
  */
 
-import { callLLM, type LLMMessage, type LLMResponse } from './llm.js';
+import { callLLM, streamLLMForAgent, type LLMMessage, type LLMResponse } from './llm.js';
 import {
   getToolDefinitions,
   executeTools,
@@ -56,6 +56,27 @@ export interface AgentCallbacks {
   onToolCall?: (toolName: string, args: unknown) => void;
   /** Called when an error occurs */
   onError?: (error: Error) => void;
+  /**
+   * Called for each text chunk during LLM streaming.
+   *
+   * When this callback is PRESENT, AgentEngine switches its LLM dispatch
+   * from buffered (callLLM) to streaming (streamLLMForAgent). This is
+   * how chat surfaces (socket_chat) receive incremental tokens to forward
+   * over Socket.IO. When ABSENT, the engine stays on the buffered path
+   * bit-for-bit identical to pre-Phase-6.2 behavior — so existing
+   * loop_llm agents (commune, telegram, goal_worker) are unaffected.
+   */
+  onChunk?: (chunk: string) => void;
+}
+
+/**
+ * LLM dispatch adapter for AgentEngine. Holds the buffered and streaming
+ * entry points. Exposed in AgentEngineOptions ONLY for tests — production
+ * callers never set it; the default uses the real callLLM / streamLLMForAgent.
+ */
+export interface LLMAdapter {
+  call: typeof callLLM;
+  stream: typeof streamLLMForAgent;
 }
 
 /**
@@ -97,6 +118,13 @@ export interface AgentEngineOptions {
    * runtime when images are attached).
    */
   providerOverride?: { provider: string; model: string };
+  /**
+   * LLM dispatch adapter override. PRODUCTION CALLERS NEVER SET THIS — the
+   * default uses the real callLLM + streamLLMForAgent from ./llm.ts. Tests
+   * inject a fake here to exercise the engine's loop without touching real
+   * provider APIs.
+   */
+  llmAdapter?: LLMAdapter;
 }
 
 // === AgentEngine Class ===
@@ -140,6 +168,7 @@ export class AgentEngine {
   private tier: ModelTier | undefined;
   private readonly preBuiltMessages: LLMMessage[] | undefined;
   private readonly providerOverride: { provider: string; model: string } | undefined;
+  private readonly llmAdapter: LLMAdapter;
 
   /**
    * Create a new AgentEngine instance
@@ -176,6 +205,10 @@ export class AgentEngine {
 
     // Per-call provider override (bypasses tier routing for every LLM call).
     this.providerOverride = options.providerOverride;
+
+    // LLM dispatch adapter (tests inject a fake; production uses the real
+    // callLLM + streamLLMForAgent).
+    this.llmAdapter = options.llmAdapter ?? { call: callLLM, stream: streamLLMForAgent };
   }
 
   /**
@@ -270,15 +303,31 @@ export class AgentEngine {
         this.turnCount++;
         this.setState('thinking');
 
-        // Call the LLM
+        // Call the LLM.
+        //
+        // When callbacks.onChunk is present (chat surfaces), use the
+        // streaming entry point and forward chunks as they arrive. When
+        // absent (commune / telegram / goal_worker / single_llm-as-loop),
+        // use the buffered call — bit-for-bit identical to pre-Phase-6.2.
         let response: LLMResponse;
         try {
-          response = await callLLM(this.messages, this.tools, {
+          const opts = {
             signal: this.abortController.signal,
             tier: this.tier,
             providerOverride: this.providerOverride,
             sourceLoop: this.sourceLoop,
-          });
+          };
+          if (this.callbacks.onChunk) {
+            const onChunk = this.callbacks.onChunk;
+            response = await this.llmAdapter.stream(
+              this.messages,
+              this.tools,
+              { onChunk: (chunk) => onChunk(chunk) },
+              opts
+            );
+          } else {
+            response = await this.llmAdapter.call(this.messages, this.tools, opts);
+          }
         } catch (error) {
           // Check if this was an abort
           if (this.abortController.signal.aborted) {

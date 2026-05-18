@@ -8,11 +8,14 @@
 
 import {
   callLLM as unifiedCallLLM,
+  streamLLM as unifiedStreamLLM,
   type LLMMessage as UnifiedLLMMessage,
   type LLMResponse as UnifiedLLMResponse,
   type ToolDefinition,
 } from '../llm/index.js';
+import type { StreamCallbacks } from '../llm/types.js';
 import { routedCallLLM, isRoutingEnabled, type ModelTier } from '../routing/index.js';
+import { getTierConfig } from '../routing/models.js';
 
 // === Types (re-export for backward compatibility) ===
 
@@ -62,6 +65,52 @@ export async function callLLM(
   }
 
   return unifiedCallLLM(messages, tools, {
+    signal: options?.signal,
+    sourceLoop: options?.sourceLoop,
+  });
+}
+
+// === Streaming entry point (for AgentEngine streaming mode) ===
+
+/**
+ * Stream an LLM response with the same provider/tier resolution semantics
+ * as callLLM above. Mirrors the agent-local callLLM wrapper so callers can
+ * switch between buffered and streaming with the same options surface.
+ *
+ * Provider resolution order:
+ *   1. options.providerOverride → bypass routing, pin to {provider, model}
+ *   2. options.tier + isRoutingEnabled() → resolve tier via getTierConfig
+ *   3. fall through to unified streamLLM defaults (from config)
+ *
+ * Chunks are forwarded via streamCallbacks.onChunk during the stream.
+ * The returned LLMResponse mirrors the callLLM shape (content + toolCalls + usage).
+ */
+export async function streamLLMForAgent(
+  messages: LLMMessage[],
+  tools?: ToolDefinition[],
+  streamCallbacks?: StreamCallbacks,
+  options?: LLMCallOptions
+): Promise<LLMResponse> {
+  if (options?.providerOverride) {
+    return unifiedStreamLLM(messages, tools, streamCallbacks, {
+      signal: options.signal,
+      provider: options.providerOverride.provider,
+      model: options.providerOverride.model,
+      sourceLoop: options.sourceLoop,
+    });
+  }
+
+  if (isRoutingEnabled() && options?.tier) {
+    const tierConfig = getTierConfig(options.tier);
+    return unifiedStreamLLM(messages, tools, streamCallbacks, {
+      signal: options.signal,
+      provider: tierConfig.provider,
+      model: tierConfig.model,
+      sourceLoop: options.sourceLoop,
+    });
+  }
+
+  return unifiedStreamLLM(messages, tools, streamCallbacks, {
     signal: options?.signal,
     sourceLoop: options?.sourceLoop,
   });
