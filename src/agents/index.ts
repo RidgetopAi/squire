@@ -51,6 +51,7 @@ import './courier_summarizer.js';
 import './emotional_synthesis.js';
 import './entity_disambiguator.js';
 import './entity_extractor.js';
+import './expression_evaluator.js';
 import './fact_extractor.js';
 import './followup_question_generator.js';
 import './gap_detector.js';
