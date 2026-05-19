@@ -3,7 +3,9 @@ import multer from 'multer';
 import {
   createObject,
   getObjectById,
-  getObjectData,
+  getObjectFile,
+  VARIANT_NAMES,
+  type VariantName,
   listObjects,
   updateObject,
   deleteObject,
@@ -396,7 +398,13 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
 
 /**
  * GET /api/objects/:id/download
- * Download object file
+ *   ?variant=thumb|display|original (default original)
+ *   ?disposition=inline|attachment   (default attachment, backwards-compat)
+ *
+ * Auth-proxied object fetch. Variant falls back to the original when the
+ * requested size wasn't generated (non-images, or generation failed).
+ * For variants and inline disposition, ETag + long Cache-Control are set
+ * since the content under a given (id, variant) is immutable.
  */
 router.get('/:id/download', async (req: Request, res: Response): Promise<void> => {
   try {
@@ -406,22 +414,39 @@ router.get('/:id/download', async (req: Request, res: Response): Promise<void> =
       return;
     }
 
+    const rawVariant = String(req.query['variant'] ?? 'original').toLowerCase();
+    if (!VARIANT_NAMES.includes(rawVariant as VariantName)) {
+      res.status(400).json({ error: `Invalid variant: ${rawVariant}. Use one of: ${VARIANT_NAMES.join(', ')}` });
+      return;
+    }
+    const variant = rawVariant as VariantName;
+    const disposition = req.query['disposition'] === 'inline' ? 'inline' : 'attachment';
+
     const object = await getObjectById(id);
     if (!object || object.status === 'deleted') {
       res.status(404).json({ error: 'Object not found' });
       return;
     }
 
-    const data = await getObjectData(id);
-    if (!data) {
+    const file = await getObjectFile(id, variant);
+    if (!file) {
       res.status(404).json({ error: 'Object file not found' });
       return;
     }
 
-    res.setHeader('Content-Type', object.mime_type);
-    res.setHeader('Content-Disposition', `attachment; filename="${object.filename}"`);
-    res.setHeader('Content-Length', data.length);
-    res.send(data);
+    res.setHeader('Content-Type', file.mime);
+    res.setHeader('Content-Length', file.size);
+    res.setHeader(
+      'Content-Disposition',
+      `${disposition}; filename="${object.filename}"`
+    );
+    // Variant bytes are immutable for a given (id, variant) — cache aggressively.
+    // Originals are also effectively immutable (uploads don't mutate); same policy.
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    if (file.fellBackToOriginal) {
+      res.setHeader('X-Variant-Fallback', 'original');
+    }
+    res.send(file.body);
   } catch (error) {
     console.error('Failed to download object:', error);
     res.status(500).json({ error: 'Failed to download object' });

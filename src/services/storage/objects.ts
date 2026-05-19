@@ -7,9 +7,10 @@
 
 import { pool } from '../../db/pool.js';
 import { generateEmbedding } from '../../providers/embeddings.js';
-import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import sharp from 'sharp';
+import { backendFor, defaultBackendType, type StorageBackendType } from './backends/index.js';
 
 // === TYPES ===
 
@@ -107,16 +108,77 @@ export interface ObjectCollection {
 
 // === CONFIGURATION ===
 
-// Default storage directory (relative to project root)
-const STORAGE_BASE = process.env['SQUIRE_STORAGE_PATH'] || './storage/objects';
+// Storage layout (file paths, dirs) now lives in backends/local.ts.
+// STORAGE_BACKEND env var (local|s3) picks where new objects go;
+// see backends/index.ts::defaultBackendType.
+
+// === IMAGE VARIANTS ===
+
+export const VARIANT_NAMES = ['thumb', 'display', 'original'] as const;
+export type VariantName = (typeof VARIANT_NAMES)[number];
+
+export interface VariantInfo {
+  key: string;          // backend key (storage_path-style)
+  mime: string;         // always image/webp for thumb/display
+  width: number;
+  height: number;
+  bytes: number;
+}
+
+/** Max long edge for each generated variant. */
+const VARIANT_DIMENSIONS: Record<Exclude<VariantName, 'original'>, number> = {
+  display: 1920,
+  thumb: 256,
+};
 
 /**
- * Ensure storage directory exists
+ * Generate thumb + display WebP variants for an image and write them to the
+ * same storage backend as the original. Returns info so the caller can stash
+ * variant keys + dimensions in metadata. Always best-effort: if sharp fails
+ * (corrupt image, unsupported codec) the upload still succeeds with no variants.
  */
-async function ensureStorageDir(subdir: string = ''): Promise<string> {
-  const dir = path.join(STORAGE_BASE, subdir);
-  await fs.mkdir(dir, { recursive: true });
-  return dir;
+async function generateImageVariants(
+  data: Buffer,
+  baseKey: string,
+  storageType: StorageBackendType
+): Promise<{
+  variants: Partial<Record<VariantName, VariantInfo>>;
+  dimensions?: { width: number; height: number };
+}> {
+  const variants: Partial<Record<VariantName, VariantInfo>> = {};
+  let dimensions: { width: number; height: number } | undefined;
+  try {
+    const meta = await sharp(data).metadata();
+    if (meta.width && meta.height) {
+      dimensions = { width: meta.width, height: meta.height };
+    }
+    const baseNoExt = baseKey.replace(/\.[^.]+$/, '');
+    const backend = backendFor(storageType);
+    for (const [name, maxDim] of Object.entries(VARIANT_DIMENSIONS) as Array<
+      [Exclude<VariantName, 'original'>, number]
+    >) {
+      const result = await sharp(data)
+        .rotate() // honor EXIF orientation, then strip it
+        .resize(maxDim, maxDim, { fit: 'inside', withoutEnlargement: true })
+        .webp({ quality: 80 })
+        .toBuffer({ resolveWithObject: true });
+      const key = `${baseNoExt}.${name}.webp`;
+      await backend.put(key, result.data, 'image/webp');
+      variants[name] = {
+        key,
+        mime: 'image/webp',
+        width: result.info.width,
+        height: result.info.height,
+        bytes: result.info.size,
+      };
+    }
+  } catch (err) {
+    console.warn(
+      `[storage] image variant generation failed for ${baseKey}:`,
+      err instanceof Error ? err.message : err
+    );
+  }
+  return { variants, dimensions };
 }
 
 /**
@@ -209,20 +271,27 @@ export async function createObject(input: CreateObjectInput): Promise<CreateObje
     };
   }
 
-  // Determine object type and storage path
+  // Determine object type, storage backend, and key.
+  // Keys are backend-agnostic: `<type>/<YYYY-MM>/<uuid><ext>`. The local
+  // backend will join this onto STORAGE_BASE; S3 uses it as the object key.
   const objectType = getObjectTypeFromMime(mimeType);
   const datePrefix = new Date().toISOString().slice(0, 7); // YYYY-MM
-  const storageSubdir = `${objectType}/${datePrefix}`;
-  await ensureStorageDir(storageSubdir);
-
-  // Generate unique filename
   const ext = path.extname(filename) || '';
   const uniqueFilename = `${crypto.randomUUID()}${ext}`;
-  const storagePath = path.join(storageSubdir, uniqueFilename);
-  const fullPath = path.join(STORAGE_BASE, storagePath);
+  const storagePath = `${objectType}/${datePrefix}/${uniqueFilename}`;
 
-  // Write file to disk
-  await fs.writeFile(fullPath, data);
+  const storageType = defaultBackendType();
+  await backendFor(storageType).put(storagePath, data, mimeType);
+
+  // Image-only: generate WebP variants (thumb 256, display 1920) and stash
+  // their keys + dimensions in metadata. Best-effort — failure here does not
+  // block the upload, just leaves the row variant-less.
+  const enrichedMetadata: Record<string, unknown> = { ...metadata };
+  if (objectType === 'image') {
+    const { variants, dimensions } = await generateImageVariants(data, storagePath, storageType);
+    if (Object.keys(variants).length > 0) enrichedMetadata.variants = variants;
+    if (dimensions) enrichedMetadata.dimensions = dimensions;
+  }
 
   // Insert into database
   const result = await pool.query(
@@ -239,11 +308,11 @@ export async function createObject(input: CreateObjectInput): Promise<CreateObje
       mimeType,
       data.length,
       hash,
-      'local',
+      storageType,
       storagePath,
       objectType,
       description || null,
-      JSON.stringify(metadata),
+      JSON.stringify(enrichedMetadata),
       source,
       sourceUrl || null,
       'pending',
@@ -399,19 +468,60 @@ export async function deleteObject(id: string): Promise<boolean> {
  * Get object file data
  */
 export async function getObjectData(id: string): Promise<Buffer | null> {
+  const f = await getObjectFile(id);
+  return f?.body ?? null;
+}
+
+export interface ObjectFileResult {
+  body: Buffer;
+  mime: string;
+  size: number;
+  variant: VariantName;
+  /** True when caller asked for a variant that wasn't generated, so we served original. */
+  fellBackToOriginal: boolean;
+}
+
+/**
+ * Fetch the bytes for an object, optionally a specific image variant.
+ * Returns mime/size alongside the body so callers (esp. HTTP routes) don't
+ * have to recompute. Falls back to the original when a requested variant
+ * isn't present (e.g. non-image, or variant generation failed at upload).
+ */
+export async function getObjectFile(
+  id: string,
+  variant: VariantName = 'original'
+): Promise<ObjectFileResult | null> {
   const obj = await getObjectById(id);
   if (!obj || obj.status === 'deleted') return null;
+  if (obj.storage_type === 'url') return null;
 
-  if (obj.storage_type !== 'local') {
-    throw new Error(`Storage type ${obj.storage_type} not yet supported for reading`);
+  const variants = (obj.metadata as { variants?: Partial<Record<VariantName, VariantInfo>> })
+    .variants;
+  const wantedVariant = variant !== 'original' ? variants?.[variant] : undefined;
+
+  if (wantedVariant) {
+    const res = await backendFor(obj.storage_type).get(wantedVariant.key);
+    if (res) {
+      return {
+        body: res.body,
+        mime: wantedVariant.mime,
+        size: res.size,
+        variant,
+        fellBackToOriginal: false,
+      };
+    }
+    // Variant key recorded in metadata but missing in backend — fall through to original.
   }
 
-  const fullPath = path.join(STORAGE_BASE, obj.storage_path);
-  try {
-    return await fs.readFile(fullPath);
-  } catch {
-    return null;
-  }
+  const res = await backendFor(obj.storage_type).get(obj.storage_path);
+  if (!res) return null;
+  return {
+    body: res.body,
+    mime: obj.mime_type,
+    size: res.size,
+    variant: 'original',
+    fellBackToOriginal: variant !== 'original',
+  };
 }
 
 // === MEMORY LINKS ===
