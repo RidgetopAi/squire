@@ -139,6 +139,21 @@ export const config = {
     apiKey: process.env['AGENTMAIL_API_KEY'] ?? '',
     inboxId: 'squireagent@agentmail.to',
   },
+  // Object storage for chat uploads, PDF extractions, generated/edited images.
+  // Backed by MinIO on the VPS (single bucket with key prefixes per source).
+  // Empty access/secret keys → MediaService throws a clear error at first use
+  // rather than blocking boot, so local dev without MinIO still starts.
+  media: {
+    s3Endpoint: optional('S3_ENDPOINT', 'http://127.0.0.1:9000'),
+    s3Bucket: optional('S3_BUCKET', 'media'),
+    s3Region: optional('S3_REGION', 'us-east-1'),
+    s3AccessKey: process.env['S3_ACCESS_KEY'] ?? '',
+    s3SecretKey: process.env['S3_SECRET_KEY'] ?? '',
+    // MinIO needs path-style URLs (host/bucket/key); AWS S3 defaults to vhost-style.
+    s3ForcePathStyle: optional('S3_FORCE_PATH_STYLE', 'true') === 'true',
+    // Base URL the auth proxy serves on — embedded in markdown, chat history, RAG.
+    publicUrlBase: optional('MEDIA_PUBLIC_URL_BASE', 'https://squire.ridgetopai.net/media'),
+  },
   recall: {
     userStopwords: (process.env['RECALL_USER_STOPWORDS'] ?? '').split(',').filter(Boolean),
     cacheTtlMs: parseInt(optional('RECALL_CACHE_TTL_MS', '300000'), 10),
