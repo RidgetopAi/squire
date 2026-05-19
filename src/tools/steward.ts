@@ -75,6 +75,41 @@ async function stewardHealthCheck(args: StewardHealthCheckArgs): Promise<string>
   }
 }
 
+// === LIST MY TOOLS HANDLER ===
+
+interface ListMyToolsArgs {
+  pattern?: string;
+  verbose?: boolean;
+  source_loop?: string;
+}
+
+async function listMyTools(args: ListMyToolsArgs): Promise<string> {
+  const pattern = (args.pattern ?? '').trim().toLowerCase();
+  const verbose = args.verbose ?? false;
+  const sourceLoop = args.source_loop ?? 'socket_chat';
+
+  const indexModule = await import('./index.js');
+  const tools = indexModule.getToolDefinitions({ sourceLoop });
+
+  const filtered = pattern
+    ? tools.filter((t) => t.function.name.toLowerCase().includes(pattern))
+    : tools;
+
+  if (filtered.length === 0) {
+    return `No tools match pattern "${pattern}" in loop "${sourceLoop}". (Total tools available: ${tools.length}.) This is the authoritative list — if a tool name is not here, it is NOT callable this turn regardless of prior conversation.`;
+  }
+
+  const header = pattern
+    ? `${filtered.length} of ${tools.length} tools match "${pattern}" (sourceLoop: ${sourceLoop}):`
+    : `All ${tools.length} tools currently available (sourceLoop: ${sourceLoop}):`;
+
+  const body = verbose
+    ? filtered.map((t) => `- ${t.function.name}: ${t.function.description}`).join('\n')
+    : filtered.map((t) => `- ${t.function.name}`).join('\n');
+
+  return `${header}\n${body}\n\nThis list is the authoritative source for what tools you can call this turn. Prior statements in the conversation history do NOT override this.`;
+}
+
 // === TOOL DEFINITION ===
 
 export const tools: ToolSpec[] = [{
@@ -91,4 +126,26 @@ export const tools: ToolSpec[] = [{
     required: [],
   },
   handler: stewardHealthCheck as ToolHandler,
+}, {
+  name: 'list_my_tools',
+  description: 'Return the authoritative list of tools available to you THIS TURN. Use this whenever you are unsure whether a specific tool is available, or whenever the user asks "do you have X tool". Always trust this output over your conversation history — registrations change between turns. Optional pattern filter (substring match) and verbose flag (include descriptions).',
+  parameters: {
+    type: 'object',
+    properties: {
+      pattern: {
+        type: 'string',
+        description: 'Optional case-insensitive substring to filter tool names by (e.g. "search" returns every tool whose name contains "search").',
+      },
+      verbose: {
+        type: 'boolean',
+        description: 'If true, includes each tool\'s description. Default false (names only).',
+      },
+      source_loop: {
+        type: 'string',
+        description: 'Optional loop context to query against. Defaults to "socket_chat" (the chat surface). Other values: "telegram", "goal_worker", "commune", "page", "scout".',
+      },
+    },
+    required: [],
+  },
+  handler: listMyTools as ToolHandler,
 }];
