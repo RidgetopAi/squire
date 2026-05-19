@@ -16,7 +16,6 @@ import type {
   OpenAIResponse,
 } from './types.js';
 import {
-  capTools,
   toAnthropicMessages,
   toAnthropicTools,
   toAnthropicSystem,
@@ -156,9 +155,8 @@ async function callOpenAICompatible(
     requestBody.max_tokens = maxTokens;
   }
 
-  const cappedTools = capTools(tools, pc.provider);
-  if (cappedTools && cappedTools.length > 0) {
-    requestBody.tools = cappedTools;
+  if (tools && tools.length > 0) {
+    requestBody.tools = tools;
   }
 
   const response = await fetch(`${pc.baseUrl}/chat/completions`, {

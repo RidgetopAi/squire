@@ -19,7 +19,6 @@ import type {
   ProviderConfig,
 } from './types.js';
 import {
-  capTools,
   toAnthropicMessages,
   toAnthropicTools,
   toAnthropicSystem,
@@ -246,9 +245,8 @@ async function streamOpenAICompatible(
     requestBody.max_tokens = maxTokens;
   }
 
-  const cappedTools = capTools(tools, pc.provider);
-  if (cappedTools && cappedTools.length > 0) {
-    requestBody.tools = cappedTools;
+  if (tools && tools.length > 0) {
+    requestBody.tools = tools;
     requestBody.tool_choice = 'auto';
   }
 

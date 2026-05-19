@@ -910,8 +910,7 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
           conversationId,
           socketId: socket.id,
         },
-      },
-      hasImages
+      }
     );
     console.log(`[Socket] Stream complete: ${streamResult.content.length} chars`);
     markLatency('llm_stream_complete');
@@ -1095,8 +1094,7 @@ async function runChatAgent(
   providerOverride: { provider: string; model: string } | undefined,
   conversationDbId: string | undefined,
   markLatency: ((label: string) => void) | undefined,
-  activityContext: ToolExecutionContext | undefined,
-  hasImages: boolean = false
+  activityContext: ToolExecutionContext | undefined
 ): Promise<{ content: string; usage?: { promptTokens: number; completionTokens: number }; reportData?: { title: string; summary: string; content: string; generatedAt: string }; usedTools: boolean; finalAssistantContent: string }> {
   let reportData: { title: string; summary: string; content: string; generatedAt: string } | undefined;
   let firstChunkEmitted = false;
@@ -1126,7 +1124,6 @@ async function runChatAgent(
     signal,
     messages: messages as LLMMessage[],
     providerOverride: effectiveProviderOverride,
-    payload: { hasImages },
     callbacks: {
       onChunk: (chunk) => {
         const providerChunkAtMs = Date.now();
