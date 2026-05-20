@@ -581,15 +581,32 @@ export const useChatStore = create<ChatState>((set, get) => ({
       if (result) {
         const { conversation, messages } = result;
 
-        // Convert DB messages to ChatMessage format
-        const chatMessages: ChatMessage[] = messages.map((m) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-          timestamp: m.created_at,
-          memoryIds: m.context_memory_ids,
-          reportData: (m.metadata as Record<string, unknown> | null)?.reportData as ReportData | undefined,
-        }));
+        // Convert DB messages to ChatMessage format. Image attachments live
+        // in metadata.attachments (written by persistChatImageAttachments).
+        // We extract them as image refs so the renderer can fetch via the
+        // auth proxy — base64 isn't persisted, so without this reloads would
+        // show empty image slots for any historical message.
+        const chatMessages: ChatMessage[] = messages.map((m) => {
+          const meta = (m.metadata as Record<string, unknown> | null) ?? {};
+          const rawAttachments = meta['attachments'];
+          const images = Array.isArray(rawAttachments)
+            ? (rawAttachments as Array<{ objectId?: string; name?: string; filename?: string }>)
+                .filter((a) => typeof a.objectId === 'string')
+                .map((a) => ({
+                  objectId: a.objectId as string,
+                  name: a.name || a.filename || 'image',
+                }))
+            : undefined;
+          return {
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            timestamp: m.created_at,
+            memoryIds: m.context_memory_ids,
+            reportData: meta['reportData'] as ReportData | undefined,
+            ...(images && images.length > 0 ? { images } : {}),
+          };
+        });
 
         const conversationId = conversation.client_id || conversation.id;
 

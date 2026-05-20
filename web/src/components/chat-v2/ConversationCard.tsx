@@ -99,14 +99,23 @@ function ConversationCardComponent({ pair, index, onBookmark, isBookmarked = fal
           <div className="px-5 pt-4 pb-2">
             {userMessage.images && userMessage.images.length > 0 && (
               <div className={`flex gap-2 flex-wrap${userMessage.content ? ' mb-2' : ''}`}>
-                {userMessage.images.map((img, i) => (
-                  <img
-                    key={i}
-                    src={img.preview}
-                    alt={img.name}
-                    className="w-20 h-20 object-cover rounded border border-[var(--card-border)]"
-                  />
-                ))}
+                {userMessage.images.map((img, i) => {
+                  // Prefer the persistent auth-proxy URL so reloads work.
+                  // Fall back to the in-session base64 preview when objectId
+                  // hasn't reached us yet (fresh upload before server ack).
+                  const src = img.objectId
+                    ? `/api/objects/${img.objectId}/download?variant=display&disposition=inline`
+                    : img.preview;
+                  if (!src) return null;
+                  return (
+                    <img
+                      key={i}
+                      src={src}
+                      alt={img.name}
+                      className="w-20 h-20 object-cover rounded border border-[var(--card-border)]"
+                    />
+                  );
+                })}
               </div>
             )}
             {userMessage.content && (

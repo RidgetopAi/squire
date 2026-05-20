@@ -207,7 +207,11 @@ export interface ChatMessage {
   context?: ContextPackage;
   memoryIds?: string[];
   reportData?: ReportData;
-  images?: { preview: string; name: string }[];
+  // images carries either an in-session base64 preview (fresh upload) and/or
+  // an objectId (history rehydrated from server, or after server ack). The
+  // renderer prefers objectId via /api/objects/:id/download?variant=display
+  // so reloads work, falling back to preview when objectId isn't there yet.
+  images?: { preview?: string; objectId?: string; name: string }[];
 }
 
 // Report Data (from present_report tool)
