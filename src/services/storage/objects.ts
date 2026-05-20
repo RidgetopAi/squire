@@ -350,13 +350,27 @@ export interface ListObjectsOptions {
   processingStatus?: ProcessingStatus;
   tag?: string;
   search?: string;
+  source?: ObjectSource;
+  dateFrom?: Date;
+  dateTo?: Date;
 }
 
 /**
  * List objects with filtering
  */
 export async function listObjects(options: ListObjectsOptions = {}): Promise<StoredObject[]> {
-  const { limit = 50, offset = 0, objectType, status = 'active', processingStatus, tag, search } = options;
+  const {
+    limit = 50,
+    offset = 0,
+    objectType,
+    status = 'active',
+    processingStatus,
+    tag,
+    search,
+    source,
+    dateFrom,
+    dateTo,
+  } = options;
 
   let query = `SELECT o.* FROM objects o`;
   const params: unknown[] = [];
@@ -382,6 +396,21 @@ export async function listObjects(options: ListObjectsOptions = {}): Promise<Sto
   if (processingStatus) {
     conditions.push(`o.processing_status = $${paramIndex++}`);
     params.push(processingStatus);
+  }
+
+  if (source) {
+    conditions.push(`o.source = $${paramIndex++}`);
+    params.push(source);
+  }
+
+  if (dateFrom) {
+    conditions.push(`o.created_at >= $${paramIndex++}`);
+    params.push(dateFrom);
+  }
+
+  if (dateTo) {
+    conditions.push(`o.created_at <= $${paramIndex++}`);
+    params.push(dateTo);
   }
 
   if (search) {

@@ -35,11 +35,13 @@ import {
   PROCESSING_STATUSES,
   MEMORY_LINK_TYPES,
   ENTITY_LINK_TYPES,
+  OBJECT_SOURCES,
   type ObjectType,
   type ObjectStatus,
   type ProcessingStatus,
   type MemoryLinkType,
   type EntityLinkType,
+  type ObjectSource,
 } from '../../services/storage/objects.js';
 
 const router = Router();
@@ -67,6 +69,9 @@ router.get('/', async (req: Request, res: Response) => {
     const processingStatus = req.query.processingStatus as string | undefined;
     const tag = req.query.tag as string | undefined;
     const search = req.query.search as string | undefined;
+    const source = req.query.source as string | undefined;
+    const dateFromRaw = req.query.dateFrom as string | undefined;
+    const dateToRaw = req.query.dateTo as string | undefined;
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
     const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
 
@@ -87,12 +92,40 @@ router.get('/', async (req: Request, res: Response) => {
       return;
     }
 
+    if (source && !OBJECT_SOURCES.includes(source as ObjectSource)) {
+      res.status(400).json({ error: 'Invalid source', validSources: OBJECT_SOURCES });
+      return;
+    }
+
+    let dateFrom: Date | undefined;
+    if (dateFromRaw) {
+      const parsed = new Date(dateFromRaw);
+      if (Number.isNaN(parsed.getTime())) {
+        res.status(400).json({ error: 'Invalid dateFrom; expected ISO 8601 date string' });
+        return;
+      }
+      dateFrom = parsed;
+    }
+
+    let dateTo: Date | undefined;
+    if (dateToRaw) {
+      const parsed = new Date(dateToRaw);
+      if (Number.isNaN(parsed.getTime())) {
+        res.status(400).json({ error: 'Invalid dateTo; expected ISO 8601 date string' });
+        return;
+      }
+      dateTo = parsed;
+    }
+
     const objects = await listObjects({
       objectType: objectType as ObjectType | undefined,
       status: (status as ObjectStatus | undefined) || 'active',
       processingStatus: processingStatus as ProcessingStatus | undefined,
       tag,
       search,
+      source: source as ObjectSource | undefined,
+      dateFrom,
+      dateTo,
       limit,
       offset,
     });
