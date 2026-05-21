@@ -11,12 +11,15 @@ import { checkLLMHealth, getLLMInfo, type ImageContent } from '../../providers/l
 import {
   createConversation,
   getConversation,
+  getConversationByClientId,
   listConversations,
   archiveConversation,
   updateConversationTitle,
   getMessages,
   getRecentConversationWithMessages,
 } from '../../services/chat/conversations.js';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const router = Router();
 
@@ -250,7 +253,13 @@ router.get('/conversations/recent', async (_req: Request, res: Response): Promis
  */
 router.get('/conversations/:id', async (req: Request<{ id: string }>, res: Response): Promise<void> => {
   try {
-    const conversation = await getConversation(req.params.id);
+    const { id } = req.params;
+    // Accept either a DB uuid or a client-generated id. Chat-image metadata
+    // stores the client id (set in chatStore.startNewConversation), so deep
+    // links from the Media library always arrive as non-UUID strings.
+    const conversation = UUID_RE.test(id)
+      ? await getConversation(id)
+      : await getConversationByClientId(id);
 
     if (!conversation) {
       res.status(404).json({

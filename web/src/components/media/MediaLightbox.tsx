@@ -1,14 +1,18 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { MediaObject } from '@/lib/api/media';
-import { getConversationId, getDimensions, mediaUrl } from '@/lib/api/media';
+import { deleteMedia, getConversationId, getDimensions, mediaUrl } from '@/lib/api/media';
 
 interface MediaLightboxProps {
   item: MediaObject | null;
   onClose: () => void;
+  /** Called after a successful delete; lets the parent prune local state. */
+  onDeleted?: (id: string) => void;
+  /** Hide the "Open conversation" link (already in chat → no use for it). */
+  hideOpenConversation?: boolean;
 }
 
 function formatBytes(n: number): string {
@@ -29,15 +33,57 @@ const SOURCE_LABEL: Record<MediaObject['source'], string> = {
   import: 'Imported',
 };
 
-export function MediaLightbox({ item, onClose }: MediaLightboxProps) {
+export function MediaLightbox({
+  item,
+  onClose,
+  onDeleted,
+  hideOpenConversation = false,
+}: MediaLightboxProps) {
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle');
+  const [deleteState, setDeleteState] = useState<'idle' | 'deleting' | 'error'>('idle');
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!item) return;
+    setCopyState('idle');
+    setDeleteState('idle');
+    setDeleteError(null);
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [item, onClose]);
+
+  const handleCopyLink = async () => {
+    if (!item) return;
+    try {
+      const url = new URL(mediaUrl(item.id, 'display'), window.location.origin).toString();
+      await navigator.clipboard.writeText(url);
+      setCopyState('copied');
+      setTimeout(() => setCopyState('idle'), 1500);
+    } catch (err) {
+      console.error('[MediaLightbox] copy failed', err);
+      setCopyState('error');
+      setTimeout(() => setCopyState('idle'), 2000);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!item) return;
+    if (!window.confirm(`Delete "${item.name}"? This cannot be undone.`)) return;
+    setDeleteState('deleting');
+    setDeleteError(null);
+    try {
+      await deleteMedia(item.id);
+      onDeleted?.(item.id);
+      onClose();
+    } catch (err) {
+      console.error('[MediaLightbox] delete failed', err);
+      setDeleteState('error');
+      setDeleteError(err instanceof Error ? err.message : 'Delete failed');
+    }
+  };
 
   return (
     <AnimatePresence>
@@ -106,6 +152,7 @@ export function MediaLightbox({ item, onClose }: MediaLightboxProps) {
 
               <div className="mt-4 space-y-2">
                 {(() => {
+                  if (hideOpenConversation) return null;
                   const conversationId = getConversationId(item);
                   if (!conversationId) return null;
                   return (
@@ -123,6 +170,28 @@ export function MediaLightbox({ item, onClose }: MediaLightboxProps) {
                 >
                   Download original
                 </a>
+                <button
+                  type="button"
+                  onClick={handleCopyLink}
+                  className="block w-full text-center px-3 py-2 rounded-lg bg-background-tertiary text-foreground text-xs font-medium hover:bg-background-tertiary/80 transition-colors border border-[var(--glass-border)]"
+                >
+                  {copyState === 'copied'
+                    ? 'Link copied'
+                    : copyState === 'error'
+                      ? 'Copy failed — try again'
+                      : 'Copy link'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={deleteState === 'deleting'}
+                  className="block w-full text-center px-3 py-2 rounded-lg bg-red-500/15 text-red-300 text-xs font-medium hover:bg-red-500/25 transition-colors border border-red-500/30 disabled:opacity-60 disabled:cursor-wait"
+                >
+                  {deleteState === 'deleting' ? 'Deleting…' : 'Delete'}
+                </button>
+                {deleteError && (
+                  <p className="text-[11px] text-red-300/90 leading-snug">{deleteError}</p>
+                )}
               </div>
             </aside>
           </motion.div>

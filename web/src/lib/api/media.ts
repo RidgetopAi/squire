@@ -3,7 +3,7 @@
 // ============================================
 // Typed wrappers around /api/objects for the Media Library page.
 
-import { apiGet } from './client';
+import { apiDelete, apiGet } from './client';
 
 export const MEDIA_SOURCES = ['upload', 'import', 'extract', 'generate'] as const;
 export type MediaSource = (typeof MEDIA_SOURCES)[number];
@@ -69,6 +69,19 @@ export interface MediaStats {
 
 export async function getMediaStats(): Promise<MediaStats> {
   return apiGet<MediaStats>('/api/objects/stats');
+}
+
+/** Fetch a single media object by id. */
+export async function getMedia(id: string): Promise<MediaObject> {
+  const response = await apiGet<{ object: MediaObject }>(
+    `/api/objects/${encodeURIComponent(id)}`
+  );
+  return response.object;
+}
+
+/** Soft-delete a media object. */
+export async function deleteMedia(id: string): Promise<void> {
+  await apiDelete(`/api/objects/${encodeURIComponent(id)}`);
 }
 
 /** Build a thumbnail/display/original URL for a given object. */

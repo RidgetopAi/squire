@@ -60,6 +60,21 @@ export async function fetchRecentConversation(): Promise<{
 }
 
 /**
+ * Fetch a specific conversation by id (DB id or client_id; backend's
+ * `getConversation` accepts either form).
+ */
+export async function fetchConversation(id: string): Promise<{
+  conversation: ConversationResponse;
+  messages: MessageResponse[];
+}> {
+  const response = await apiGet<ApiResponse<{
+    conversation: ConversationResponse;
+    messages: MessageResponse[];
+  }>>(`/api/chat/conversations/${encodeURIComponent(id)}`);
+  return response.data;
+}
+
+/**
  * Create a new conversation
  */
 export async function createConversation(input: {

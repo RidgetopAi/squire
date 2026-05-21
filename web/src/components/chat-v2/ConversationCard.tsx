@@ -6,6 +6,9 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ConversationPair } from '@/lib/types';
 import { ReportReader } from './ReportReader';
+import { MediaLightbox } from '@/components/media/MediaLightbox';
+import { getMedia, type MediaObject } from '@/lib/api/media';
+import { useChatStore } from '@/lib/stores/chatStore';
 
 interface ConversationCardProps {
   pair: ConversationPair;
@@ -18,6 +21,22 @@ function ConversationCardComponent({ pair, index, onBookmark, isBookmarked = fal
   const { userMessage, assistantMessage, isStreaming } = pair;
   const [isHovered, setIsHovered] = useState(false);
   const [isReaderOpen, setIsReaderOpen] = useState(false);
+  const [lightboxItem, setLightboxItem] = useState<MediaObject | null>(null);
+  const [lightboxError, setLightboxError] = useState<string | null>(null);
+  const removeImageFromMessages = useChatStore((s) => s.removeImageFromMessages);
+
+  const openLightbox = useCallback(async (objectId: string) => {
+    setLightboxError(null);
+    try {
+      const item = await getMedia(objectId);
+      setLightboxItem(item);
+    } catch (err) {
+      console.error('[ConversationCard] failed to load image metadata', err);
+      setLightboxError(err instanceof Error ? err.message : 'Failed to open image');
+      setTimeout(() => setLightboxError(null), 3000);
+    }
+  }, []);
+
   const renderCountRef = useRef(0);
   const previousContentLengthRef = useRef(assistantMessage?.content.length ?? 0);
   const previousCommitAtRef = useRef<number | null>(null);
@@ -107,7 +126,22 @@ function ConversationCardComponent({ pair, index, onBookmark, isBookmarked = fal
                     ? `/api/objects/${img.objectId}/download?variant=display&disposition=inline`
                     : img.preview;
                   if (!src) return null;
-                  return (
+                  const canExpand = !!img.objectId;
+                  return canExpand ? (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => openLightbox(img.objectId as string)}
+                      aria-label={`Open ${img.name}`}
+                      className="w-20 h-20 rounded border border-[var(--card-border)] overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary/60 hover:ring-2 hover:ring-primary/40 transition-shadow"
+                    >
+                      <img
+                        src={src}
+                        alt={img.name}
+                        className="w-full h-full object-cover"
+                      />
+                    </button>
+                  ) : (
                     <img
                       key={i}
                       src={src}
@@ -197,6 +231,25 @@ function ConversationCardComponent({ pair, index, onBookmark, isBookmarked = fal
           isOpen={isReaderOpen}
           onClose={handleCloseReader}
         />
+      )}
+
+      <MediaLightbox
+        item={lightboxItem}
+        onClose={() => setLightboxItem(null)}
+        onDeleted={(id) => {
+          removeImageFromMessages(id);
+          setLightboxItem(null);
+        }}
+        hideOpenConversation
+      />
+
+      {lightboxError && (
+        <div
+          role="alert"
+          className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 px-3 py-2 rounded-lg border border-red-500/40 bg-red-500/15 text-xs text-red-200"
+        >
+          {lightboxError}
+        </div>
       )}
     </>
   );

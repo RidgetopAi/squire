@@ -94,7 +94,11 @@ export default function MediaPage() {
         selectedId={selected?.id ?? null}
       />
 
-      <MediaLightbox item={selected} onClose={() => setSelected(null)} />
+      <MediaLightbox
+        item={selected}
+        onClose={() => setSelected(null)}
+        onDeleted={(id) => setItems((prev) => prev.filter((it) => it.id !== id))}
+      />
     </div>
   );
 }

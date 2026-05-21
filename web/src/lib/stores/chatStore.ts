@@ -9,6 +9,7 @@ import {
 import { fetchContext } from '@/lib/api/context';
 import {
   fetchRecentConversation,
+  fetchConversation,
   createConversation as apiCreateConversation,
 } from '@/lib/api/conversations';
 import {
@@ -117,6 +118,8 @@ interface ChatState {
 
   // Persistence actions
   loadRecentConversation: () => Promise<void>;
+  loadConversation: (id: string) => Promise<void>;
+  removeImageFromMessages: (objectId: string) => void;
 
   // Recovery actions
   recoverOrphanedMessages: () => PendingMessage[];
@@ -646,6 +649,94 @@ export const useChatStore = create<ChatState>((set, get) => ({
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  },
+
+  // Load a specific conversation by id (db id or client_id). Leaves the
+  // currently-joined room before swapping in the new conversation. Bypasses
+  // the hasLoadedInitial guard so deep-links can switch conversations even
+  // after the recent-conversation hydrate has run.
+  loadConversation: async (id: string) => {
+    const { conversationId: oldConversationId } = get();
+    if (oldConversationId) {
+      leaveConversationRoom(oldConversationId);
+    }
+
+    const loadStartedAt = nowMs();
+    set({ isLoadingHistory: true });
+
+    try {
+      const result = await fetchConversation(id);
+      const { conversation, messages } = result;
+
+      const chatMessages: ChatMessage[] = messages.map((m) => {
+        const meta = (m.metadata as Record<string, unknown> | null) ?? {};
+        const rawAttachments = meta['attachments'];
+        const images = Array.isArray(rawAttachments)
+          ? (rawAttachments as Array<{ objectId?: string; name?: string; filename?: string }>)
+              .filter((a) => typeof a.objectId === 'string')
+              .map((a) => ({
+                objectId: a.objectId as string,
+                name: a.name || a.filename || 'image',
+              }))
+          : undefined;
+        return {
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          timestamp: m.created_at,
+          memoryIds: m.context_memory_ids,
+          reportData: meta['reportData'] as ReportData | undefined,
+          ...(images && images.length > 0 ? { images } : {}),
+        };
+      });
+
+      const conversationId = conversation.client_id || conversation.id;
+
+      set({
+        conversationId,
+        dbConversationId: conversation.id,
+        messages: chatMessages,
+        hasLoadedInitial: true,
+        isLoadingHistory: false,
+        error: null,
+      });
+
+      recordClientDiagnostic('chat-conversation-loaded', {
+        elapsedMs: Math.round(nowMs() - loadStartedAt),
+        loadedMessages: chatMessages.length,
+        conversationId,
+        requestedId: id,
+      });
+
+      joinConversationRoom(conversationId);
+    } catch (error) {
+      console.error('Failed to load conversation:', id, error);
+      set({
+        isLoadingHistory: false,
+        error: error instanceof Error ? error.message : 'Failed to load conversation',
+      });
+      recordClientDiagnostic('chat-conversation-error', {
+        elapsedMs: Math.round(nowMs() - loadStartedAt),
+        requestedId: id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  },
+
+  // Strip a deleted image from any message that referenced it. Used after
+  // a successful DELETE /api/objects/:id so the UI doesn't keep a broken
+  // thumbnail visible until reload.
+  removeImageFromMessages: (objectId: string) => {
+    set((state) => ({
+      messages: state.messages.map((m) => {
+        if (!m.images || m.images.length === 0) return m;
+        const filtered = m.images.filter((img) => img.objectId !== objectId);
+        if (filtered.length === m.images.length) return m;
+        const next = { ...m, images: filtered };
+        if (filtered.length === 0) delete (next as { images?: unknown }).images;
+        return next;
+      }),
+    }));
   },
 
   // Recover any orphaned messages from localStorage
