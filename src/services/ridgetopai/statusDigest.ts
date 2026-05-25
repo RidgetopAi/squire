@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
@@ -22,6 +23,7 @@ export interface StatusProbeResult {
   kind: ProbeKind;
   status: DigestStatus;
   detail: string;
+  optional?: boolean;
   responseTimeMs?: number;
   url?: string;
   path?: string;
@@ -57,17 +59,12 @@ const DEFAULT_ENDPOINTS: EndpointProbe[] = [
   { name: 'Harmony local runtime', url: 'http://127.0.0.1:8787/health', optional: true },
 ];
 
-const DEFAULT_GIT_REPOS: GitProbe[] = [
-  { name: 'squire', path: '/home/ridgetop/projects/squire' },
-  { name: 'harmony', path: '/home/ridgetop/projects/harmony' },
-];
-
 export async function createRidgetopAiStatusDigest(
   options: StatusDigestOptions = {}
 ): Promise<RidgetopAiStatusDigest> {
   const checkedAt = options.now ?? new Date();
   const endpointProbes = options.endpointProbes ?? DEFAULT_ENDPOINTS;
-  const gitProbes = options.gitProbes ?? DEFAULT_GIT_REPOS;
+  const gitProbes = options.gitProbes ?? getDefaultGitProbes();
   const includeMandrel = options.includeMandrel ?? true;
 
   const [endpointResults, gitResults, mandrelResult] = await Promise.all([
@@ -95,7 +92,7 @@ export function computeOverallStatus(probes: StatusProbeResult[]): DigestStatus 
     return 'unhealthy';
   }
 
-  if (probes.some((probe) => probe.status === 'degraded' || probe.status === 'unknown')) {
+  if (probes.some((probe) => probe.status === 'degraded' || (probe.status === 'unknown' && !probe.optional))) {
     return 'degraded';
   }
 
@@ -158,6 +155,7 @@ async function checkEndpoint(probe: EndpointProbe): Promise<StatusProbeResult> {
       kind: 'endpoint',
       status: ok ? 'healthy' : (probe.optional ? 'degraded' : 'unhealthy'),
       detail: `HTTP ${response.status} in ${responseTimeMs}ms`,
+      optional: probe.optional,
       responseTimeMs,
       url: probe.url,
     };
@@ -168,12 +166,41 @@ async function checkEndpoint(probe: EndpointProbe): Promise<StatusProbeResult> {
     return {
       name: probe.name,
       kind: 'endpoint',
-      status: probe.optional ? 'degraded' : 'unhealthy',
+      status: probe.optional ? 'unknown' : 'unhealthy',
       detail: `${message} after ${responseTimeMs}ms`,
+      optional: probe.optional,
       responseTimeMs,
       url: probe.url,
     };
   }
+}
+
+function getDefaultGitProbes(): GitProbe[] {
+  const probes: GitProbe[] = [];
+  const squirePath = firstExistingPath([
+    process.env['RTA_STATUS_SQUIRE_REPO'],
+    '/opt/squire',
+    '/home/ridgetop/projects/squire',
+  ]);
+  const harmonyPath = firstExistingPath([
+    process.env['RTA_STATUS_HARMONY_REPO'],
+    '/home/ridgetop/projects/harmony',
+    '/opt/harmony',
+  ]);
+
+  if (squirePath) {
+    probes.push({ name: 'squire', path: squirePath });
+  }
+
+  if (harmonyPath) {
+    probes.push({ name: 'harmony', path: harmonyPath });
+  }
+
+  return probes;
+}
+
+function firstExistingPath(paths: Array<string | undefined>): string | undefined {
+  return paths.find((path) => path && existsSync(path));
 }
 
 async function checkGitRepo(probe: GitProbe): Promise<StatusProbeResult> {

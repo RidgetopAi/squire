@@ -1,9 +1,9 @@
-#!/usr/bin/env tsx
+#!/usr/bin/env node
 
 import {
   createRidgetopAiStatusDigest,
   renderStatusDigestMarkdown,
-} from '../src/services/ridgetopai/statusDigest.js';
+} from '../services/ridgetopai/statusDigest.js';
 
 const json = process.argv.includes('--json');
 
