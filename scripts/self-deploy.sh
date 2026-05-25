@@ -247,8 +247,9 @@ cp "$PRODUCTION/.env" "$STAGING/.env" 2>/dev/null || true
 fuser -k "$TEST_PORT/tcp" 2>/dev/null || true
 sleep 1
 
-# Start staging API on test port
-PORT=$TEST_PORT node dist/api/server.js &
+# Start staging API on test port. Smoke mode keeps health checks meaningful
+# without starting schedulers, Telegram, Courier, Commune, or external syncs.
+SQUIRE_RUNTIME_MODE=smoke-test SQUIRE_BACKGROUND_LOOPS_ENABLED=false PORT=$TEST_PORT node dist/api/server.js &
 SMOKE_PID=$!
 
 # Wait for healthy response

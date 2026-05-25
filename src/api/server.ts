@@ -43,6 +43,9 @@ import { pruneActivityEvents } from '../services/activity.js';
 // Google Calendar sync interval (configurable, default 15 minutes)
 const CALENDAR_SYNC_INTERVAL_MS = parseInt(process.env['CALENDAR_SYNC_INTERVAL_MS'] || '900000', 10);
 let calendarSyncTimer: NodeJS.Timeout | null = null;
+const RUNTIME_MODE = process.env['SQUIRE_RUNTIME_MODE'] || 'server';
+const START_BACKGROUND_LOOPS =
+  RUNTIME_MODE !== 'smoke-test' && process.env['SQUIRE_BACKGROUND_LOOPS_ENABLED'] !== 'false';
 
 const app = express();
 const httpServer = createServer(app);
@@ -147,6 +150,11 @@ httpServer.listen(port, async () => {
   console.log(`Squire API server running on http://localhost:${port}`);
   console.log(`Health check: http://localhost:${port}/api/health`);
   console.log(`Socket.IO enabled for real-time events`);
+
+  if (!START_BACKGROUND_LOOPS) {
+    console.log(`[Server] Background startup loops disabled (mode: ${RUNTIME_MODE})`);
+    return;
+  }
 
   // Migrate user identity from personality summary if not already set
   try {
