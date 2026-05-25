@@ -67,7 +67,11 @@ if [ -d "$STAGING/web" ] && [ -f "$STAGING/web/package.json" ]; then
   log "Installing web dependencies..."
   cd "$STAGING/web"
   if [ -f "pnpm-lock.yaml" ]; then
-    pnpm install
+    if command -v corepack >/dev/null 2>&1; then
+      corepack pnpm install
+    else
+      pnpm install
+    fi
   else
     npm install
   fi

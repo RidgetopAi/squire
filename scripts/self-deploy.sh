@@ -125,6 +125,21 @@ assert_no_nested_artifacts() {
   fi
 }
 
+hash_web_build_inputs() {
+  local web_root="$1"
+
+  (
+    cd "$web_root"
+    for path in src public package.json pnpm-lock.yaml package-lock.json next.config.ts postcss.config.mjs tsconfig.json; do
+      if [ -d "$path" ]; then
+        find "$path" -type f -exec md5sum {} +
+      elif [ -f "$path" ]; then
+        md5sum "$path"
+      fi
+    done
+  ) | sort | md5sum | cut -d' ' -f1
+}
+
 SYSTEMD_RUN=(systemd-run)
 if [ "${EUID:-$(id -u)}" -ne 0 ]; then
   if sudo -n /usr/bin/systemd-run --version >/dev/null 2>&1; then
@@ -281,6 +296,7 @@ mkdir -p "$BACKUP"
 safe_backup_cleanup "$BACKUP"
 cp -a "$PRODUCTION/dist" "$BACKUP/dist"
 cp "$PRODUCTION/package.json" "$BACKUP/package.json"
+[ -f "$PRODUCTION/package-lock.json" ] && cp "$PRODUCTION/package-lock.json" "$BACKUP/package-lock.json"
 cp "$PRODUCTION/tsconfig.json" "$BACKUP/tsconfig.json"
 [ -d "$PRODUCTION/src" ] && cp -a "$PRODUCTION/src" "$BACKUP/src"
 [ -d "$PRODUCTION/schema" ] && cp -a "$PRODUCTION/schema" "$BACKUP/schema"
@@ -318,15 +334,24 @@ if [ -f "$STAGING/package-lock.json" ]; then
 fi
 cp "$STAGING/tsconfig.json" "$PRODUCTION/tsconfig.json"
 
-# If package.json dependencies changed, install
+# If dependency manifests changed, install. Security fixes may land as lockfile-only updates.
+PACKAGE_DEPS_CHANGED=false
 if ! diff -q "$BACKUP/package.json" "$PRODUCTION/package.json" > /dev/null 2>&1; then
-  log "  package.json changed - running npm install..."
+  PACKAGE_DEPS_CHANGED=true
+elif [ -f "$BACKUP/package-lock.json" ] || [ -f "$PRODUCTION/package-lock.json" ]; then
+  if ! diff -q "$BACKUP/package-lock.json" "$PRODUCTION/package-lock.json" > /dev/null 2>&1; then
+    PACKAGE_DEPS_CHANGED=true
+  fi
+fi
+
+if [ "$PACKAGE_DEPS_CHANGED" = "true" ]; then
+  log "  Dependency manifests changed - running npm install..."
   cd "$PRODUCTION" && npm install --omit=dev
 fi
 
 # Sync web if applicable
 if [ "$SKIP_WEB" = "false" ] && [ -d "$STAGING/web/src" ]; then
-  STAGING_WEB_HASH=$(find "$STAGING/web/src" -type f -exec md5sum {} + 2>/dev/null | sort | md5sum | cut -d' ' -f1)
+  STAGING_WEB_HASH=$(hash_web_build_inputs "$STAGING/web")
   PROD_WEB_BUILD_HASH=""
   [ -f "$PRODUCTION/web/.next/squire-source-hash" ] && PROD_WEB_BUILD_HASH=$(cat "$PRODUCTION/web/.next/squire-source-hash")
 
@@ -338,7 +363,11 @@ if [ "$SKIP_WEB" = "false" ] && [ -d "$STAGING/web/src" ]; then
       "$STAGING/web/" "$PRODUCTION/web/"
     cd "$PRODUCTION/web"
     if [ -f "pnpm-lock.yaml" ]; then
-      pnpm install && pnpm build
+      if command -v corepack >/dev/null 2>&1; then
+        corepack pnpm install && corepack pnpm build
+      else
+        pnpm install && pnpm build
+      fi
     else
       npm install && npm run build
     fi
@@ -448,6 +477,7 @@ Deployed by Squire self-deploy pipeline.\" >>$DEPLOY_LOG 2>&1; then
       echo \"\$(date '+%Y-%m-%d %H:%M:%S') ✗ UNHEALTHY - rolling back\" >> $DEPLOY_LOG
       rsync -a --delete "$BACKUP/dist/" "$PRODUCTION/dist/"
       cp $BACKUP/package.json $PRODUCTION/package.json
+      [ -f $BACKUP/package-lock.json ] && cp $BACKUP/package-lock.json $PRODUCTION/package-lock.json
       [ -d $BACKUP/src ] && rsync -a --delete "$BACKUP/src/" "$PRODUCTION/src/"
       [ -d $BACKUP/schema ] && rsync -a --delete "$BACKUP/schema/" "$PRODUCTION/schema/"
       [ -f $BACKUP/scripts/self-deploy.sh ] && cp $BACKUP/scripts/self-deploy.sh $PRODUCTION/scripts/self-deploy.sh
