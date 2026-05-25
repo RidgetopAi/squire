@@ -108,6 +108,23 @@ safe_backup_cleanup() {
   die "Cannot clean backup directory $target - all cleanup methods failed"
 }
 
+assert_no_nested_artifacts() {
+  local root="$1"
+  local label="$2"
+  local found=0
+
+  for rel in src/src schema/schema dist/dist; do
+    if [ -e "$root/$rel" ]; then
+      log "  Found nested rollback artifact in $label: $root/$rel"
+      found=1
+    fi
+  done
+
+  if [ "$found" -ne 0 ]; then
+    die "$label contains nested rollback artifacts; clean or quarantine them before deploy"
+  fi
+}
+
 SYSTEMD_RUN=(systemd-run)
 if [ "${EUID:-$(id -u)}" -ne 0 ]; then
   if sudo -n /usr/bin/systemd-run --version >/dev/null 2>&1; then
@@ -165,6 +182,12 @@ trap 'rm -f "$LOCK_FILE"' EXIT
 [ -d "$STAGING/node_modules" ] || die "Staging missing node_modules. Run: cd $STAGING && npm install"
 
 log "=== Squire Self-Deploy ==="
+
+# --- Pre-flight: nested rollback artifact guard ---
+log "[0/5] Nested artifact guard..."
+assert_no_nested_artifacts "$PRODUCTION" "production"
+assert_no_nested_artifacts "$STAGING" "staging"
+log "✓ Nested artifact guard passed"
 
 # --- Pre-flight: stale-staging drift check ---
 # Catches the failure mode from Lesson 009: if staging carries drift
@@ -323,6 +346,7 @@ if [ "$SKIP_WEB" = "false" ] && [ -d "$STAGING/web/src" ]; then
 fi
 
 log "✓ Synced to production"
+assert_no_nested_artifacts "$PRODUCTION" "production after sync"
 
 # Normalize production ownership to prevent permission issues on subsequent deploys
 log "  Normalizing production file ownership..."
@@ -421,13 +445,18 @@ Deployed by Squire self-deploy pipeline.\" >>$DEPLOY_LOG 2>&1; then
       fi
     else
       echo \"\$(date '+%Y-%m-%d %H:%M:%S') ✗ UNHEALTHY - rolling back\" >> $DEPLOY_LOG
-      cp -a $BACKUP/dist/ $PRODUCTION/dist/
+      rsync -a --delete "$BACKUP/dist/" "$PRODUCTION/dist/"
       cp $BACKUP/package.json $PRODUCTION/package.json
-      [ -d $BACKUP/src ] && cp -a $BACKUP/src/ $PRODUCTION/src/
-      [ -d $BACKUP/schema ] && cp -a $BACKUP/schema/ $PRODUCTION/schema/
+      [ -d $BACKUP/src ] && rsync -a --delete "$BACKUP/src/" "$PRODUCTION/src/"
+      [ -d $BACKUP/schema ] && rsync -a --delete "$BACKUP/schema/" "$PRODUCTION/schema/"
       [ -f $BACKUP/scripts/self-deploy.sh ] && cp $BACKUP/scripts/self-deploy.sh $PRODUCTION/scripts/self-deploy.sh
       [ -f $BACKUP/scripts/setup-staging.sh ] && cp $BACKUP/scripts/setup-staging.sh $PRODUCTION/scripts/setup-staging.sh
       [ -f $BACKUP/scripts/self-rollback.sh ] && cp $BACKUP/scripts/self-rollback.sh $PRODUCTION/scripts/self-rollback.sh
+      for nested in $PRODUCTION/src/src $PRODUCTION/schema/schema $PRODUCTION/dist/dist; do
+        if [ -e \"\$nested\" ]; then
+          echo \"\$(date '+%Y-%m-%d %H:%M:%S') ✗ WARN Rollback restored nested artifact: \$nested\" >> $DEPLOY_LOG
+        fi
+      done
       systemctl restart squire
       sleep 10
       if curl -sf http://localhost:$PROD_PORT/api/health > /dev/null 2>&1; then

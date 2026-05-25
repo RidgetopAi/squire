@@ -13,21 +13,40 @@ DEPLOY_LOG="/var/log/squire-deploy.log"
 
 log() { echo "[rollback] $(date '+%H:%M:%S') $1"; }
 
+assert_no_nested_artifacts() {
+  local root="$1"
+  local label="$2"
+  local found=0
+
+  for rel in src/src schema/schema dist/dist; do
+    if [ -e "$root/$rel" ]; then
+      log "ERROR: Found nested rollback artifact in $label: $root/$rel"
+      found=1
+    fi
+  done
+
+  if [ "$found" -ne 0 ]; then
+    exit 1
+  fi
+}
+
 APP_USER=$(stat -c '%U' "$PRODUCTION")
 APP_GROUP=$(stat -c '%G' "$PRODUCTION")
 
 [ -d "$BACKUP/dist" ] || { log "ERROR: No backup found at $BACKUP"; exit 1; }
+assert_no_nested_artifacts "$BACKUP" "backup"
 
 log "Rolling back to backup..."
 
-cp -a "$BACKUP/dist/" "$PRODUCTION/dist/"
+rsync -a --delete "$BACKUP/dist/" "$PRODUCTION/dist/"
 cp "$BACKUP/package.json" "$PRODUCTION/package.json"
 cp "$BACKUP/tsconfig.json" "$PRODUCTION/tsconfig.json"
-[ -d "$BACKUP/src" ] && cp -a "$BACKUP/src/" "$PRODUCTION/src/"
-[ -d "$BACKUP/schema" ] && cp -a "$BACKUP/schema/" "$PRODUCTION/schema/"
+[ -d "$BACKUP/src" ] && rsync -a --delete "$BACKUP/src/" "$PRODUCTION/src/"
+[ -d "$BACKUP/schema" ] && rsync -a --delete "$BACKUP/schema/" "$PRODUCTION/schema/"
 [ -f "$BACKUP/scripts/self-deploy.sh" ] && cp "$BACKUP/scripts/self-deploy.sh" "$PRODUCTION/scripts/self-deploy.sh"
 [ -f "$BACKUP/scripts/setup-staging.sh" ] && cp "$BACKUP/scripts/setup-staging.sh" "$PRODUCTION/scripts/setup-staging.sh"
 [ -f "$BACKUP/scripts/self-rollback.sh" ] && cp "$BACKUP/scripts/self-rollback.sh" "$PRODUCTION/scripts/self-rollback.sh"
+assert_no_nested_artifacts "$PRODUCTION" "production after rollback"
 
 # Normalize ownership
 chown -R "$APP_USER:$APP_GROUP" "$PRODUCTION/dist"

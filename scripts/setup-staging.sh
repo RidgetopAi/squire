@@ -13,6 +13,23 @@ STAGING="/opt/squire-staging"
 
 log() { echo "[setup] $1"; }
 
+assert_no_nested_artifacts() {
+  local root="$1"
+  local label="$2"
+  local found=0
+
+  for rel in src/src schema/schema dist/dist; do
+    if [ -e "$root/$rel" ]; then
+      log "ERROR: Found nested rollback artifact in $label: $root/$rel"
+      found=1
+    fi
+  done
+
+  if [ "$found" -ne 0 ]; then
+    exit 1
+  fi
+}
+
 if [ -d "$STAGING" ] && [ -f "$STAGING/package.json" ]; then
   log "Staging already exists. Refreshing from production..."
 else
@@ -34,6 +51,8 @@ rsync -a --delete \
   --exclude='claude-desktop-memories' \
   --exclude='*.jsonl' \
   "$PRODUCTION/" "$STAGING/"
+
+assert_no_nested_artifacts "$STAGING" "staging"
 
 # Copy .env for builds (smoke test needs it)
 cp "$PRODUCTION/.env" "$STAGING/.env"
