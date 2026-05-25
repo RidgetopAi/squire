@@ -5,6 +5,12 @@ import {
   type StatusDigestOptions,
 } from './statusDigest.js';
 import {
+  createRidgetopAiDailyDashboard,
+  renderDailyDashboardConfirmation,
+  type DailyDashboardOptions,
+  type RidgetopAiDailyDashboard,
+} from './dailyDashboard.js';
+import {
   callMandrelTool,
   type MandrelCallOptions,
   type MandrelResponse,
@@ -66,6 +72,7 @@ export interface CodexLaunchRequest {
 
 export type DaytimeDispatchIntent =
   | { kind: 'status_request' }
+  | { kind: 'dashboard_request' }
   | { kind: 'store_context'; content: string; contextType: ContextType }
   | {
     kind: 'create_task';
@@ -110,9 +117,14 @@ export type StatusDigestCreator = (
   options?: StatusDigestOptions
 ) => Promise<RidgetopAiStatusDigest>;
 
+export type DailyDashboardCreator = (
+  options?: DailyDashboardOptions
+) => Promise<RidgetopAiDailyDashboard>;
+
 export interface DaytimeDispatchOptions {
   mandrelCall?: MandrelToolCaller;
   createStatusDigest?: StatusDigestCreator;
+  createDailyDashboard?: DailyDashboardCreator;
   now?: Date;
   project?: string;
   source?: string;
@@ -148,6 +160,10 @@ export function parseDaytimeDispatchText(text: string): DaytimeDispatchIntent | 
 
   if (command === 'status' || command === 'digest' || command === 'state') {
     return { kind: 'status_request' };
+  }
+
+  if (command === 'dashboard' || command === 'daily' || command === 'board') {
+    return { kind: 'dashboard_request' };
   }
 
   if (command === 'note' || command === 'context' || command === 'remember') {
@@ -227,6 +243,12 @@ export async function handleDaytimeDispatchText(
           handled: true,
           intent,
           confirmation: await createStatusConfirmation(project, options.createStatusDigest),
+        };
+      case 'dashboard_request':
+        return {
+          handled: true,
+          intent,
+          confirmation: await createDashboardConfirmation(project, options.createDailyDashboard),
         };
       case 'store_context':
         await ensureProject(mandrelCall, project);
@@ -514,6 +536,18 @@ async function createStatusConfirmation(
   });
 
   return renderStatusConfirmation(digest);
+}
+
+async function createDashboardConfirmation(
+  project: string,
+  createDailyDashboard: DailyDashboardCreator = createRidgetopAiDailyDashboard
+): Promise<string> {
+  const dashboard = await createDailyDashboard({
+    project,
+    mandrelConnectionId: `squire:${CONNECTION_SCOPE}:${project}`,
+  });
+
+  return renderDailyDashboardConfirmation(dashboard);
 }
 
 function renderStatusConfirmation(digest: RidgetopAiStatusDigest): string {
@@ -814,6 +848,7 @@ function renderDispatchHelp(): string {
   return [
     'RTA dispatch commands:',
     'rta status',
+    'rta dashboard',
     'rta note <context>',
     'rta plan <planning note>',
     'rta task [high] <title> -- <details>',

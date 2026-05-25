@@ -46,6 +46,29 @@ describe('RidgetopAI daytime dispatch', () => {
     });
   });
 
+  it('renders daily dashboard through the injected dashboard creator', async () => {
+    const result = await handleDaytimeDispatchText('rta dashboard', {
+      createDailyDashboard: async (options) => ({
+        checkedAt: new Date('2026-05-25T22:00:00.000Z'),
+        project: options?.project ?? 'ridgetopai',
+        status: 'healthy',
+        statusDigest: {
+          checkedAt: new Date('2026-05-25T22:00:00.000Z'),
+          status: 'healthy',
+          probes: [
+            { name: 'Squire API', kind: 'endpoint', status: 'healthy', detail: 'HTTP 200' },
+          ],
+        },
+        artifacts: [],
+        focus: ['Advance the highest-leverage unblocked Mandrel task with a verified artifact.'],
+      }),
+    });
+
+    assert.strictEqual(result.handled, true);
+    assert.match(result.confirmation ?? '', /RidgetopAI dashboard: HEALTHY/);
+    assert.match(result.confirmation ?? '', /Focus:/);
+  });
+
   it('stores context after switching Mandrel to ridgetopai', async () => {
     const { calls, mandrelCall } = createMandrelRecorder();
 
@@ -218,6 +241,7 @@ describe('RidgetopAI daytime dispatch', () => {
     assert.strictEqual(result.handled, true);
     assert.match(result.confirmation ?? '', /Unknown RTA dispatch command/);
     assert.match(result.confirmation ?? '', /rta status/);
+    assert.match(result.confirmation ?? '', /rta dashboard/);
   });
 });
 
