@@ -17,6 +17,10 @@ const nextConfig: NextConfig = {
   // Disable x-powered-by header for security
   poweredByHeader: false,
 
+  turbopack: {
+    root: process.cwd(),
+  },
+
   // Image optimization config (if needed later)
   images: {
     remotePatterns: [
