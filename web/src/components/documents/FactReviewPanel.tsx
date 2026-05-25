@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import type { ExtractedFact, FactExtractionStats } from '@/lib/types';
+import type { ExtractedFact, FactExtractionStats, FactStatus } from '@/lib/types';
 import type { StoredDocument } from '@/lib/api/documents';
 import {
   getDocumentFacts,
@@ -51,7 +51,7 @@ export function FactReviewPanel({ document, isOpen, onClose }: FactReviewPanelPr
       setStats(statsResult.stats);
 
       // Load facts based on active tab
-      const statusFilter =
+      const statusFilter: FactStatus | FactStatus[] | undefined =
         activeTab === 'pending'
           ? 'pending'
           : activeTab === 'approved'
@@ -59,7 +59,7 @@ export function FactReviewPanel({ document, isOpen, onClose }: FactReviewPanelPr
             : undefined;
 
       const factsResult = await getDocumentFacts(document.id, {
-        status: statusFilter as any,
+        status: statusFilter,
       });
       setFacts(factsResult.facts);
     } catch (err) {
@@ -248,7 +248,7 @@ export function FactReviewPanel({ document, isOpen, onClose }: FactReviewPanelPr
                   </h3>
                   <p className="text-sm text-foreground-muted mb-6 max-w-md mx-auto">
                     Use AI to extract facts, entities, dates, and relationships from this document.
-                    You'll be able to review and approve them before they become memories.
+                    You&apos;ll be able to review and approve them before they become memories.
                   </p>
 
                   {extractionResult && (

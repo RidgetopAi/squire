@@ -106,12 +106,6 @@ const Building = memo(function Building({
 }: BuildingProps) {
   const groupRef = useRef<Group>(null);
 
-  // Validate position - skip rendering if invalid
-  if (!Number.isFinite(building.position.x) || !Number.isFinite(building.position.z)) {
-    console.warn('[Building] Invalid position:', building.id, building.position);
-    return null;
-  }
-
   // Memoize computed values
   const { baseScale, emissiveIntensity } = useMemo(() => {
     const salience = Number.isFinite(building.salience) ? building.salience : 0.5;
@@ -149,6 +143,12 @@ const Building = memo(function Building({
     e.stopPropagation();
     onClick?.(building);
   }, [building, onClick]);
+
+  // Validate position - skip rendering if invalid
+  if (!Number.isFinite(building.position.x) || !Number.isFinite(building.position.z)) {
+    console.warn('[Building] Invalid position:', building.id, building.position);
+    return null;
+  }
 
   return (
     <group

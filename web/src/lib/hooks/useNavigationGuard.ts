@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useCallback } from 'react';
+import { useIsChatBusy } from '@/lib/stores/chatStore';
 
 interface UseNavigationGuardOptions {
   /** Whether the guard is active */
@@ -55,8 +56,6 @@ export function useNavigationGuard({
  * Integrates with the chat store's busy state
  */
 export function useChatNavigationGuard(): void {
-  // Import dynamically to avoid circular dependency
-  const { useIsChatBusy } = require('@/lib/stores/chatStore');
   const isBusy = useIsChatBusy();
 
   useNavigationGuard({

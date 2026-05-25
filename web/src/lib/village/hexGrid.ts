@@ -74,7 +74,7 @@ function hexRound(q: number, r: number): HexCoord {
 
   let rq = Math.round(q);
   let rr = Math.round(r);
-  let rs = Math.round(s);
+  const rs = Math.round(s);
 
   const qDiff = Math.abs(rq - q);
   const rDiff = Math.abs(rr - r);
@@ -197,4 +197,3 @@ export function hexAdd(a: HexCoord, b: HexCoord): HexCoord {
   }
   return { q: a.q + b.q, r: a.r + b.r };
 }
-

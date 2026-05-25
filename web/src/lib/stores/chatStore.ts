@@ -30,11 +30,9 @@ import {
   clearAllPendingMessages,
 } from '@/lib/utils/messageBackup';
 import { recordClientDiagnostic } from '@/lib/diagnostics/clientDiagnostics';
+import { useOverlayStore } from './overlayStore';
 
-// Helper to safely access overlay store (avoids circular dependency issues)
 function clearOverlayCards() {
-  // Dynamic require to break circular dependency
-  const { useOverlayStore } = require('./overlayStore');
   useOverlayStore.getState().clearCards();
 }
 

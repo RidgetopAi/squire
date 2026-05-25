@@ -169,7 +169,7 @@ export function FactReviewCard({
             <div>
               <p className="text-xs font-medium text-foreground-muted mb-1">Source Text</p>
               <p className="text-xs text-foreground-muted bg-background rounded-lg p-2 line-clamp-3">
-                "{fact.rawText}"
+                &quot;{fact.rawText}&quot;
               </p>
             </div>
 
