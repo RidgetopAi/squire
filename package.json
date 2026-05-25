@@ -17,6 +17,8 @@
     "start:api": "node dist/api/server.js",
     "start:web": "cd web && pnpm start",
     "cli": "tsx src/cli.ts",
+    "rta:dispatch": "node dist/cli/ridgetopai-dispatch.js",
+    "rta:dispatch:dev": "TMPDIR=/tmp tsx src/cli/ridgetopai-dispatch.ts",
     "rta:status": "node dist/cli/ridgetopai-status-digest.js",
     "rta:status:dev": "TMPDIR=/tmp tsx src/cli/ridgetopai-status-digest.ts",
     "db:up": "docker compose up -d",
