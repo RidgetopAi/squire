@@ -464,9 +464,23 @@ if ! "${SYSTEMD_RUN[@]}" --unit=squire-deploy-restart --no-block \
 \$SUMMARY
 
 Deployed by Squire self-deploy pipeline.\" >>$DEPLOY_LOG 2>&1; then
-          git push origin main >>$DEPLOY_LOG 2>&1 && \
-            echo \"\$(date '+%Y-%m-%d %H:%M:%S') Git: pushed to origin\" >> $DEPLOY_LOG || \
-            echo \"\$(date '+%Y-%m-%d %H:%M:%S') ✗ WARN Git push failed (commit landed locally)\" >> $DEPLOY_LOG
+          if git fetch origin main >>$DEPLOY_LOG 2>&1; then
+            LOCAL_HEAD=\$(git rev-parse HEAD)
+            REMOTE_HEAD=\$(git rev-parse origin/main)
+            MERGE_BASE=\$(git merge-base HEAD origin/main)
+
+            if [ \"\$REMOTE_HEAD\" = \"\$MERGE_BASE\" ]; then
+              git push origin main >>$DEPLOY_LOG 2>&1 && \
+                echo \"\$(date '+%Y-%m-%d %H:%M:%S') Git: pushed to origin\" >> $DEPLOY_LOG || \
+                echo \"\$(date '+%Y-%m-%d %H:%M:%S') ✗ WARN Git push failed (commit landed locally)\" >> $DEPLOY_LOG
+            else
+              echo \"\$(date '+%Y-%m-%d %H:%M:%S') ✗ WARN Git push skipped: origin/main is not an ancestor of deployed HEAD\" >> $DEPLOY_LOG
+              echo \"\$(date '+%Y-%m-%d %H:%M:%S')   Local deploy commit remains in $PRODUCTION; fetch/rebase manually before the next push\" >> $DEPLOY_LOG
+              echo \"\$(date '+%Y-%m-%d %H:%M:%S')   local=\$LOCAL_HEAD remote=\$REMOTE_HEAD merge_base=\$MERGE_BASE\" >> $DEPLOY_LOG
+            fi
+          else
+            echo \"\$(date '+%Y-%m-%d %H:%M:%S') ✗ WARN Git fetch failed; push skipped (commit landed locally)\" >> $DEPLOY_LOG
+          fi
         else
           echo \"\$(date '+%Y-%m-%d %H:%M:%S') ✗ WARN Git commit failed\" >> $DEPLOY_LOG
         fi
