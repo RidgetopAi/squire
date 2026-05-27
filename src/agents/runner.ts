@@ -17,6 +17,7 @@ import { AgentEngine } from '../services/agent/engine.js';
 import { getLLMRuntime } from '../services/runtime/index.js';
 import { callLLM } from '../services/llm/index.js';
 import type { LLMMessage } from '../services/llm/types.js';
+import { withMandrelSession } from '../services/mandrel/index.js';
 
 // =============================================================================
 // Public API
@@ -31,21 +32,26 @@ export async function runAgentDefinition(
   def: AgentDefinition,
   args: AgentRunArgs = {}
 ): Promise<AgentRunResult> {
-  if (def.customRunner) {
-    return def.customRunner(def, args);
-  }
+  // Each agent run gets its own Mandrel session context so
+  // `mandrel_project_switch` calls inside this run propagate to subsequent
+  // mandrel tool calls in the same run without leaking to siblings or parents.
+  return withMandrelSession(async () => {
+    if (def.customRunner) {
+      return def.customRunner(def, args);
+    }
 
-  switch (def.kind) {
-    case 'loop_llm':
-      return runLoopLLM(def, args);
-    case 'single_llm':
-      return runSingleLLM(def, args);
-    case 'worker':
-      return runWorker(def, args);
-    case 'deterministic':
-    case 'connector':
-      return runHandler(def, args);
-  }
+    switch (def.kind) {
+      case 'loop_llm':
+        return runLoopLLM(def, args);
+      case 'single_llm':
+        return runSingleLLM(def, args);
+      case 'worker':
+        return runWorker(def, args);
+      case 'deterministic':
+      case 'connector':
+        return runHandler(def, args);
+    }
+  });
 }
 
 // =============================================================================

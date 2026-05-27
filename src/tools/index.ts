@@ -329,13 +329,62 @@ export async function executeTool(call: ToolCall, context?: ToolExecutionContext
 }
 
 /**
- * Execute multiple tool calls in parallel
+ * Tool names that mutate per-session state which later tools in the same
+ * batch may read. These run sequentially BEFORE the parallel batch so their
+ * effects are visible to siblings.
+ *
+ * `mandrel_project_switch` pins the active Mandrel project for the current
+ * agent-run session (see `withMandrelSession` in services/mandrel/client.ts).
+ * If the LLM batches `project_switch` + `mandrel_context_*` in the same
+ * assistant turn, `Promise.all` runs both handlers concurrently and the
+ * sibling can dispatch its HTTP call with the stale connection ID before
+ * the switch completes — see the parallel-tool race documented in the
+ * 2026-05-26 squire-agent session.
+ */
+const SEQUENTIAL_BEFORE_PARALLEL = new Set<string>(['mandrel_project_switch']);
+
+/**
+ * Execute multiple tool calls. Ordering-sensitive tools (see
+ * `SEQUENTIAL_BEFORE_PARALLEL`) run sequentially first so their mutations
+ * to per-session state are visible to the parallel batch that follows.
+ * Everything else runs in parallel as before.
  *
  * @param calls - Array of tool calls from LLM response
- * @returns Array of tool results
+ * @returns Array of tool results in the same order as input calls
  */
 export async function executeTools(calls: ToolCall[], context?: ToolExecutionContext): Promise<ToolResult[]> {
-  return Promise.all(calls.map((call) => executeTool(call, context)));
+  const sequentialCalls = calls.filter((c) => SEQUENTIAL_BEFORE_PARALLEL.has(c.function.name));
+  const parallelCalls = calls.filter((c) => !SEQUENTIAL_BEFORE_PARALLEL.has(c.function.name));
+
+  // Fast path: no ordering-sensitive tools — preserve original behavior.
+  if (sequentialCalls.length === 0) {
+    return Promise.all(calls.map((call) => executeTool(call, context)));
+  }
+
+  const resultsById = new Map<string, ToolResult>();
+
+  // Run ordering-sensitive tools sequentially so each one's side effects
+  // (e.g. setActiveMandrelProject) land before the next tool reads state.
+  for (const call of sequentialCalls) {
+    const result = await executeTool(call, context);
+    resultsById.set(call.id, result);
+  }
+
+  // Run the rest in parallel; they see the mutated session state.
+  const parallelResults = await Promise.all(parallelCalls.map((call) => executeTool(call, context)));
+  for (const result of parallelResults) {
+    resultsById.set(result.toolCallId, result);
+  }
+
+  // Reassemble in the original input order so tool_call_id pairing in the
+  // LLM message history stays consistent.
+  return calls.map((call) => {
+    const result = resultsById.get(call.id);
+    if (!result) {
+      throw new Error(`[executeTools] missing result for tool call ${call.id} (${call.function.name})`);
+    }
+    return result;
+  });
 }
 
 // === TOOL REGISTRATION ===

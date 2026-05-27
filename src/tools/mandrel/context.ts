@@ -7,14 +7,15 @@
  * - mandrel_context_recent: Get recent contexts
  */
 
-import { callMandrelTool } from '../../services/mandrel/index.js';
+import { callMandrelTool, splitProjectOption } from '../../services/mandrel/index.js';
 import type { ToolHandler, ToolSpec } from '../types.js';
 import type { ContextStoreArgs, ContextSearchArgs, ContextRecentArgs } from './types.js';
 
 // === mandrel_context_store ===
 
 const mandrelContextStoreToolHandler: ToolHandler<ContextStoreArgs> = async (args) => {
-  const result = await callMandrelTool('context_store', args as unknown as Record<string, unknown>);
+  const { body, options } = splitProjectOption(args);
+  const result = await callMandrelTool('context_store', body as unknown as Record<string, unknown>, options);
   if (!result.success) return `Error storing context: ${result.error}`;
   return typeof result.data === 'string' ? result.data : JSON.stringify(result.data, null, 2);
 };
@@ -22,7 +23,8 @@ const mandrelContextStoreToolHandler: ToolHandler<ContextStoreArgs> = async (arg
 // === mandrel_context_search ===
 
 const mandrelContextSearchToolHandler: ToolHandler<ContextSearchArgs> = async (args) => {
-  const result = await callMandrelTool('context_search', args as unknown as Record<string, unknown>);
+  const { body, options } = splitProjectOption(args);
+  const result = await callMandrelTool('context_search', body as unknown as Record<string, unknown>, options);
   if (!result.success) return `Error searching context: ${result.error}`;
   return typeof result.data === 'string' ? result.data : JSON.stringify(result.data, null, 2);
 };
@@ -30,7 +32,8 @@ const mandrelContextSearchToolHandler: ToolHandler<ContextSearchArgs> = async (a
 // === mandrel_context_recent ===
 
 const mandrelContextRecentToolHandler: ToolHandler<ContextRecentArgs> = async (args) => {
-  const result = await callMandrelTool('context_get_recent', args as unknown as Record<string, unknown>);
+  const { body, options } = splitProjectOption(args);
+  const result = await callMandrelTool('context_get_recent', body as unknown as Record<string, unknown>, options);
   if (!result.success) return `Error getting recent context: ${result.error}`;
   return typeof result.data === 'string' ? result.data : JSON.stringify(result.data, null, 2);
 };
@@ -68,6 +71,10 @@ export const tools: ToolSpec[] = [
           items: { type: 'string' },
           description: 'Optional tags for categorization (e.g., ["phase-4", "bugfix"])',
         },
+        project: {
+          type: 'string',
+          description: 'Optional override. Mandrel project name or ID to target for this single call. Defaults to the active session project (set by the most recent mandrel_project_switch) or the configured default. Use this only to peek at another project without changing the active one.',
+        },
       },
       required: ['content', 'type'],
     },
@@ -103,6 +110,10 @@ export const tools: ToolSpec[] = [
           ],
           description: 'Filter by context type',
         },
+        project: {
+          type: 'string',
+          description: 'Optional override. Mandrel project name or ID to target for this single call. Defaults to the active session project (set by the most recent mandrel_project_switch) or the configured default. Use this only to peek at another project without changing the active one.',
+        },
       },
       required: ['query'],
     },
@@ -118,6 +129,10 @@ export const tools: ToolSpec[] = [
         limit: {
           type: 'number',
           description: 'Max contexts to return (default: 5)',
+        },
+        project: {
+          type: 'string',
+          description: 'Optional override. Mandrel project name or ID to target for this single call. Defaults to the active session project (set by the most recent mandrel_project_switch) or the configured default. Use this only to peek at another project without changing the active one.',
         },
       },
       required: [],

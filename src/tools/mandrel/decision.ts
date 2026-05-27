@@ -1,11 +1,12 @@
-import { callMandrelTool } from '../../services/mandrel/index.js';
+import { callMandrelTool, splitProjectOption } from '../../services/mandrel/index.js';
 import type { ToolHandler, ToolSpec } from '../types.js';
 import type { DecisionRecordArgs, DecisionSearchArgs } from './types.js';
 
 // === mandrel_decision_record ===
 
 const mandrelDecisionRecordToolHandler: ToolHandler<DecisionRecordArgs> = async (args) => {
-  const result = await callMandrelTool('decision_record', args as unknown as Record<string, unknown>);
+  const { body, options } = splitProjectOption(args);
+  const result = await callMandrelTool('decision_record', body as unknown as Record<string, unknown>, options);
   if (!result.success) return `Error recording decision: ${result.error}`;
   return typeof result.data === 'string' ? result.data : JSON.stringify(result.data, null, 2);
 };
@@ -13,7 +14,8 @@ const mandrelDecisionRecordToolHandler: ToolHandler<DecisionRecordArgs> = async 
 // === mandrel_decision_search ===
 
 const mandrelDecisionSearchToolHandler: ToolHandler<DecisionSearchArgs> = async (args) => {
-  const result = await callMandrelTool('decision_search', args as unknown as Record<string, unknown>);
+  const { body, options } = splitProjectOption(args);
+  const result = await callMandrelTool('decision_search', body as unknown as Record<string, unknown>, options);
   if (!result.success) return `Error searching decisions: ${result.error}`;
   return typeof result.data === 'string' ? result.data : JSON.stringify(result.data, null, 2);
 };
@@ -48,6 +50,10 @@ export const tools: ToolSpec[] = [
           enum: ['low', 'medium', 'high', 'critical'],
           description: 'Impact level of this decision'
         },
+        project: {
+          type: 'string',
+          description: 'Optional override. Mandrel project name or ID to target for this single call. Defaults to the active session project (set by the most recent mandrel_project_switch) or the configured default. Use this only to peek at another project without changing the active one.',
+        },
       },
       required: ['decisionType', 'title', 'description', 'rationale', 'impactLevel'],
     },
@@ -73,6 +79,10 @@ export const tools: ToolSpec[] = [
           type: 'string',
           enum: ['low', 'medium', 'high', 'critical'],
           description: 'Filter by impact level'
+        },
+        project: {
+          type: 'string',
+          description: 'Optional override. Mandrel project name or ID to target for this single call. Defaults to the active session project (set by the most recent mandrel_project_switch) or the configured default. Use this only to peek at another project without changing the active one.',
         },
       },
       required: [],

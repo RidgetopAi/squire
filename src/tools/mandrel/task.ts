@@ -7,14 +7,15 @@
  * - mandrel_task_update: Update task status
  */
 
-import { callMandrelTool } from '../../services/mandrel/index.js';
+import { callMandrelTool, splitProjectOption } from '../../services/mandrel/index.js';
 import type { ToolHandler, ToolSpec } from '../types.js';
 import type { TaskCreateArgs, TaskListArgs, TaskUpdateArgs } from './types.js';
 
 // === mandrel_task_create ===
 
 const mandrelTaskCreateToolHandler: ToolHandler<TaskCreateArgs> = async (args) => {
-  const result = await callMandrelTool('task_create', args as unknown as Record<string, unknown>);
+  const { body, options } = splitProjectOption(args);
+  const result = await callMandrelTool('task_create', body as unknown as Record<string, unknown>, options);
   if (!result.success) return `Error creating task: ${result.error}`;
   return typeof result.data === 'string' ? result.data : JSON.stringify(result.data, null, 2);
 };
@@ -22,7 +23,8 @@ const mandrelTaskCreateToolHandler: ToolHandler<TaskCreateArgs> = async (args) =
 // === mandrel_task_list ===
 
 const mandrelTaskListToolHandler: ToolHandler<TaskListArgs> = async (args) => {
-  const result = await callMandrelTool('task_list', args as unknown as Record<string, unknown>);
+  const { body, options } = splitProjectOption(args);
+  const result = await callMandrelTool('task_list', body as unknown as Record<string, unknown>, options);
   if (!result.success) return `Error listing tasks: ${result.error}`;
   return typeof result.data === 'string' ? result.data : JSON.stringify(result.data, null, 2);
 };
@@ -30,7 +32,8 @@ const mandrelTaskListToolHandler: ToolHandler<TaskListArgs> = async (args) => {
 // === mandrel_task_update ===
 
 const mandrelTaskUpdateToolHandler: ToolHandler<TaskUpdateArgs> = async (args) => {
-  const result = await callMandrelTool('task_update', args as unknown as Record<string, unknown>);
+  const { body, options } = splitProjectOption(args);
+  const result = await callMandrelTool('task_update', body as unknown as Record<string, unknown>, options);
   if (!result.success) return `Error updating task: ${result.error}`;
   return typeof result.data === 'string' ? result.data : JSON.stringify(result.data, null, 2);
 };
@@ -56,6 +59,10 @@ export const tools: ToolSpec[] = [
           enum: ['low', 'medium', 'high', 'critical'],
           description: 'Task priority (default: medium)',
         },
+        project: {
+          type: 'string',
+          description: 'Optional override. Mandrel project name or ID to target for this single call. Defaults to the active session project (set by the most recent mandrel_project_switch) or the configured default. Use this only to peek at another project without changing the active one.',
+        },
       },
       required: ['title'],
     },
@@ -77,6 +84,10 @@ export const tools: ToolSpec[] = [
           type: 'number',
           description: 'Max tasks to return',
         },
+        project: {
+          type: 'string',
+          description: 'Optional override. Mandrel project name or ID to target for this single call. Defaults to the active session project (set by the most recent mandrel_project_switch) or the configured default. Use this only to peek at another project without changing the active one.',
+        },
       },
       required: [],
     },
@@ -97,6 +108,10 @@ export const tools: ToolSpec[] = [
           type: 'string',
           enum: ['todo', 'in_progress', 'blocked', 'completed', 'cancelled'],
           description: 'New status for the task',
+        },
+        project: {
+          type: 'string',
+          description: 'Optional override. Mandrel project name or ID to target for this single call. Defaults to the active session project (set by the most recent mandrel_project_switch) or the configured default. Use this only to peek at another project without changing the active one.',
         },
       },
       required: ['taskId', 'status'],

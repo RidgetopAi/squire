@@ -1,4 +1,4 @@
-import { callMandrelTool } from '../../services/mandrel/index.js';
+import { callMandrelTool, setActiveMandrelProject } from '../../services/mandrel/index.js';
 import type { ToolHandler, ToolSpec } from '../types.js';
 import type { ProjectSwitchArgs } from './types.js';
 
@@ -7,6 +7,13 @@ import type { ProjectSwitchArgs } from './types.js';
 const mandrelProjectSwitchToolHandler: ToolHandler<ProjectSwitchArgs> = async (args) => {
   const result = await callMandrelTool('project_switch', args as unknown as Record<string, unknown>);
   if (!result.success) return `Error switching project: ${result.error}`;
+  // Pin the requested project as the active project for the current
+  // agent-run session so subsequent mandrel_context_*, mandrel_task_*,
+  // mandrel_decision_*, and mandrel_smart_search calls inherit it without
+  // requiring the LLM to re-pass `project` on every call.
+  if (typeof args.project === 'string' && args.project.trim()) {
+    setActiveMandrelProject(args.project);
+  }
   return typeof result.data === 'string' ? result.data : JSON.stringify(result.data, null, 2);
 };
 
@@ -30,7 +37,7 @@ export const tools: ToolSpec[] = [
   {
     name: 'mandrel_project_switch',
     description:
-      'Switch to a different Mandrel project. All subsequent context, task, and decision operations will use this project.',
+      'Switch the active Mandrel project for the rest of this session. All subsequent mandrel_context_*, mandrel_task_*, mandrel_decision_*, and mandrel_smart_search calls inherit this project unless they pass an explicit `project` argument as an override. Call this once at the start of working on a different project; you do not need to re-pass project on every following call.',
     parameters: {
       type: 'object',
       properties: {

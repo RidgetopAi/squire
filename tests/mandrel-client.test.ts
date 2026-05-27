@@ -6,7 +6,14 @@ process.env.MANDREL_PROJECT = 'squire-agent';
 process.env.MANDREL_CONNECTION_SCOPE = 'runtime';
 process.env.ACTIVITY_LOGGING_ENABLED = 'false';
 
-const { callMandrelTool, canUseMandrelHttpBridge, getMandrelConnectionId } = await import('../src/services/mandrel/client.js');
+const {
+  callMandrelTool,
+  canUseMandrelHttpBridge,
+  getMandrelConnectionId,
+  withMandrelSession,
+  setActiveMandrelProject,
+  getActiveMandrelProject,
+} = await import('../src/services/mandrel/client.js');
 const { config } = await import('../src/config/index.js');
 
 describe('Mandrel client identity', () => {
@@ -105,6 +112,100 @@ describe('Mandrel client identity', () => {
       assert.strictEqual(fetchCalled, false);
       assert.strictEqual(result.success, false);
       assert.match(result.error ?? '', /HTTP bridge disabled/);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('returns no active project outside a Mandrel session scope', () => {
+    assert.strictEqual(getActiveMandrelProject(), undefined);
+  });
+
+  it('routes follow-up calls to the active session project after switch', async () => {
+    process.env.NODE_ENV = 'test';
+    const originalFetch = globalThis.fetch;
+    const capturedConnIds: string[] = [];
+
+    globalThis.fetch = async (_url, init) => {
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      capturedConnIds.push(headers['X-Connection-ID'] ?? '');
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    };
+
+    try {
+      await withMandrelSession(async () => {
+        // Simulate `mandrel_project_switch` setting the active project.
+        await callMandrelTool('project_switch', { project: 'flowux' });
+        setActiveMandrelProject('flowux');
+
+        // Follow-up call WITHOUT passing project — should inherit flowux
+        // from the session context, not fall back to MANDREL_PROJECT default.
+        await callMandrelTool('context_get_recent', { limit: 5 });
+      });
+
+      assert.strictEqual(capturedConnIds[0], 'squire:test:runtime:flowux');
+      assert.strictEqual(capturedConnIds[1], 'squire:test:runtime:flowux');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('lets explicit options.project override the active session project', async () => {
+    process.env.NODE_ENV = 'test';
+    const originalFetch = globalThis.fetch;
+    const capturedConnIds: string[] = [];
+
+    globalThis.fetch = async (_url, init) => {
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      capturedConnIds.push(headers['X-Connection-ID'] ?? '');
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    };
+
+    try {
+      await withMandrelSession(async () => {
+        setActiveMandrelProject('flowux');
+        // Peek at another project via explicit override.
+        await callMandrelTool('context_get_recent', { limit: 5 }, { project: 'thuc' });
+        // Next call with no override falls back to active.
+        await callMandrelTool('context_get_recent', { limit: 5 });
+      });
+
+      assert.strictEqual(capturedConnIds[0], 'squire:test:runtime:thuc');
+      assert.strictEqual(capturedConnIds[1], 'squire:test:runtime:flowux');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('isolates active project between sibling sessions', async () => {
+    process.env.NODE_ENV = 'test';
+    const originalFetch = globalThis.fetch;
+    const capturedConnIds: string[] = [];
+
+    globalThis.fetch = async (_url, init) => {
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      capturedConnIds.push(headers['X-Connection-ID'] ?? '');
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    };
+
+    try {
+      await Promise.all([
+        withMandrelSession(async () => {
+          setActiveMandrelProject('flowux');
+          await callMandrelTool('context_get_recent', { limit: 1 });
+        }),
+        withMandrelSession(async () => {
+          setActiveMandrelProject('thuc');
+          await callMandrelTool('context_get_recent', { limit: 1 });
+        }),
+      ]);
+
+      // Each session sees only its own active project regardless of ordering.
+      const sorted = [...capturedConnIds].sort();
+      assert.deepStrictEqual(sorted, [
+        'squire:test:runtime:flowux',
+        'squire:test:runtime:thuc',
+      ]);
     } finally {
       globalThis.fetch = originalFetch;
     }
