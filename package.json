@@ -19,8 +19,6 @@
     "cli": "tsx src/cli.ts",
     "rta:dispatch": "node dist/cli/ridgetopai-dispatch.js",
     "rta:dispatch:dev": "TMPDIR=/tmp tsx src/cli/ridgetopai-dispatch.ts",
-    "rta:dashboard": "node dist/cli/ridgetopai-daily-dashboard.js",
-    "rta:dashboard:dev": "TMPDIR=/tmp tsx src/cli/ridgetopai-daily-dashboard.ts",
     "rta:status": "node dist/cli/ridgetopai-status-digest.js",
     "rta:status:dev": "TMPDIR=/tmp tsx src/cli/ridgetopai-status-digest.ts",
     "db:up": "docker compose up -d",
