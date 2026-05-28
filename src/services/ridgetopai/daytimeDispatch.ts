@@ -12,57 +12,10 @@ import {
 
 const RTA_PROJECT = 'ridgetopai';
 const CONNECTION_SCOPE = 'daytime-dispatch';
-const CODEX_LAUNCH_WORKING_DIR = '/home/ridgetop/projects/ridgetopai';
-const CODEX_LAUNCH_TTL_MS = 24 * 60 * 60 * 1000;
-const CODEX_LAUNCH_ALLOWED_PATHS = [
-  '/home/ridgetop/projects/ridgetopai',
-  '/home/ridgetop/projects/ridgetopai-ops',
-  '/home/ridgetop/projects/ridgetopai-reports',
-  '/home/ridgetop/projects/squire',
-  '/home/ridgetop/projects/flowux',
-  '/home/ridgetop/projects/harmony',
-  '/home/ridgetop/projects/thucydides',
-  '/home/ridgetop/aidis',
-];
 
 type ContextType = 'discussion' | 'planning' | 'decision';
 type ApprovalDecision = 'approved' | 'denied';
 type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
-type CodexLaunchApprovalStatus = 'pending' | 'approved' | 'denied' | 'expired';
-type CodexLaunchMode = 'prepare_only' | 'manual_pull' | 'local_start';
-type CodexLaunchSandbox = 'read-only' | 'workspace-write';
-
-export interface CodexLaunchRequest {
-  schemaVersion: 1;
-  requestId: string;
-  state: 'queued';
-  project: string;
-  taskId: string;
-  title: string;
-  requestedBy: string;
-  requestedAt: string;
-  expiresAt: string;
-  workingDir: string;
-  prompt: string;
-  scope: {
-    allowedPaths: string[];
-    allowedOperations: string[];
-    forbiddenOperations: string[];
-    summary?: string;
-  };
-  approval: {
-    required: boolean;
-    status: CodexLaunchApprovalStatus;
-    reason?: string;
-  };
-  execution: {
-    sandbox: CodexLaunchSandbox;
-    maxRuntimeMinutes: number;
-    mode: CodexLaunchMode;
-  };
-  stopConditions: string[];
-  requiredFinalization: string[];
-}
 
 export type DaytimeDispatchIntent =
   | { kind: 'status_request' }
@@ -77,17 +30,6 @@ export type DaytimeDispatchIntent =
     kind: 'approval';
     decision: ApprovalDecision;
     target: string;
-    reason?: string;
-  }
-  | {
-    kind: 'codex_launch_prepare';
-    taskRef: string;
-    scope?: string;
-  }
-  | { kind: 'codex_launch_status' }
-  | {
-    kind: 'codex_launch_cancel';
-    requestId: string;
     reason?: string;
   }
   | { kind: 'help' }
@@ -116,17 +58,11 @@ export interface DaytimeDispatchOptions {
   now?: Date;
   project?: string;
   source?: string;
-  createRequestId?: () => string;
 }
 
 interface MandrelBridgeBody {
   success?: boolean;
   error?: string;
-}
-
-interface MandrelTextContent {
-  type?: unknown;
-  text?: unknown;
 }
 
 export function parseDaytimeDispatchText(text: string): DaytimeDispatchIntent | null {
@@ -168,10 +104,6 @@ export function parseDaytimeDispatchText(text: string): DaytimeDispatchIntent | 
 
   if (command === 'task' || command === 'todo') {
     return parseTaskIntent(rest);
-  }
-
-  if (command === 'codex') {
-    return parseCodexLaunchIntent(rest);
   }
 
   if (command === 'approve' || command === 'approved') {
@@ -219,7 +151,6 @@ export async function handleDaytimeDispatchText(
     const project = options.project ?? RTA_PROJECT;
     const mandrelCall = options.mandrelCall ?? callMandrelTool;
     const source = options.source ?? 'squire';
-    const now = options.now ?? new Date();
 
     switch (intent.kind) {
       case 'status_request':
@@ -233,7 +164,7 @@ export async function handleDaytimeDispatchText(
         await requireMandrelSuccess(
           'context_store',
           await mandrelCall('context_store', {
-            content: renderContextMemory(intent, source, now),
+            content: renderContextMemory(intent, source, options.now ?? new Date()),
             type: intent.contextType,
             tags: ['ridgetopai', 'squire-dispatch', 'daytime-control', intent.contextType],
           }, dispatchMandrelOptions(project))
@@ -266,7 +197,7 @@ export async function handleDaytimeDispatchText(
         await requireMandrelSuccess(
           'context_store',
           await mandrelCall('context_store', {
-            content: renderApprovalMemory(intent, source, now),
+            content: renderApprovalMemory(intent, source, options.now ?? new Date()),
             type: 'decision',
             tags: ['ridgetopai', 'squire-dispatch', 'daytime-control', 'approval', intent.decision],
           }, dispatchMandrelOptions(project))
@@ -276,79 +207,6 @@ export async function handleDaytimeDispatchText(
           handled: true,
           intent,
           confirmation: `Captured ${intent.decision} signal for ${intent.target}. No action was executed.`,
-        };
-      case 'codex_launch_prepare': {
-        await ensureProject(mandrelCall, project);
-        const request = createCodexLaunchRequest(intent, {
-          project,
-          source,
-          now,
-          createRequestId: options.createRequestId,
-        });
-        await requireMandrelSuccess(
-          'context_store',
-          await mandrelCall('context_store', {
-            content: renderCodexLaunchRequestMemory(request, source, now),
-            type: 'planning',
-            tags: [
-              'ridgetopai',
-              'squire-dispatch',
-              'daytime-control',
-              'codex-launcher',
-              'launch-request',
-              'approval-required',
-              request.taskId,
-              request.requestId,
-            ],
-          }, dispatchMandrelOptions(project))
-        );
-
-        return {
-          handled: true,
-          intent,
-          confirmation: [
-            `Prepared Codex launch request ${request.requestId} for ${request.taskId}.`,
-            'No Codex process was started.',
-            'Approve and run it from the WSL2 launcher after validation.',
-          ].join('\n'),
-        };
-      }
-      case 'codex_launch_status': {
-        await ensureProject(mandrelCall, project);
-        const statusResponse = await mandrelCall('context_search', {
-          query: 'codex-launcher launch-request ridgetopai',
-          limit: 5,
-        }, dispatchMandrelOptions(project));
-        await requireMandrelSuccess('context_search', statusResponse);
-
-        return {
-          handled: true,
-          intent,
-          confirmation: renderCodexLaunchStatusConfirmation(statusResponse.data),
-        };
-      }
-      case 'codex_launch_cancel':
-        await ensureProject(mandrelCall, project);
-        await requireMandrelSuccess(
-          'context_store',
-          await mandrelCall('context_store', {
-            content: renderCodexLaunchCancellationMemory(intent, source, now),
-            type: 'decision',
-            tags: [
-              'ridgetopai',
-              'squire-dispatch',
-              'daytime-control',
-              'codex-launcher',
-              'launch-cancelled',
-              intent.requestId,
-            ],
-          }, dispatchMandrelOptions(project))
-        );
-
-        return {
-          handled: true,
-          intent,
-          confirmation: `Cancelled Codex launch request ${intent.requestId}. No action was executed.`,
         };
     }
   } catch (error) {
@@ -413,59 +271,6 @@ function parseApprovalIntent(payload: string, decision: ApprovalDecision): Dayti
     kind: 'approval',
     decision,
     target: primary,
-    reason: secondary,
-  };
-}
-
-function parseCodexLaunchIntent(payload: string): DaytimeDispatchIntent {
-  const { command, rest } = splitCommand(payload);
-
-  if (!command) {
-    return { kind: 'invalid', message: 'Add a Codex launcher command after `rta codex`.' };
-  }
-
-  if (command === 'prepare' || command === 'queue') {
-    return parseCodexLaunchPrepareIntent(rest);
-  }
-
-  if (command === 'status' || command === 'list') {
-    return { kind: 'codex_launch_status' };
-  }
-
-  if (command === 'cancel') {
-    return parseCodexLaunchCancelIntent(rest);
-  }
-
-  return {
-    kind: 'invalid',
-    message: `Unknown RTA Codex command: ${command}`,
-  };
-}
-
-function parseCodexLaunchPrepareIntent(payload: string): DaytimeDispatchIntent {
-  const { primary, secondary } = splitPrimarySecondary(payload.trim());
-
-  if (!primary) {
-    return { kind: 'invalid', message: 'Add a task id or title after `rta codex prepare`.' };
-  }
-
-  return {
-    kind: 'codex_launch_prepare',
-    taskRef: primary,
-    scope: secondary,
-  };
-}
-
-function parseCodexLaunchCancelIntent(payload: string): DaytimeDispatchIntent {
-  const { primary, secondary } = splitPrimarySecondary(payload.trim());
-
-  if (!primary) {
-    return { kind: 'invalid', message: 'Add a request id after `rta codex cancel`.' };
-  }
-
-  return {
-    kind: 'codex_launch_cancel',
-    requestId: primary,
     reason: secondary,
   };
 }
@@ -626,190 +431,6 @@ function renderApprovalMemory(
   return lines.join('\n');
 }
 
-function createCodexLaunchRequest(
-  intent: Extract<DaytimeDispatchIntent, { kind: 'codex_launch_prepare' }>,
-  options: {
-    project: string;
-    source: string;
-    now: Date;
-    createRequestId?: () => string;
-  }
-): CodexLaunchRequest {
-  const requestId = options.createRequestId?.() ?? `codex-${crypto.randomUUID()}`;
-  const requestedAt = options.now.toISOString();
-  const expiresAt = new Date(options.now.getTime() + CODEX_LAUNCH_TTL_MS).toISOString();
-  const scopeSummary = intent.scope ?? `Continue ${intent.taskRef} from Mandrel with a narrow, verified work block.`;
-
-  return {
-    schemaVersion: 1,
-    requestId,
-    state: 'queued',
-    project: options.project,
-    taskId: intent.taskRef,
-    title: `Codex launch request for ${intent.taskRef}`,
-    requestedBy: options.source,
-    requestedAt,
-    expiresAt,
-    workingDir: CODEX_LAUNCH_WORKING_DIR,
-    prompt: [
-      `Continue Mandrel task ${intent.taskRef}.`,
-      `Scope: ${scopeSummary}`,
-      'Use Mandrel MCP directly. Update task state and store completion or handoff context before finishing.',
-      'Stop before deploys, service restarts, migrations, destructive cleanup, paid provider changes, DNS changes, or secret changes unless a matching explicit approval is present.',
-    ].join('\n'),
-    scope: {
-      allowedPaths: CODEX_LAUNCH_ALLOWED_PATHS,
-      allowedOperations: [
-        'read Mandrel task/context state',
-        'inspect local files',
-        'write scoped docs, reports, tests, or code changes tied to the task',
-        'run focused tests and build checks',
-        'store Mandrel completion, decision, or handoff context',
-      ],
-      forbiddenOperations: [
-        'database deletion',
-        'permanent data deletion',
-        'secret rotation',
-        'destructive migrations',
-        'billing or vendor spend',
-        'unapproved deploys or service restarts',
-        'unapproved public DNS changes',
-      ],
-      summary: intent.scope,
-    },
-    approval: {
-      required: true,
-      status: 'pending',
-      reason: 'Prepared through Squire only. WSL2 launcher must validate a matching approval before execution.',
-    },
-    execution: {
-      sandbox: 'workspace-write',
-      maxRuntimeMinutes: 45,
-      mode: 'prepare_only',
-    },
-    stopConditions: [
-      'Needed approval is missing, vague, expired, or mismatched.',
-      'Requested work expands beyond the stated scope.',
-      'A production deploy, service restart, migration, DNS change, secret change, or destructive operation is required.',
-      'The working tree contains unrelated changes that would be touched by the task.',
-    ],
-    requiredFinalization: [
-      'Update the Mandrel task status.',
-      'Store a Mandrel completion or handoff context.',
-      'Create or update a report for substantial work.',
-      'Name verification commands and any residual risks.',
-    ],
-  };
-}
-
-function renderCodexLaunchRequestMemory(
-  request: CodexLaunchRequest,
-  source: string,
-  now: Date
-): string {
-  return [
-    '## Summary',
-    `Codex launch request ${request.requestId} prepared through Squire.`,
-    '',
-    '## Request',
-    '```json',
-    JSON.stringify(request, null, 2),
-    '```',
-    '',
-    '## Safety',
-    'This packet is preparation only. Squire did not start Codex, run shell commands, deploy, restart services, or modify files.',
-    '',
-    '## Source',
-    `Captured from ${source} at ${now.toISOString()}.`,
-  ].join('\n');
-}
-
-function renderCodexLaunchCancellationMemory(
-  intent: Extract<DaytimeDispatchIntent, { kind: 'codex_launch_cancel' }>,
-  source: string,
-  now: Date
-): string {
-  const lines = [
-    '## Decision',
-    `Codex launch request ${intent.requestId} is cancelled through Squire daytime dispatch.`,
-  ];
-
-  if (intent.reason) {
-    lines.push('', '## Reasoning', intent.reason);
-  }
-
-  lines.push(
-    '',
-    '## Consequences',
-    'This cancellation record does not start Codex or execute any shell commands.',
-    '',
-    '## Source',
-    `Captured from ${source} at ${now.toISOString()}.`
-  );
-
-  return lines.join('\n');
-}
-
-function renderCodexLaunchStatusConfirmation(data: unknown): string {
-  const text = extractMandrelText(data);
-
-  if (!text) {
-    return 'Codex launch status: no recent launch request details returned by Mandrel.';
-  }
-
-  return [
-    'Codex launch status:',
-    '',
-    truncate(text, 1200),
-  ].join('\n');
-}
-
-function extractMandrelText(data: unknown): string | undefined {
-  if (typeof data === 'string') {
-    return data.trim() || undefined;
-  }
-
-  if (Array.isArray(data)) {
-    return extractTextContent(data);
-  }
-
-  if (!isRecord(data)) {
-    return undefined;
-  }
-
-  const result = data['result'];
-  if (isRecord(result)) {
-    const resultContent = result['content'];
-    if (Array.isArray(resultContent)) {
-      return extractTextContent(resultContent);
-    }
-  }
-
-  const content = data['content'];
-  if (Array.isArray(content)) {
-    return extractTextContent(content);
-  }
-
-  return undefined;
-}
-
-function extractTextContent(items: unknown[]): string | undefined {
-  const text = items
-    .map((item): string | undefined => {
-      const content = item as MandrelTextContent;
-      return typeof content.text === 'string' ? content.text : undefined;
-    })
-    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-    .join('\n\n')
-    .trim();
-
-  return text || undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
 function renderDispatchHelp(): string {
   return [
     'RTA dispatch commands:',
@@ -819,9 +440,6 @@ function renderDispatchHelp(): string {
     'rta task [high] <title> -- <details>',
     'rta approve <target> -- <reason>',
     'rta deny <target> -- <reason>',
-    'rta codex prepare <task-or-title> -- <scope>',
-    'rta codex status',
-    'rta codex cancel <requestId> -- <reason>',
   ].join('\n');
 }
 

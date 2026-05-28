@@ -103,115 +103,6 @@ describe('RidgetopAI daytime dispatch', () => {
     assert.match(String(calls[1]?.args['content']), /Squire did not execute/);
   });
 
-  it('prepares Codex launch request packets without starting Codex', async () => {
-    const { calls, mandrelCall } = createMandrelRecorder();
-
-    const result = await handleDaytimeDispatchText(
-      'rta codex prepare RTA-026 -- Implement packet preparation only',
-      {
-        mandrelCall,
-        now: new Date('2026-05-25T12:00:00.000Z'),
-        source: 'telegram',
-        createRequestId: () => 'codex-test-request',
-      }
-    );
-
-    assert.strictEqual(result.handled, true);
-    assert.match(result.confirmation ?? '', /Prepared Codex launch request codex-test-request/);
-    assert.match(result.confirmation ?? '', /No Codex process was started/);
-    assert.deepStrictEqual(calls.map((call) => call.toolName), ['project_switch', 'context_store']);
-    assert.strictEqual(calls[1]?.args['type'], 'planning');
-    assert.deepStrictEqual(calls[1]?.args['tags'], [
-      'ridgetopai',
-      'squire-dispatch',
-      'daytime-control',
-      'codex-launcher',
-      'launch-request',
-      'approval-required',
-      'RTA-026',
-      'codex-test-request',
-    ]);
-
-    const content = String(calls[1]?.args['content']);
-    const packet = extractJsonBlock(content);
-    assert.strictEqual(packet.requestId, 'codex-test-request');
-    assert.strictEqual(packet.project, 'ridgetopai');
-    assert.strictEqual(packet.taskId, 'RTA-026');
-    assert.strictEqual(packet.state, 'queued');
-    assert.strictEqual(packet.workingDir, '/home/ridgetop/projects/ridgetopai');
-    assert.strictEqual(packet.approval?.required, true);
-    assert.strictEqual(packet.approval?.status, 'pending');
-    assert.strictEqual(packet.execution?.mode, 'prepare_only');
-    assert.strictEqual(packet.execution?.sandbox, 'workspace-write');
-    assert.match(packet.prompt ?? '', /Stop before deploys/);
-    assert.match(content, /Squire did not start Codex/);
-  });
-
-  it('returns Codex launch status from Mandrel search without executing', async () => {
-    const calls: Array<{
-      toolName: string;
-      args: Record<string, unknown>;
-      options: Record<string, unknown>;
-    }> = [];
-    const mandrelCall = async (
-      toolName: string,
-      args: Record<string, unknown> = {},
-      options: Record<string, unknown> = {}
-    ): Promise<{ success: boolean; data: unknown }> => {
-      calls.push({ toolName, args, options });
-      if (toolName === 'context_search') {
-        return {
-          success: true,
-          data: {
-            result: {
-              content: [{ type: 'text', text: 'codex-test-request queued for RTA-026' }],
-            },
-          },
-        };
-      }
-
-      return { success: true, data: { success: true } };
-    };
-
-    const result = await handleDaytimeDispatchText('rta codex status', { mandrelCall });
-
-    assert.strictEqual(result.handled, true);
-    assert.match(result.confirmation ?? '', /Codex launch status/);
-    assert.match(result.confirmation ?? '', /codex-test-request queued/);
-    assert.deepStrictEqual(calls.map((call) => call.toolName), ['project_switch', 'context_search']);
-    assert.deepStrictEqual(calls[1]?.args, {
-      query: 'codex-launcher launch-request ridgetopai',
-      limit: 5,
-    });
-  });
-
-  it('records Codex launch cancellations without executing', async () => {
-    const { calls, mandrelCall } = createMandrelRecorder();
-
-    const result = await handleDaytimeDispatchText(
-      'rta codex cancel codex-test-request -- superseded by newer scope',
-      {
-        mandrelCall,
-        now: new Date('2026-05-25T12:00:00.000Z'),
-      }
-    );
-
-    assert.strictEqual(result.handled, true);
-    assert.match(result.confirmation ?? '', /No action was executed/);
-    assert.deepStrictEqual(calls.map((call) => call.toolName), ['project_switch', 'context_store']);
-    assert.strictEqual(calls[1]?.args['type'], 'decision');
-    assert.match(String(calls[1]?.args['content']), /codex-test-request is cancelled/);
-    assert.match(String(calls[1]?.args['content']), /does not start Codex/);
-  });
-
-  it('keeps unknown Codex launcher commands deterministic', async () => {
-    const result = await handleDaytimeDispatchText('rta codex launch everything');
-
-    assert.strictEqual(result.handled, true);
-    assert.match(result.confirmation ?? '', /Unknown RTA Codex command: launch/);
-    assert.match(result.confirmation ?? '', /rta codex prepare/);
-  });
-
   it('keeps unknown prefixed commands in the deterministic path', async () => {
     const result = await handleDaytimeDispatchText('rta launch everything');
 
@@ -231,7 +122,7 @@ function createMandrelRecorder(): {
     toolName: string,
     args?: Record<string, unknown>,
     options?: Record<string, unknown>
-  ) => Promise<{ success: boolean; data: unknown }>;
+  ) => Promise<{ success: boolean; data: { success: boolean } }>;
 } {
   const calls: Array<{
     toolName: string;
@@ -246,27 +137,4 @@ function createMandrelRecorder(): {
       return { success: true, data: { success: true } };
     },
   };
-}
-
-interface LaunchPacketForTest {
-  requestId?: string;
-  project?: string;
-  taskId?: string;
-  state?: string;
-  workingDir?: string;
-  prompt?: string;
-  approval?: {
-    required?: boolean;
-    status?: string;
-  };
-  execution?: {
-    mode?: string;
-    sandbox?: string;
-  };
-}
-
-function extractJsonBlock(content: string): LaunchPacketForTest {
-  const match = /```json\n([\s\S]+?)\n```/.exec(content);
-  assert.ok(match?.[1], 'Expected a JSON code block');
-  return JSON.parse(match[1]) as LaunchPacketForTest;
 }
