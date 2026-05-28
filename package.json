@@ -17,7 +17,6 @@
     "start:api": "node dist/api/server.js",
     "start:web": "cd web && pnpm start",
     "cli": "tsx src/cli.ts",
-    "rta:status": "TMPDIR=/tmp tsx scripts/ridgetopai-status-digest.ts",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "db:logs": "docker compose logs -f postgres",
@@ -25,7 +24,7 @@
     "typecheck": "tsc --noEmit",
     "typecheck:web": "cd web && pnpm type-check",
     "clean": "rm -rf dist",
-    "test": "TMPDIR=/tmp npx tsx --test tests/*.test.ts",
+    "test": "npx tsx --test tests/*.test.ts",
     "test:extraction": "npx tsx --test tests/extraction.test.ts",
     "test:chunking": "npx tsx --test tests/chunking.test.ts"
   },
