@@ -170,7 +170,7 @@ describe('RidgetopAI daytime dispatch', () => {
     assert.match(content, /Squire did not start Codex/);
   });
 
-  it('returns Codex launch status from recent Mandrel context without executing', async () => {
+  it('returns Codex launch status from Mandrel search without executing', async () => {
     const calls: Array<{
       toolName: string;
       args: Record<string, unknown>;
@@ -182,7 +182,7 @@ describe('RidgetopAI daytime dispatch', () => {
       options: Record<string, unknown> = {}
     ): Promise<{ success: boolean; data: unknown }> => {
       calls.push({ toolName, args, options });
-      if (toolName === 'context_get_recent') {
+      if (toolName === 'context_search') {
         return {
           success: true,
           data: {
@@ -201,8 +201,11 @@ describe('RidgetopAI daytime dispatch', () => {
     assert.strictEqual(result.handled, true);
     assert.match(result.confirmation ?? '', /Codex launch status/);
     assert.match(result.confirmation ?? '', /codex-test-request queued/);
-    assert.deepStrictEqual(calls.map((call) => call.toolName), ['project_switch', 'context_get_recent']);
-    assert.deepStrictEqual(calls[1]?.args, {});
+    assert.deepStrictEqual(calls.map((call) => call.toolName), ['project_switch', 'context_search']);
+    assert.deepStrictEqual(calls[1]?.args, {
+      query: 'codex-launcher launch-request ridgetopai',
+      limit: 5,
+    });
   });
 
   it('records Codex launch cancellations without executing', async () => {

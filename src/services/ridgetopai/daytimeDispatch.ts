@@ -337,8 +337,11 @@ export async function handleDaytimeDispatchText(
       }
       case 'codex_launch_status': {
         await ensureProject(mandrelCall, project);
-        const statusResponse = await mandrelCall('context_get_recent', {}, dispatchMandrelOptions(project));
-        await requireMandrelSuccess('context_get_recent', statusResponse);
+        const statusResponse = await mandrelCall('context_search', {
+          query: 'codex-launcher launch-request ridgetopai',
+          limit: 5,
+        }, dispatchMandrelOptions(project));
+        await requireMandrelSuccess('context_search', statusResponse);
 
         return {
           handled: true,
@@ -785,11 +788,11 @@ function renderCodexLaunchStatusConfirmation(data: unknown): string {
   const text = extractMandrelText(data);
 
   if (!text) {
-    return 'Codex launch status: no recent Mandrel context returned.';
+    return 'Codex launch status: no recent launch request details returned by Mandrel.';
   }
 
   return [
-    'Codex launch status from recent Mandrel context:',
+    'Codex launch status:',
     '',
     truncate(text, 1200),
   ].join('\n');
