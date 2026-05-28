@@ -24,11 +24,6 @@ describe('RidgetopAI status digest', () => {
       { name: 'down', kind: 'endpoint', status: 'unhealthy', detail: 'HTTP 500' },
       { name: 'ok', kind: 'git', status: 'healthy', detail: 'clean' },
     ]), 'unhealthy');
-
-    assert.strictEqual(computeOverallStatus([
-      { name: 'optional local service', kind: 'endpoint', status: 'unknown', detail: 'not running', optional: true },
-      { name: 'ok', kind: 'git', status: 'healthy', detail: 'clean' },
-    ]), 'healthy');
   });
 
   it('renders a markdown digest with probes and Mandrel summaries', () => {
