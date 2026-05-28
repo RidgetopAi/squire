@@ -15,7 +15,6 @@ import { getOrCreateConversation, addMessage, getMessages } from '../chat/conver
 import { processMessageRealTime } from '../chat/chatExtraction.js';
 import { runAgent } from '../../agents/index.js';
 import { recordActivityEvent } from '../activity.js';
-import { handleDaytimeDispatchText } from '../ridgetopai/daytimeDispatch.js';
 import {
   sendMessage,
   sendTypingAction,
@@ -122,35 +121,6 @@ export async function handleTelegramMessage(message: TelegramMessage): Promise<v
   }
 
   try {
-    const dispatchResult = await handleDaytimeDispatchText(text, {
-      source: 'telegram',
-    });
-
-    if (dispatchResult.handled) {
-      const confirmation = dispatchResult.confirmation ?? 'RTA dispatch handled.';
-
-      await sendMessage(chatId, confirmation);
-      await recordActivityEvent({
-        traceId,
-        sourceLoop: 'telegram',
-        eventType: 'daytime_dispatch.completed',
-        actor: 'assistant',
-        triggerReason: 'Telegram RTA dispatch command',
-        summary: dispatchResult.error ? 'RTA daytime dispatch failed' : 'RTA daytime dispatch handled',
-        status: dispatchResult.error ? 'failed' : 'completed',
-        metadata: {
-          chatId,
-          userId,
-          username: message.from?.username,
-          messageId: message.message_id,
-          intentKind: dispatchResult.intent?.kind,
-          error: dispatchResult.error,
-          responsePreview: confirmation.substring(0, 300),
-        },
-      });
-      return;
-    }
-
     // Get or create conversation
     const conversationId = getConversationId(userId);
     const conversation = await getOrCreateConversation(conversationId);
