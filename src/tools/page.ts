@@ -1,5 +1,5 @@
 import type { ToolHandler, ToolSpec } from './types.js';
-import { page } from '../services/page/index.js';
+import { formatScoutResult, scout } from '../services/scout/index.js';
 
 interface PageArgs {
   task: string;
@@ -15,33 +15,29 @@ async function pageAgent(args: PageArgs): Promise<string> {
   }
 
   try {
-    const result = await page({
+    const result = await scout({
       task: task.trim(),
       cwd,
       maxTurns: max_turns ?? 20,
+      sourceLoop: 'page',
     });
 
     if (!result.success) {
-      return `Page agent error: ${result.error ?? 'Unknown error'}`;
+      return `Scout error: ${result.error ?? 'Unknown error'}`;
     }
 
-    // Format the result with metadata
-    const lines: string[] = [];
-    lines.push(`**Page Report** (${result.turns} turn${result.turns !== 1 ? 's' : ''})`);
-    lines.push('');
-    lines.push(result.content);
-    return lines.join('\n');
+    return formatScoutResult(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return `Error dispatching page agent: ${message}`;
+    return `Error dispatching Scout: ${message}`;
   }
 }
 
 export const tools: ToolSpec[] = [{
   name: 'page',
-  description: `Dispatch a read-only research subagent ("page") to find information.
+  description: `Legacy alias for Scout, the read-only research subagent.
 
-The page agent has access to read-only tools (read_file, grep_search, glob_files, bash_read) and will autonomously search through files and directories to find the requested information.
+Scout has access to read-only tools (read_file, grep_search, glob_files, bash_read) and will autonomously search through files and directories to find the requested information.
 
 Use this tool when you need to:
 - Search through a codebase for specific patterns, implementations, or configurations
@@ -49,10 +45,10 @@ Use this tool when you need to:
 - Explore a directory structure to understand a project
 - Find specific information across many files
 
-The page agent uses a fast model and will make multiple tool calls to gather information before returning a comprehensive report.
+Scout uses a fast model and will make multiple tool calls to gather information before returning a comprehensive report.
 
 Parameters:
-- task: What you want the page to find (be specific)
+- task: What you want Scout to find (be specific)
 - cwd: Working directory to scope the search (optional)
 - max_turns: Maximum research iterations (default: 20)`,
   parameters: {

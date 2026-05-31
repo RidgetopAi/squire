@@ -137,10 +137,10 @@ const manifestOverrides: Partial<Record<CapabilityName, Partial<CapabilityManife
     promptGuidance: 'Use for isolated experimental worker execution.',
   },
   page: {
-    runtimeLoops: ['page'],
-    lifecycleHooks: ['page-agent'],
+    runtimeLoops: ['page', 'scout'],
+    lifecycleHooks: ['scout-agent'],
     permissions: { externalEffects: ['read_only_file_access'] },
-    promptGuidance: 'Use for read-only page agent operations.',
+    promptGuidance: 'Legacy alias for Scout read-only investigations.',
   },
   scout: {
     runtimeLoops: ['scout'],

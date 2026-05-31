@@ -31,6 +31,7 @@ describe('Squire master config', () => {
     assert.strictEqual(config.loops.http_chat.runtime, 'http_chat');
     assert.strictEqual(config.loops.telegram.runtime, 'telegram');
     assert.strictEqual(config.loops.commune.runtime, 'commune');
+    assert.strictEqual(config.loops.page.runtime, 'scout');
     assert.strictEqual(config.loops.worker_agent.runtime, 'coding');
     assert.strictEqual(config.loops.sandbox_worker.runtime, 'sandbox');
     assert.ok(config.loops.codex_chat.allowedCapabilities.includes('mandrel'));

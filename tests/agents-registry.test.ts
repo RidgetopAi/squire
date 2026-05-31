@@ -77,7 +77,7 @@ describe('Agent Runtime Registry — Phase 1 catalog', () => {
       http_chat: 'http_chat',
       telegram: 'telegram',
       commune: 'commune',
-      page: 'page',
+      page: 'scout',
       scout: 'scout',
       courier_summarizer: 'courier-summarizer',
       emotional_synthesis: 'emotional-synthesis',

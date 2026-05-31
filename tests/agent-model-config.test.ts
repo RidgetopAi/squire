@@ -26,7 +26,7 @@ describe('agent model config', () => {
     assert.deepEqual(models.telegram, { provider: 'openai', model: 'gpt-telegram' });
   });
 
-  it('keeps existing specialist slot env names working', () => {
+  it('keeps existing specialist slot env names working, with Page env falling back into Scout', () => {
     const models = buildAgentModelConfig({
       PAGE_AGENT_PROVIDER: 'anthropic',
       PAGE_AGENT_MODEL: 'claude-page',
@@ -37,6 +37,12 @@ describe('agent model config', () => {
     });
 
     assert.deepEqual(models.page, {
+      provider: 'anthropic',
+      model: 'claude-page',
+      maxTokens: 1234,
+      temperature: 0.2,
+    });
+    assert.deepEqual(models.scout, {
       provider: 'anthropic',
       model: 'claude-page',
       maxTokens: 1234,

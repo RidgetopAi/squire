@@ -242,37 +242,12 @@ Relevant files:
 
 ## Delegated Read-Only Subagents
 
-### Page Agent: `page`
-
-Role:
-
-- Read-only research subagent.
-- Main agent can dispatch it to search/read files and return findings.
-- Designed for codebase and file investigation without writes.
-
-Current power source:
-
-- Page runtime.
-- Default: OpenAI `gpt-5.4-mini`.
-
-Tool surface:
-
-- `read_file`
-- `grep_search`
-- `glob_files`
-- `bash_read`
-
-Relevant files:
-
-- `src/services/page/index.ts`
-- `src/services/page/tools.ts`
-- `src/tools/page.ts`
-
 ### Scout: `scout`
 
 Role:
 
-- Fast read-only reasoning subagent.
+- Canonical read-only research subagent.
+- Main agent can dispatch it to search/read files and return findings.
 - Used for file/code/log search, summarization, data wrangling, calculations, and compact analysis.
 - Does not write files.
 
@@ -290,7 +265,34 @@ Tool surface:
 
 Relevant files:
 
+- `src/services/scout/index.ts`
+- `src/services/page/tools.ts`
 - `src/tools/scout.ts`
+
+### Page Alias: `page`
+
+Role:
+
+- Backward-compatible alias for Scout.
+- Existing `page` tool and `runAgent('page')` callers still work.
+- The returned report identifies as Scout.
+
+Current power source:
+
+- Uses Scout runtime and `src/services/scout/index.ts`.
+- `PAGE_AGENT_*` env vars remain a fallback only when `SCOUT_AGENT_*` is unset.
+
+Tool surface:
+
+- `read_file`
+- `grep_search`
+- `glob_files`
+- `bash_read`
+
+Relevant files:
+
+- `src/services/page/index.ts`
+- `src/tools/page.ts`
 - `src/services/page/tools.ts`
 
 ## Shell-Backed Worker Agents
@@ -430,8 +432,8 @@ Important current split:
 
 - Agent model defaults now live in `src/config/agent-models.ts`.
 - Chat provider/model slots can be configured per surface or through shared `SQUIRE_CHAT_*` env vars.
-- Page/Scout/Vision/Courier/Emotional Synthesis still keep their existing runtime env names, but their defaults are declared in the same file.
+- Scout/Vision/Courier/Emotional Synthesis keep their existing runtime env names, with `PAGE_AGENT_*` retained as Scout fallback aliases.
 - Coding and sandbox workers still have worker-specific provider/model env keys, also surfaced through the same agent model config builder.
 - Runtime permissions live in `master.ts`, not next to provider/model env parsing.
 
-The remaining cleanup is mostly consolidation: page/scout and worker/sandbox still have separate identities even though their config is easier to reason about now.
+The remaining cleanup is mostly worker consolidation: worker/sandbox still have separate identities even though their config is easier to reason about now.

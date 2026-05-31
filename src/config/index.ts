@@ -166,7 +166,7 @@ export const config = {
       telegram: agentModels.telegram,
       commune: agentModels.commune,
       page: {
-        ...agentModels.page,
+        ...agentModels.scout,
       },
       scout: {
         ...agentModels.scout,

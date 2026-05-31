@@ -334,7 +334,7 @@ export function buildSquireMasterConfig(env: NodeJS.ProcessEnv = process.env): S
             model: agentModels.fast.model,
           },
           page: {
-            ...agentModels.page,
+            ...agentModels.scout,
           },
           scout: {
             ...agentModels.scout,
@@ -413,7 +413,7 @@ export function buildSquireMasterConfig(env: NodeJS.ProcessEnv = process.env): S
       },
       page: {
         enabled: envBoolean(env, 'PAGE_AGENT_ENABLED', true),
-        runtime: 'page',
+        runtime: 'scout',
         allowedCapabilities: ['page'],
         allowedTools: ['read_file', 'grep_search', 'glob_files', 'bash_read'],
         externalEffects: ['read_only_file_access'],

@@ -42,9 +42,9 @@ interface LLMEnvSpec {
   modelEnv: string[];
   defaultProvider: LLMProviderName;
   defaultModel: string;
-  maxTokensEnv?: string;
+  maxTokensEnv?: string[];
   defaultMaxTokens?: number;
-  temperatureEnv?: string;
+  temperatureEnv?: string[];
   defaultTemperature?: number;
 }
 
@@ -117,19 +117,19 @@ export const AGENT_MODEL_ENV = {
     modelEnv: ['PAGE_AGENT_MODEL'],
     defaultProvider: OPENAI_MINI.provider,
     defaultModel: OPENAI_MINI.model,
-    maxTokensEnv: 'PAGE_AGENT_MAX_TOKENS',
+    maxTokensEnv: ['PAGE_AGENT_MAX_TOKENS'],
     defaultMaxTokens: 16384,
-    temperatureEnv: 'PAGE_AGENT_TEMPERATURE',
+    temperatureEnv: ['PAGE_AGENT_TEMPERATURE'],
     defaultTemperature: 0.3,
   },
   scout: {
-    providerEnv: ['SCOUT_AGENT_PROVIDER'],
-    modelEnv: ['SCOUT_AGENT_MODEL'],
+    providerEnv: ['SCOUT_AGENT_PROVIDER', 'PAGE_AGENT_PROVIDER'],
+    modelEnv: ['SCOUT_AGENT_MODEL', 'PAGE_AGENT_MODEL'],
     defaultProvider: OPENAI_MINI.provider,
     defaultModel: OPENAI_MINI.model,
-    maxTokensEnv: 'SCOUT_AGENT_MAX_TOKENS',
+    maxTokensEnv: ['SCOUT_AGENT_MAX_TOKENS', 'PAGE_AGENT_MAX_TOKENS'],
     defaultMaxTokens: 16384,
-    temperatureEnv: 'SCOUT_AGENT_TEMPERATURE',
+    temperatureEnv: ['SCOUT_AGENT_TEMPERATURE', 'PAGE_AGENT_TEMPERATURE'],
     defaultTemperature: 0.3,
   },
   emotionalSynthesis: {
@@ -137,9 +137,9 @@ export const AGENT_MODEL_ENV = {
     modelEnv: ['EMOTIONAL_SYNTHESIS_MODEL'],
     defaultProvider: OPENAI_MINI.provider,
     defaultModel: OPENAI_MINI.model,
-    maxTokensEnv: 'EMOTIONAL_SYNTHESIS_MAX_TOKENS',
+    maxTokensEnv: ['EMOTIONAL_SYNTHESIS_MAX_TOKENS'],
     defaultMaxTokens: 400,
-    temperatureEnv: 'EMOTIONAL_SYNTHESIS_TEMPERATURE',
+    temperatureEnv: ['EMOTIONAL_SYNTHESIS_TEMPERATURE'],
     defaultTemperature: 0.6,
   },
   courierSummarizer: {
@@ -147,9 +147,9 @@ export const AGENT_MODEL_ENV = {
     modelEnv: ['COURIER_SUMMARIZER_MODEL'],
     defaultProvider: OPENAI_MINI.provider,
     defaultModel: OPENAI_MINI.model,
-    maxTokensEnv: 'COURIER_SUMMARIZER_MAX_TOKENS',
+    maxTokensEnv: ['COURIER_SUMMARIZER_MAX_TOKENS'],
     defaultMaxTokens: 1000,
-    temperatureEnv: 'COURIER_SUMMARIZER_TEMPERATURE',
+    temperatureEnv: ['COURIER_SUMMARIZER_TEMPERATURE'],
     defaultTemperature: 0.3,
   },
   vision: {
@@ -176,18 +176,22 @@ function envString(env: Env, names: string[], defaultValue: string): string {
   return defaultValue;
 }
 
-function envNumber(env: Env, name: string | undefined, defaultValue: number | undefined): number | undefined {
-  if (!name || defaultValue === undefined) {
+function envNumber(env: Env, names: string[] | undefined, defaultValue: number | undefined): number | undefined {
+  if (!names || defaultValue === undefined) {
     return undefined;
   }
 
-  const value = env[name];
-  if (value === undefined || value.trim().length === 0) {
-    return defaultValue;
+  for (const name of names) {
+    const value = env[name];
+    if (value === undefined || value.trim().length === 0) {
+      continue;
+    }
+
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : defaultValue;
   }
 
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : defaultValue;
+  return defaultValue;
 }
 
 function llmSlot(env: Env, spec: LLMEnvSpec): AgentLLMSlotConfig {

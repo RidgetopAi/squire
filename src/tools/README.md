@@ -10,7 +10,7 @@ The goal is to keep the codebase organized. Every existing tool followed this pa
 
 - **Tool** — a single function the LLM can call. Defined by a `ToolSpec` (name + description + JSON-schema parameters + handler). Lives in one `.ts` file under `src/tools/`.
 - **Capability** — a logical grouping of one or more tools (e.g. `email`, `calendar`, `search`). The unit of permission. Loops grant/deny *capabilities*, not individual tools.
-- **Loop / surface** — an agent runtime: `socket_chat`, `http_chat`, `telegram`, `commune`, `goal_worker`, `courier`, `page`, `scout`, `worker_agent`, `sandbox_worker`, `codex_chat`. Defined in `src/config/master.ts`.
+- **Loop / surface** — an agent runtime: `socket_chat`, `http_chat`, `telegram`, `commune`, `goal_worker`, `courier`, `scout`, `page` (legacy Scout alias), `worker_agent`, `sandbox_worker`, `codex_chat`. Defined in `src/config/master.ts`.
 
 ---
 
@@ -91,7 +91,7 @@ Total: 1 new file + 3 small edits. The agent registry picks it up automatically 
 | `socket_chat` / `http_chat` / `codex_chat` | Auto-allowed (`allowedCapabilities: allEnabledCapabilities`) |
 | `telegram` / `commune` / `goal_worker` | Auto-allowed (`agentLoopCapabilities`) |
 | `courier` | **Explicit allowlist** — currently `['email', 'squire_email', 'calendar', 'reminders', 'commitments']`. Edit if your tool should be summarized in the daily brief. |
-| `page` / `scout` | **Explicit allowlist** — read-only file tools only. New capability won't appear here unless you add it. |
+| `scout` / `page` | **Explicit allowlist** — read-only file tools only. `page` is a legacy alias for Scout. New capability won't appear here unless you add it. |
 | `worker_agent` / `sandbox_worker` | **No tools** — these are shell-backed workers, not LLM tool loops. |
 
 If your tool needs to be callable by a loop with an explicit allowlist, edit that loop's `allowedCapabilities` array. **Never** add a tool to a worker loop's `allowedTools` — workers don't run the LLM tool loop.
