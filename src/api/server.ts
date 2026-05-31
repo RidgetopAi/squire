@@ -31,6 +31,7 @@ import documentsRouter from './routes/documents.js';
 import toolsRouter from './routes/tools.js';
 import savedCardsRouter from './routes/saved-cards.js';
 import activityRouter from './routes/activity.js';
+import dailyBriefRouter from './routes/daily-brief.js';
 import { initScheduler, shutdownScheduler } from '../services/scheduler.js';
 import { migrateFromPersonalitySummary } from '../services/identity.js';
 import { syncAllAccounts } from '../services/google/sync.js';
@@ -101,6 +102,9 @@ app.use(express.json({ limit: '5mb' }));
 
 // Health check - no auth required (for monitoring)
 app.use('/api/health', healthRouter);
+
+// Token-protected Daily Brief HTML views for Telegram links.
+app.use('/daily-briefs', dailyBriefRouter);
 
 // API key authentication for all other routes
 app.use('/api', apiKeyAuth);

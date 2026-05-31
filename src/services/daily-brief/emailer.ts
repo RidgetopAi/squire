@@ -7,6 +7,7 @@
 import { google } from 'googleapis';
 import { getAuthenticatedClient, listSyncEnabledAccounts } from '../google/auth.js';
 import { evaluateAndRecordGuardrail } from '../action-guardrails.js';
+import { config } from '../../config/index.js';
 
 /**
  * Send an HTML email via Gmail
@@ -105,6 +106,10 @@ export async function getPrimaryAccount(): Promise<{ id: string; email: string }
   }
 }
 
+export function getDailyBriefRecipient(account: { email: string }): string {
+  return config.dailyBrief.recipientEmail || account.email;
+}
+
 /**
  * Send the daily brief email to the primary account
  *
@@ -114,16 +119,19 @@ export async function getPrimaryAccount(): Promise<{ id: string; email: string }
  */
 export async function sendDailyBrief(
   subject: string,
-  htmlBody: string
+  htmlBody: string,
+  accountOverride?: { id: string; email: string }
 ): Promise<boolean> {
-  const account = await getPrimaryAccount();
+  const account = accountOverride ?? await getPrimaryAccount();
 
   if (!account) {
     console.error('[DailyBrief] Cannot send email - no Google account configured');
     return false;
   }
 
-  console.log(`[DailyBrief] Sending to ${account.email}`);
+  const recipient = getDailyBriefRecipient(account);
+
+  console.log(`[DailyBrief] Sending to ${recipient}`);
 
   const decision = await evaluateAndRecordGuardrail({
     action: 'external.email_send',
@@ -131,7 +139,8 @@ export async function sendDailyBrief(
     summary: 'Daily brief email guardrail decision',
     metadata: {
       channel: 'email',
-      to: account.email,
+      to: recipient,
+      from: account.email,
       subject,
     },
   });
@@ -141,5 +150,5 @@ export async function sendDailyBrief(
     return false;
   }
 
-  return sendHtmlEmail(account.id, account.email, subject, htmlBody);
+  return sendHtmlEmail(account.id, recipient, subject, htmlBody);
 }

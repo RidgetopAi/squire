@@ -8,6 +8,10 @@
 import { config, type LLMProviderName, type WorkerRuntimeProvider } from '../../config/index.js';
 
 export type LLMRuntimeId =
+  | 'socket_chat'
+  | 'http_chat'
+  | 'telegram'
+  | 'commune'
   | 'smart'
   | 'fast'
   | 'reranker'
@@ -35,6 +39,14 @@ export interface WorkerRuntimeConfig {
 
 export function getLLMRuntime(id: LLMRuntimeId): LLMRuntimeConfig {
   switch (id) {
+    case 'socket_chat':
+      return config.runtime.llm.socketChat;
+    case 'http_chat':
+      return config.runtime.llm.httpChat;
+    case 'telegram':
+      return config.runtime.llm.telegram;
+    case 'commune':
+      return config.runtime.llm.commune;
     case 'smart':
       return config.routing.smart;
     case 'fast':

@@ -1,10 +1,10 @@
 /**
  * Agent: sandbox_worker
  *
- * Ephemeral build/script/artifact worker. The registry handler dispatches
- * to src/services/runtime/worker.ts::runWorkerAgent with runtimeId
- * 'sandbox' so that runAgent('sandbox_worker', { input, conversationId,
- * payload }) runs the same underlying worker as tools/sandbox.ts.
+ * Compatibility alias for worker_agent's sandbox mode. The registry handler
+ * dispatches to src/services/runtime/worker.ts::runWorkerAgent with runtimeId
+ * 'sandbox' so runAgent('sandbox_worker', ...) keeps the sandbox policy
+ * boundary while sharing the worker_agent provider/model config.
  *
  * Worker-specific options (workingDir, model, timeout, sandboxMode) ride
  * on args.payload. Callers that want the full sandbox lifecycle
@@ -57,10 +57,10 @@ async function sandboxWorkerHandler(args: AgentRunArgs): Promise<AgentRunResult>
 
 export const sandboxWorkerAgent: AgentDefinition = registerAgent({
   id: 'sandbox_worker',
-  label: 'Sandbox Worker',
+  label: 'Sandbox Worker (Worker Alias)',
   kind: 'worker',
   description:
-    'Ephemeral build/script/artifact worker. Configurable provider (Claude Code / Codex CLI).',
+    'Compatibility alias for worker_agent sandbox mode. Uses the shared worker provider/model config.',
 
   workerSlot: 'sandbox',
   handler: sandboxWorkerHandler,

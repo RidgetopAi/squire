@@ -884,8 +884,8 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
     
     // Use the configured vision runtime when images are attached.
     const hasImages = images && images.length > 0;
-    const providerOverride = hasImages ? getLLMRuntime('vision') : undefined;
-    const providerName = providerOverride?.provider ?? config.llm.provider;
+    const providerOverride = hasImages ? getLLMRuntime('vision') : getLLMRuntime('socket_chat');
+    const providerName = providerOverride.provider;
     
     console.log(`[Socket] Step 4: Starting ${providerName} stream... (${tools?.length ?? 0} tools available${hasImages ? ', with images' : ''})`);
     markLatency('starting_llm_stream');
@@ -905,7 +905,7 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
         actor: 'assistant',
         triggerReason: 'WebSocket chat tool call',
         runtimeProvider: providerName,
-        model: providerOverride?.model ?? config.llm.model,
+        model: providerOverride.model,
         metadata: {
           conversationId,
           socketId: socket.id,
@@ -1011,7 +1011,7 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
       eventType: 'chat.message.completed',
       actor: 'assistant',
       runtimeProvider: providerName,
-      model: providerOverride?.model ?? config.llm.model,
+      model: providerOverride.model,
       triggerReason: 'WebSocket chat message',
       summary: `Socket chat completed: ${conversationId}`,
       status: 'completed',
@@ -1081,10 +1081,10 @@ Use this narrative to respond naturally. You can expand on it or answer follow-u
  *                 and captures the optional present_report tool output for
  *                 chat:done.
  *
- * Defaults providerOverride to config.llm when the caller hasn't pinned one,
- * so AgentEngine skips classifyTask + tier routing and stays on the
- * configured chat provider. Vision-runtime swap still applies when the caller
- * passes a providerOverride built from getLLMRuntime('vision').
+ * Defaults providerOverride to the socket_chat model slot when the caller
+ * hasn't pinned one, so AgentEngine skips classifyTask + tier routing and
+ * stays on the configured chat provider. Vision-runtime swap still applies
+ * when the caller passes a providerOverride built from getLLMRuntime('vision').
  */
 async function runChatAgent(
   socket: TypedSocket,
@@ -1105,16 +1105,9 @@ async function runChatAgent(
   let traceFirstChunkAtMs: number | null = null;
   let tracePreviousChunkAtMs: number | null = null;
 
-  // Pin provider for every LLM call in the run. Default to config.llm
-  // (matches pre-6.5 streamWithToolLoop, which called unified streamLLM with
-  // no provider/model → unified used config.llm defaults). Without this pin,
-  // AgentEngine falls through to classifyTask + tier routing, which routes
-  // socket_chat to "smart" tier even though config.llm.provider is what the
-  // chat surface actually wants — vision runtime only when images attach.
-  const effectiveProviderOverride = providerOverride ?? {
-    provider: config.llm.provider,
-    model: config.llm.model,
-  };
+  // Pin provider for every LLM call in the run. The default comes from the
+  // socket_chat agent model slot; callers still override it for vision.
+  const effectiveProviderOverride = providerOverride ?? getLLMRuntime('socket_chat');
 
   const result = await runAgent('socket_chat', {
     conversationId: conversationDbId,

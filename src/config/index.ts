@@ -1,10 +1,10 @@
 import dotenv from 'dotenv';
+import { buildAgentModelConfig } from './agent-models.js';
 import { squireMasterConfig } from './master.js';
 
 dotenv.config();
 
-export type LLMProviderName = 'groq' | 'xai' | 'ollama' | 'gemini' | 'anthropic' | 'openai' | 'codex';
-export type WorkerRuntimeProvider = 'claude-code' | 'codex';
+export type { LLMProviderName, WorkerRuntimeProvider } from './agent-models.js';
 
 function required(name: string): string {
   const value = process.env[name];
@@ -18,8 +18,11 @@ function optional(name: string, defaultValue: string): string {
   return process.env[name] ?? defaultValue;
 }
 
+const agentModels = buildAgentModelConfig(process.env);
+
 export const config = {
   master: squireMasterConfig,
+  agentModels,
 
   // Auto-detect timezone from system
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -38,8 +41,8 @@ export const config = {
     ollamaUrl: optional('OLLAMA_URL', 'http://localhost:11434'),
   },
   llm: {
-    provider: optional('LLM_PROVIDER', 'openai') as LLMProviderName,
-    model: optional('LLM_MODEL', 'gpt-5.5'),
+    provider: agentModels.default.provider,
+    model: agentModels.default.model,
     groqApiKey: process.env['GROQ_API_KEY'] ?? '',
     xaiApiKey: process.env['XAI_API_KEY'] ?? '',
     geminiApiKey: process.env['GEMINI_API_KEY'] ?? '',
@@ -97,14 +100,8 @@ export const config = {
   routing: {
     enabled: optional('ROUTING_ENABLED', 'true') === 'true',
     defaultTier: optional('ROUTING_DEFAULT_TIER', 'smart') as 'smart' | 'fast',
-    smart: {
-      provider: optional('ROUTING_SMART_PROVIDER', 'openai') as LLMProviderName,
-      model: optional('ROUTING_SMART_MODEL', 'gpt-5.5'),
-    },
-    fast: {
-      provider: optional('ROUTING_FAST_PROVIDER', 'openai') as LLMProviderName,
-      model: optional('ROUTING_FAST_MODEL', 'gpt-5.4-nano'),
-    },
+    smart: agentModels.smart,
+    fast: agentModels.fast,
   },
   goalWorker: {
     enabled: optional('GOAL_WORKER_ENABLED', 'true') === 'true',
@@ -120,10 +117,16 @@ export const config = {
     retryAttempts: parseInt(optional('COURIER_RETRY_ATTEMPTS', '3'), 10),
     retryDelayMs: parseInt(optional('COURIER_RETRY_DELAY_MS', '15000'), 10), // 15 sec
   },
+  dailyBrief: {
+    sendHour: parseInt(optional('DAILY_BRIEF_HOUR', '7'), 10),
+    recipientEmail: process.env['DAILY_BRIEF_RECIPIENT_EMAIL'] ?? '',
+    publicBaseUrl: optional('SQUIRE_PUBLIC_URL', 'https://squire.ridgetopai.net'),
+    telegramNotificationEnabled: optional('DAILY_BRIEF_TELEGRAM_ENABLED', 'true') === 'true',
+  },
   expressionEvaluator: {
     enabled: optional('EXPRESSION_EVALUATOR_ENABLED', 'true') === 'true',
-    provider: optional('EXPRESSION_EVALUATOR_PROVIDER', 'ollama') as LLMProviderName,
-    model: optional('EXPRESSION_EVALUATOR_MODEL', 'qwen2.5:3b'),
+    provider: agentModels.expressionEvaluator.provider,
+    model: agentModels.expressionEvaluator.model,
     batchSize: parseInt(optional('EXPRESSION_EVALUATOR_BATCH_SIZE', '10'), 10),
   },
   commune: {
@@ -158,52 +161,35 @@ export const config = {
     userStopwords: (process.env['RECALL_USER_STOPWORDS'] ?? '').split(',').filter(Boolean),
     cacheTtlMs: parseInt(optional('RECALL_CACHE_TTL_MS', '300000'), 10),
     rerankerEnabled: optional('RECALL_RERANKER_ENABLED', 'true') === 'true',
-    rerankerProvider: optional('RECALL_RERANKER_PROVIDER', 'openai') as LLMProviderName,
-    rerankerModel: optional('RECALL_RERANKER_MODEL', 'gpt-5.4-nano'),
+    rerankerProvider: agentModels.reranker.provider,
+    rerankerModel: agentModels.reranker.model,
     maxRerankerCandidates: parseInt(optional('RECALL_RERANKER_POOL', '15'), 10),
   },
   runtime: {
     llm: {
+      socketChat: agentModels.socketChat,
+      httpChat: agentModels.httpChat,
+      telegram: agentModels.telegram,
+      commune: agentModels.commune,
       page: {
-        provider: optional('PAGE_AGENT_PROVIDER', 'openai') as LLMProviderName,
-        model: optional('PAGE_AGENT_MODEL', 'gpt-5.4-mini'),
-        maxTokens: parseInt(optional('PAGE_AGENT_MAX_TOKENS', '16384'), 10),
-        temperature: parseFloat(optional('PAGE_AGENT_TEMPERATURE', '0.3')),
+        ...agentModels.scout,
       },
       scout: {
-        provider: optional('SCOUT_AGENT_PROVIDER', 'openai') as LLMProviderName,
-        model: optional('SCOUT_AGENT_MODEL', 'gpt-5.4-mini'),
-        maxTokens: parseInt(optional('SCOUT_AGENT_MAX_TOKENS', '16384'), 10),
-        temperature: parseFloat(optional('SCOUT_AGENT_TEMPERATURE', '0.3')),
+        ...agentModels.scout,
       },
       emotionalSynthesis: {
-        provider: optional('EMOTIONAL_SYNTHESIS_PROVIDER', 'openai') as LLMProviderName,
-        model: optional('EMOTIONAL_SYNTHESIS_MODEL', 'gpt-5.4-mini'),
-        maxTokens: parseInt(optional('EMOTIONAL_SYNTHESIS_MAX_TOKENS', '400'), 10),
-        temperature: parseFloat(optional('EMOTIONAL_SYNTHESIS_TEMPERATURE', '0.6')),
+        ...agentModels.emotionalSynthesis,
       },
       courierSummarizer: {
-        provider: optional('COURIER_SUMMARIZER_PROVIDER', 'openai') as LLMProviderName,
-        model: optional('COURIER_SUMMARIZER_MODEL', 'gpt-5.4-mini'),
-        maxTokens: parseInt(optional('COURIER_SUMMARIZER_MAX_TOKENS', '1000'), 10),
-        temperature: parseFloat(optional('COURIER_SUMMARIZER_TEMPERATURE', '0.3')),
+        ...agentModels.courierSummarizer,
       },
       vision: {
-        provider: optional('VISION_PROVIDER', 'openai') as LLMProviderName,
-        model: optional('VISION_MODEL', 'gpt-5.4-mini'),
+        ...agentModels.vision,
       },
     },
     worker: {
-      coding: {
-        provider: optional('CODING_AGENT_PROVIDER', 'claude-code') as WorkerRuntimeProvider,
-        claudeModel: optional('CODING_AGENT_CLAUDE_MODEL', 'sonnet'),
-        codexModel: optional('CODING_AGENT_CODEX_MODEL', 'gpt-5.4'),
-      },
-      sandbox: {
-        provider: optional('SANDBOX_AGENT_PROVIDER', 'claude-code') as WorkerRuntimeProvider,
-        claudeModel: optional('SANDBOX_AGENT_CLAUDE_MODEL', 'sonnet'),
-        codexModel: optional('SANDBOX_AGENT_CODEX_MODEL', 'gpt-5.4'),
-      },
+      coding: agentModels.worker.coding,
+      sandbox: agentModels.worker.sandbox,
     },
   },
   security: {

@@ -25,6 +25,9 @@ export interface ModuleResult {
 
   /** Urgent items to surface at top of email */
   alerts?: string[];
+
+  /** Short operator-facing bullets surfaced in the top summary */
+  summaryItems?: string[];
 }
 
 export interface ThreadRow {

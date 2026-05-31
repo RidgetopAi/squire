@@ -1,11 +1,11 @@
 /**
  * Agent: scout
  *
- * Fast read-only reasoning subagent. Currently a tool registration in
- * src/tools/scout.ts — its loop pulls runtime from getLLMRuntime('scout').
- * Phase 1 declares identity only; the tool keeps owning dispatch.
+ * Fast read-only reasoning subagent. Owns the canonical read-only research
+ * loop used by both Scout and the legacy Page alias.
  */
 
+import { scout as scoutLoop } from '../services/scout/index.js';
 import { registerAgent } from './registry.js';
 import type { AgentDefinition } from './types.js';
 
@@ -19,9 +19,21 @@ export const scoutAgent: AgentDefinition = registerAgent({
   runtimeSlot: 'scout',
   sourceLoop: 'scout',
 
-  customRunner: async () => {
-    throw new Error(
-      "[agents] scout has no customRunner wired yet — dispatch through tools/scout.ts. Phase 3 wires this."
-    );
+  customRunner: async (_def, args) => {
+    const payload = args.payload as { cwd?: string; maxTurns?: number; context?: string } | undefined;
+    const result = await scoutLoop({
+      task: args.input ?? '',
+      context: payload?.context,
+      cwd: payload?.cwd,
+      maxTurns: payload?.maxTurns ?? 15,
+      signal: args.signal,
+      sourceLoop: 'scout',
+    });
+    return {
+      success: result.success,
+      content: result.content,
+      turnCount: result.turns,
+      error: result.error,
+    };
   },
 });

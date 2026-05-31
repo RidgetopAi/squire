@@ -2,8 +2,8 @@
  * Agent: telegram
  *
  * Main Telegram bot responder. Multi-turn AgentEngine loop with full
- * Squire tool surface filtered by sourceLoop:'telegram'. Uses model routing
- * (smart/fast classified per task).
+ * Squire tool surface filtered by sourceLoop:'telegram'. Uses the canonical
+ * telegram runtime slot from src/config/agent-models.ts.
  *
  * The systemPrompt resolver is async — it composes base prompt + user
  * identity + tool-calling instructions + current time at run time. The
@@ -20,9 +20,9 @@ export const telegramAgent: AgentDefinition = registerAgent({
   label: 'Telegram',
   kind: 'loop_llm',
   description:
-    'Telegram bot responder. Multi-turn loop, model-routed (smart/fast). Full Squire tool surface (telegram scope).',
+    'Telegram bot responder. Multi-turn loop pinned to the telegram model slot. Full Squire tool surface (telegram scope).',
 
-  // No forceTier — routing classifies per task.
+  runtimeSlot: 'telegram',
   maxTurns: 200,
   sourceLoop: 'telegram',
 

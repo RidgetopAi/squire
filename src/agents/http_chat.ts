@@ -7,7 +7,7 @@
  *
  * Wiring lives in src/services/chat/chat.ts::chat():
  *   - Builds messages (history + system prompt + dynamic context + images)
- *   - Calls runAgent('http_chat', { messages, providerOverride: config.llm,
+ *   - Calls runAgent('http_chat', { messages,
  *       payload: { hasImages }, callbacks: { onToolTurn } })
  *   - The chat service maps result.content + result.usage into ChatResponse.
  *
@@ -30,6 +30,7 @@ export const httpChatAgent: AgentDefinition = registerAgent({
   description: 'REST /api/chat non-streaming chat. Iterative tool loop via AgentEngine.',
 
   sourceLoop: 'http_chat',
+  runtimeSlot: 'http_chat',
   maxTurns: 50,
 
   tools: (args) => {

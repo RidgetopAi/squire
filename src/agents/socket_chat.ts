@@ -33,6 +33,7 @@ export const socketChatAgent: AgentDefinition = registerAgent({
     'Main web chat (/app/chat). Streams over Socket.IO. Iterative tool loop via AgentEngine.',
 
   sourceLoop: 'socket_chat',
+  runtimeSlot: 'socket_chat',
   maxTurns: 200,
 
   // Honor args.sourceLoop so handlers.ts can route socket_document_chat

@@ -14,9 +14,6 @@ import { config } from '../../../config/index.js';
 import { generateAndSendDailyBrief } from '../../daily-brief/index.js';
 import type { CourierTask, TaskResult } from './index.js';
 
-// The hour to send the daily brief (7 AM)
-const DAILY_BRIEF_HOUR = 7;
-
 // Track the last date we sent to avoid duplicates
 let lastSentDate: string | null = null;
 
@@ -52,6 +49,7 @@ function getCurrentHour(): number {
 function shouldSendBrief(): { shouldSend: boolean; reason: string } {
   const todayDate = getTodayDateString();
   const currentHour = getCurrentHour();
+  const sendHour = config.dailyBrief.sendHour;
 
   // Check if already sent today
   if (lastSentDate === todayDate) {
@@ -62,10 +60,10 @@ function shouldSendBrief(): { shouldSend: boolean; reason: string } {
   }
 
   // Check if it's the right hour
-  if (currentHour !== DAILY_BRIEF_HOUR) {
+  if (currentHour !== sendHour) {
     return {
       shouldSend: false,
-      reason: `Not time yet (current: ${currentHour}h, target: ${DAILY_BRIEF_HOUR}h)`,
+      reason: `Not time yet (current: ${currentHour}h, target: ${sendHour}h)`,
     };
   }
 
