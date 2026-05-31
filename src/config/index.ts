@@ -117,6 +117,12 @@ export const config = {
     retryAttempts: parseInt(optional('COURIER_RETRY_ATTEMPTS', '3'), 10),
     retryDelayMs: parseInt(optional('COURIER_RETRY_DELAY_MS', '15000'), 10), // 15 sec
   },
+  dailyBrief: {
+    sendHour: parseInt(optional('DAILY_BRIEF_HOUR', '7'), 10),
+    recipientEmail: process.env['DAILY_BRIEF_RECIPIENT_EMAIL'] ?? '',
+    publicBaseUrl: optional('SQUIRE_PUBLIC_URL', 'https://squire.ridgetopai.net'),
+    telegramNotificationEnabled: optional('DAILY_BRIEF_TELEGRAM_ENABLED', 'true') === 'true',
+  },
   expressionEvaluator: {
     enabled: optional('EXPRESSION_EVALUATOR_ENABLED', 'true') === 'true',
     provider: agentModels.expressionEvaluator.provider,

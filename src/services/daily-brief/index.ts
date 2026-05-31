@@ -5,8 +5,16 @@
  */
 
 import type { BriefModule, ModuleResult } from './types.js';
+import { squireHealthModule } from './modules/squireHealth.js';
 import { memoryHealthModule } from './modules/memoryHealth.js';
-import { sendDailyBrief, getPrimaryAccount } from './emailer.js';
+import { sendDailyBrief, getPrimaryAccount, getDailyBriefRecipient } from './emailer.js';
+import { notify } from '../courier/notifier.js';
+import { config } from '../../config/index.js';
+import {
+  buildDailyBriefReportUrl,
+  markDailyBriefReportSent,
+  saveDailyBriefReport,
+} from './reports.js';
 
 const COLORS = {
   headerBg: '#1a1a2e',
@@ -21,7 +29,16 @@ const COLORS = {
   border: '#e5e7eb',
 };
 
-const modules: BriefModule[] = [memoryHealthModule];
+const modules: BriefModule[] = [squireHealthModule, memoryHealthModule];
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 function formatDateHeader(): string {
   const now = new Date();
@@ -70,7 +87,7 @@ function renderAlertsBar(allAlerts: string[]): string {
       (alert) => `
       <div style="display: flex; align-items: flex-start; gap: 8px; padding: 8px 0;">
         <span style="color: ${COLORS.warning}; font-size: 16px;">⚠</span>
-        <span style="color: ${COLORS.text}; font-size: 14px;">${alert}</span>
+        <span style="color: ${COLORS.text}; font-size: 14px;">${escapeHtml(alert)}</span>
       </div>
     `
     )
@@ -82,6 +99,35 @@ function renderAlertsBar(allAlerts: string[]): string {
         Attention Needed
       </div>
       ${alertItems}
+    </div>
+  `;
+}
+
+function renderAtAGlance(moduleResults: ModuleResult[]): string {
+  const summaryItems = moduleResults
+    .flatMap((result) => result.summaryItems || [])
+    .slice(0, 8);
+
+  if (summaryItems.length === 0) return '';
+
+  const items = summaryItems
+    .map(
+      (item) => `
+        <li style="margin: 0 0 6px 0; color: ${COLORS.text}; font-size: 14px;">
+          ${escapeHtml(item)}
+        </li>
+      `
+    )
+    .join('');
+
+  return `
+    <div style="background: ${COLORS.accent}10; border: 1px solid ${COLORS.accent}30; border-radius: 8px; padding: 14px 16px; margin-bottom: 24px;">
+      <div style="font-weight: 600; color: ${COLORS.text}; margin-bottom: 8px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">
+        At a Glance
+      </div>
+      <ul style="margin: 0; padding-left: 18px;">
+        ${items}
+      </ul>
     </div>
   `;
 }
@@ -122,6 +168,7 @@ function buildEmailHtml(moduleResults: ModuleResult[]): string {
 
     <div style="padding: 24px;">
       ${renderAlertsBar(allAlerts)}
+      ${renderAtAGlance(moduleResults)}
       ${moduleSections}
     </div>
 
@@ -139,12 +186,60 @@ function buildEmailHtml(moduleResults: ModuleResult[]): string {
   `.trim();
 }
 
+function buildTextSummary(moduleResults: ModuleResult[], alerts: string[]): string {
+  const summaryItems = moduleResults.flatMap((result) => result.summaryItems || []);
+  const lines = [
+    `Squire Daily Brief - ${formatDateHeader()}`,
+    '',
+    `Modules: ${moduleResults.length}`,
+    `Alerts: ${alerts.length}`,
+  ];
+
+  if (summaryItems.length > 0) {
+    lines.push('', 'At a Glance:');
+    lines.push(...summaryItems.slice(0, 8).map((item) => `- ${item}`));
+  }
+
+  if (alerts.length > 0) {
+    lines.push('', 'Attention:');
+    lines.push(...alerts.slice(0, 8).map((alert) => `- ${alert}`));
+  }
+
+  return lines.join('\n');
+}
+
+function stripTelegramMarkdown(value: string): string {
+  return value.replace(/[*_`\[\]]/g, '');
+}
+
+function buildTelegramNotice(args: {
+  moduleCount: number;
+  alertCount: number;
+  recipient: string;
+  reportUrl?: string;
+}): string {
+  const lines = [
+    '*Squire Daily Brief sent*',
+    `To: ${stripTelegramMarkdown(args.recipient)}`,
+    `Modules: ${args.moduleCount}`,
+    `Alerts: ${args.alertCount}`,
+  ];
+
+  if (args.reportUrl) {
+    lines.push('', `[Open brief](${args.reportUrl})`);
+  }
+
+  return lines.join('\n');
+}
+
 export async function generateDailyBrief(): Promise<{
   subject: string;
   html: string;
+  textSummary: string;
   moduleCount: number;
   hasData: boolean;
   alerts: string[];
+  moduleTitles: string[];
 }> {
   console.log('[DailyBrief] Generating daily brief...');
 
@@ -170,15 +265,18 @@ export async function generateDailyBrief(): Promise<{
   const subject = `Squire Daily Brief — ${formatDateHeader()}`;
   const allAlerts = results.flatMap((r) => r.alerts || []);
   const hasData = results.some((r) => r.hasData);
+  const textSummary = buildTextSummary(results, allAlerts);
 
   console.log(`[DailyBrief] Brief generated: ${results.length} modules, ${allAlerts.length} alerts`);
 
   return {
     subject,
     html,
+    textSummary,
     moduleCount: results.length,
     hasData,
     alerts: allAlerts,
+    moduleTitles: results.map((result) => result.title),
   };
 }
 
@@ -196,14 +294,66 @@ export async function generateAndSendDailyBrief(): Promise<{
       };
     }
 
+    const recipient = getDailyBriefRecipient(account);
     const brief = await generateDailyBrief();
-    const sent = await sendDailyBrief(brief.subject, brief.html);
+    let reportUrl: string | undefined;
+    let reportId: string | undefined;
+
+    try {
+      const report = await saveDailyBriefReport({
+        subject: brief.subject,
+        html: brief.html,
+        textSummary: brief.textSummary,
+        moduleCount: brief.moduleCount,
+        hasData: brief.hasData,
+        alerts: brief.alerts,
+        metadata: {
+          moduleTitles: brief.moduleTitles,
+          generatedAt: new Date().toISOString(),
+        },
+      });
+      reportId = report.id;
+      reportUrl = buildDailyBriefReportUrl(report);
+    } catch (error) {
+      console.error('[DailyBrief] Failed to persist report for Telegram link:', error);
+    }
+
+    const sent = await sendDailyBrief(brief.subject, brief.html, account);
 
     if (sent) {
+      if (reportId) {
+        await markDailyBriefReportSent(reportId).catch((error) => {
+          console.error('[DailyBrief] Failed to mark report sent:', error);
+        });
+      }
+
+      if (config.dailyBrief.telegramNotificationEnabled) {
+        await notify(
+          buildTelegramNotice({
+            moduleCount: brief.moduleCount,
+            alertCount: brief.alerts.length,
+            recipient,
+            reportUrl,
+          }),
+          {
+            channels: ['telegram'],
+            priority: brief.alerts.length > 0 ? 'high' : 'normal',
+            sourceLoop: 'courier',
+            metadata: {
+              reportId,
+              reportUrl,
+              alertCount: brief.alerts.length,
+            },
+          }
+        ).catch((error) => {
+          console.error('[DailyBrief] Failed to send Telegram notice:', error);
+        });
+      }
+
       return {
         success: true,
         message: `Daily brief sent with ${brief.moduleCount} modules (${brief.alerts.length} alerts)`,
-        recipient: account.email,
+        recipient,
       };
     }
 

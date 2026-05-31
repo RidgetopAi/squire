@@ -16,7 +16,7 @@ export const dailyBriefAgent: AgentDefinition = registerAgent({
   kind: 'deterministic',
   description: 'Scheduled daily operator email. Builds report modules and sends via Gmail.',
 
-  guardedActions: ['external.email_send'],
+  guardedActions: ['external.email_send', 'external.telegram_send'],
 
   handler: async () => {
     const result = await dailyBriefTask.execute();
