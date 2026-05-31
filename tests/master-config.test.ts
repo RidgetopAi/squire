@@ -27,6 +27,10 @@ describe('Squire master config', () => {
     assert.ok(config.loops.commune.externalEffects.includes('telegram_send'));
     assert.deepStrictEqual(config.loops.page.allowedTools, ['read_file', 'grep_search', 'glob_files', 'bash_read']);
     assert.deepStrictEqual(config.loops.scout.allowedTools, ['read_file', 'grep_search', 'glob_files', 'bash_read']);
+    assert.strictEqual(config.loops.socket_chat.runtime, 'socket_chat');
+    assert.strictEqual(config.loops.http_chat.runtime, 'http_chat');
+    assert.strictEqual(config.loops.telegram.runtime, 'telegram');
+    assert.strictEqual(config.loops.commune.runtime, 'commune');
     assert.strictEqual(config.loops.worker_agent.runtime, 'coding');
     assert.strictEqual(config.loops.sandbox_worker.runtime, 'sandbox');
     assert.ok(config.loops.codex_chat.allowedCapabilities.includes('mandrel'));
@@ -38,6 +42,10 @@ describe('Squire master config', () => {
     assert.strictEqual(config.permissions.loopPolicies.scout, 'allow_list');
     assert.strictEqual(config.permissions.actionGuardrails.defaultPolicy, 'allow');
     assert.deepStrictEqual(config.permissions.actionGuardrails.toolPolicies, {});
+    assert.deepStrictEqual(config.providers.llm.slots.socket_chat, { provider: 'xai', model: 'grok-4.3' });
+    assert.deepStrictEqual(config.providers.llm.slots.http_chat, { provider: 'xai', model: 'grok-4.3' });
+    assert.deepStrictEqual(config.providers.llm.slots.telegram, { provider: 'xai', model: 'grok-4.3' });
+    assert.deepStrictEqual(config.providers.llm.slots.commune, { provider: 'openai', model: 'gpt-5.4-nano' });
 
     assert.strictEqual(config.mandrel.project, 'squire-agent');
     assert.strictEqual(config.mandrel.transport, 'http-bridge');
@@ -57,6 +65,8 @@ describe('Squire master config', () => {
       GOAL_WORKER_INTERVAL_MS: '120000',
       LLM_PROVIDER: 'anthropic',
       LLM_MODEL: 'claude-test',
+      SQUIRE_TELEGRAM_PROVIDER: 'xai',
+      SQUIRE_TELEGRAM_MODEL: 'grok-telegram',
       TELEGRAM_BOT_TOKEN: 'secret-token',
       SQUIRE_ACTION_GUARDRAIL_DEFAULT: 'draft',
       SQUIRE_TOOL_GUARDRAILS: 'email_send:require_approval,delete_note:deny',
@@ -76,6 +86,8 @@ describe('Squire master config', () => {
     assert.strictEqual(config.loops.scout.enabled, true);
     assert.strictEqual(config.providers.llm.default.provider, 'anthropic');
     assert.strictEqual(config.providers.llm.default.model, 'claude-test');
+    assert.strictEqual(config.providers.llm.slots.telegram.provider, 'xai');
+    assert.strictEqual(config.providers.llm.slots.telegram.model, 'grok-telegram');
     assert.strictEqual(config.permissions.actionGuardrails.defaultPolicy, 'draft');
     assert.strictEqual(config.permissions.actionGuardrails.toolPolicies.email_send, 'require_approval');
     assert.strictEqual(config.permissions.actionGuardrails.toolPolicies.delete_note, 'deny');

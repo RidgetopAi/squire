@@ -62,6 +62,12 @@ async function runLoopLLM(def: AgentDefinition, args: AgentRunArgs): Promise<Age
   const conversationId = args.conversationId ?? randomUUID();
   const sourceLoop = args.sourceLoop ?? def.sourceLoop ?? def.id;
   const systemPrompt = await resolvePrompt(def.systemPrompt, args);
+  const runtime = !args.providerOverride && def.runtimeSlot
+    ? getLLMRuntime(def.runtimeSlot)
+    : undefined;
+  const providerOverride = args.providerOverride ?? (runtime
+    ? { provider: runtime.provider, model: runtime.model }
+    : undefined);
 
   const engine = new AgentEngine({
     conversationId,
@@ -76,7 +82,7 @@ async function runLoopLLM(def: AgentDefinition, args: AgentRunArgs): Promise<Age
     tier: def.forceTier,
     callbacks: args.callbacks,
     messages: args.messages,
-    providerOverride: args.providerOverride,
+    providerOverride,
   });
 
   // Honor abort + maxExecutionMs without rewriting AgentEngine.

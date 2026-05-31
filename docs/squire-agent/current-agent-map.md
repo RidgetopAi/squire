@@ -1,6 +1,6 @@
 # Current Squire Agent Map
 
-This document captures the current Squire agent/runtime state before reorganizing chat-agent and worker-agent configuration.
+This document captures the current Squire agent/runtime state after the first agent model-configuration pass.
 
 ## Summary
 
@@ -13,8 +13,9 @@ Squire currently has four practical categories of agents:
 
 The key current production distinction is:
 
-- Main web chat is currently powered by Codex CLI.
-- Telegram, Commune, and Goal Worker use `AgentEngine` with model routing.
+- `socket_chat`, `http_chat`, and `telegram` resolve through explicit agent model slots and default to xAI `grok-4.3`.
+- Commune resolves through an explicit agent model slot and defaults to OpenAI `gpt-5.4-nano`.
+- Goal Worker still uses `AgentEngine` with forced fast-tier routing.
 - The `claude_code` tool name is backward-compatible, but it dispatches through the configurable worker runtime.
 - Production worker runtime currently defaults to Claude Code with the `sonnet` model.
 
@@ -23,14 +24,16 @@ The key current production distinction is:
 Production `/opt/squire/.env` currently reports:
 
 ```text
-LLM_PROVIDER=codex
-LLM_MODEL=gpt-5.4
+LLM_PROVIDER=xai
+LLM_MODEL=grok-4.3
 ROUTING_ENABLED=true
 CODING_AGENT_PROVIDER=claude-code
 CODING_AGENT_CODEX_MODEL=gpt-5.4
 SANDBOX_AGENT_PROVIDER=claude-code
 SANDBOX_AGENT_CODEX_MODEL=gpt-5.4
 ```
+
+The canonical code defaults now match that chat preference through `src/config/agent-models.ts`.
 
 Code defaults fill in the rest:
 
@@ -65,9 +68,9 @@ Role:
 
 Current power source:
 
-- Production `LLM_PROVIDER=codex`.
-- Production `LLM_MODEL=gpt-5.4`.
-- Runs through Codex CLI.
+- Defaults to xAI `grok-4.3` through the `socket_chat` agent model slot.
+- Can be overridden with `SQUIRE_SOCKET_CHAT_PROVIDER` / `SQUIRE_SOCKET_CHAT_MODEL`, or the shared `SQUIRE_CHAT_*` fallback.
+- Image-bearing chats intentionally switch to the `vision` model slot.
 
 Relevant files:
 
@@ -85,9 +88,8 @@ Role:
 
 Current power source:
 
-- Production `LLM_PROVIDER=codex`.
-- Production `LLM_MODEL=gpt-5.4`.
-- Runs through Codex CLI.
+- Defaults to xAI `grok-4.3` through the `http_chat` agent model slot.
+- Can be overridden with `SQUIRE_HTTP_CHAT_PROVIDER` / `SQUIRE_HTTP_CHAT_MODEL`, or the shared `SQUIRE_CHAT_*` fallback.
 
 Relevant files:
 
@@ -109,10 +111,8 @@ Role:
 Current power source:
 
 - Uses `AgentEngine`.
-- Routing is enabled.
-- The engine classifies tasks unless a tier is forced.
-- Smart default: OpenAI `gpt-5.5`.
-- Fast default: OpenAI `gpt-5.4-nano`.
+- Defaults to xAI `grok-4.3` through the `telegram` agent model slot.
+- Can be overridden with `SQUIRE_TELEGRAM_PROVIDER` / `SQUIRE_TELEGRAM_MODEL`, or the shared `SQUIRE_CHAT_*` fallback.
 
 Relevant files:
 
@@ -135,8 +135,8 @@ Role:
 Current power source:
 
 - Uses `AgentEngine`.
-- Forced to `tier: 'fast'`.
-- Default fast runtime: OpenAI `gpt-5.4-nano`.
+- Defaults to OpenAI `gpt-5.4-nano` through the `commune` agent model slot.
+- Can be overridden with `SQUIRE_COMMUNE_PROVIDER` / `SQUIRE_COMMUNE_MODEL`.
 
 Tool surface:
 
@@ -428,10 +428,10 @@ The main pain point is that "agent" configuration is not yet presented as one co
 
 Important current split:
 
-- Chat provider/model comes from `LLM_PROVIDER` and `LLM_MODEL`.
-- AgentEngine model selection comes from routing config unless a caller forces `tier`.
-- Page/Scout/Vision/Courier/Emotional Synthesis each have separate runtime env keys.
-- Coding and sandbox workers have worker-specific provider/model env keys.
+- Agent model defaults now live in `src/config/agent-models.ts`.
+- Chat provider/model slots can be configured per surface or through shared `SQUIRE_CHAT_*` env vars.
+- Page/Scout/Vision/Courier/Emotional Synthesis still keep their existing runtime env names, but their defaults are declared in the same file.
+- Coding and sandbox workers still have worker-specific provider/model env keys, also surfaced through the same agent model config builder.
 - Runtime permissions live in `master.ts`, not next to provider/model env parsing.
 
-This means a user can change models today, but the mental model is scattered across chat config, routing config, named runtime slots, and worker runtime config.
+The remaining cleanup is mostly consolidation: page/scout and worker/sandbox still have separate identities even though their config is easier to reason about now.

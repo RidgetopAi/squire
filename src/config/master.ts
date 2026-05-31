@@ -1,3 +1,5 @@
+import { buildAgentModelConfig } from './agent-models.js';
+
 export type ConfigMode = 'public-core' | 'private';
 export type CapabilityVisibility = 'public' | 'private';
 export type ConnectorId = 'mandrel' | 'telegram' | 'google' | 'agentmail' | 'object_storage';
@@ -277,6 +279,7 @@ export function buildSquireMasterConfig(env: NodeJS.ProcessEnv = process.env): S
   const allEnabledCapabilities = enabledCapabilityNames(capabilities);
   const agentLoopCapabilities = allEnabledCapabilities.filter((name) => name !== 'browser');
   const auditRetentionDays = envNumber(env, 'ACTIVITY_RETENTION_DAYS', 90);
+  const agentModels = buildAgentModelConfig(env);
 
   return {
     version: 1,
@@ -312,55 +315,44 @@ export function buildSquireMasterConfig(env: NodeJS.ProcessEnv = process.env): S
     providers: {
       llm: {
         default: {
-          provider: envString(env, 'LLM_PROVIDER', 'openai'),
-          model: envString(env, 'LLM_MODEL', 'gpt-5.5'),
+          provider: agentModels.default.provider,
+          model: agentModels.default.model,
           maxTokens: envNumber(env, 'LLM_MAX_TOKENS', 8192),
           temperature: envNumber(env, 'LLM_TEMPERATURE', 0.7),
         },
         slots: {
+          socket_chat: agentModels.socketChat,
+          http_chat: agentModels.httpChat,
+          telegram: agentModels.telegram,
+          commune: agentModels.commune,
           smart: {
-            provider: envString(env, 'ROUTING_SMART_PROVIDER', 'openai'),
-            model: envString(env, 'ROUTING_SMART_MODEL', 'gpt-5.5'),
+            provider: agentModels.smart.provider,
+            model: agentModels.smart.model,
           },
           fast: {
-            provider: envString(env, 'ROUTING_FAST_PROVIDER', 'openai'),
-            model: envString(env, 'ROUTING_FAST_MODEL', 'gpt-5.4-nano'),
+            provider: agentModels.fast.provider,
+            model: agentModels.fast.model,
           },
           page: {
-            provider: envString(env, 'PAGE_AGENT_PROVIDER', 'openai'),
-            model: envString(env, 'PAGE_AGENT_MODEL', 'gpt-5.4-mini'),
-            maxTokens: envNumber(env, 'PAGE_AGENT_MAX_TOKENS', 16384),
-            temperature: envNumber(env, 'PAGE_AGENT_TEMPERATURE', 0.3),
+            ...agentModels.page,
           },
           scout: {
-            provider: envString(env, 'SCOUT_AGENT_PROVIDER', 'openai'),
-            model: envString(env, 'SCOUT_AGENT_MODEL', 'gpt-5.4-mini'),
-            maxTokens: envNumber(env, 'SCOUT_AGENT_MAX_TOKENS', 16384),
-            temperature: envNumber(env, 'SCOUT_AGENT_TEMPERATURE', 0.3),
+            ...agentModels.scout,
           },
           vision: {
-            provider: envString(env, 'VISION_PROVIDER', 'openai'),
-            model: envString(env, 'VISION_MODEL', 'gpt-5.4-mini'),
+            ...agentModels.vision,
           },
         },
       },
       worker: {
-        coding: {
-          provider: envString(env, 'CODING_AGENT_PROVIDER', 'claude-code'),
-          claudeModel: envString(env, 'CODING_AGENT_CLAUDE_MODEL', 'sonnet'),
-          codexModel: envString(env, 'CODING_AGENT_CODEX_MODEL', 'gpt-5.4'),
-        },
-        sandbox: {
-          provider: envString(env, 'SANDBOX_AGENT_PROVIDER', 'claude-code'),
-          claudeModel: envString(env, 'SANDBOX_AGENT_CLAUDE_MODEL', 'sonnet'),
-          codexModel: envString(env, 'SANDBOX_AGENT_CODEX_MODEL', 'gpt-5.4'),
-        },
+        coding: agentModels.worker.coding,
+        sandbox: agentModels.worker.sandbox,
       },
     },
     loops: {
       socket_chat: {
         enabled: true,
-        runtime: 'smart',
+        runtime: 'socket_chat',
         allowedCapabilities: allEnabledCapabilities,
         allowedTools: ['*'],
         externalEffects: ['tool_calls'],
@@ -368,7 +360,7 @@ export function buildSquireMasterConfig(env: NodeJS.ProcessEnv = process.env): S
       },
       http_chat: {
         enabled: true,
-        runtime: 'smart',
+        runtime: 'http_chat',
         allowedCapabilities: allEnabledCapabilities,
         allowedTools: ['*'],
         externalEffects: ['tool_calls'],
@@ -376,7 +368,7 @@ export function buildSquireMasterConfig(env: NodeJS.ProcessEnv = process.env): S
       },
       telegram: {
         enabled: envBoolean(env, 'TELEGRAM_ENABLED', true),
-        runtime: 'smart',
+        runtime: 'telegram',
         allowedCapabilities: agentLoopCapabilities,
         allowedTools: ['*'],
         externalEffects: ['telegram_send', 'tool_calls'],
@@ -408,7 +400,7 @@ export function buildSquireMasterConfig(env: NodeJS.ProcessEnv = process.env): S
       },
       commune: {
         enabled: envBoolean(env, 'COMMUNE_ENABLED', true),
-        runtime: 'smart',
+        runtime: 'commune',
         schedule: {
           intervalMs: envNumber(env, 'COMMUNE_INTERVAL_MS', 900000),
           quietHoursStart: envNumber(env, 'COMMUNE_QUIET_START', 22),

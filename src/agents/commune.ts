@@ -61,7 +61,7 @@ export const communeAgent: AgentDefinition = registerAgent({
   kind: 'loop_llm',
   description: 'Proactive 15-min wake-up agent. Decides to think, take notes, or message Brian.',
 
-  forceTier: 'fast',
+  runtimeSlot: 'commune',
   maxTurns: 8,
   sourceLoop: 'commune',
 

@@ -20,6 +20,7 @@ import {
 import { recordActivityEvent } from '../activity.js';
 import { tools as imageTools } from '../../tools/images.js';
 import { runAgent } from '../../agents/index.js';
+import { getLLMRuntime } from '../runtime/index.js';
 import type { LLMMessage as UnifiedLLMMessage } from '../llm/types.js';
 
 // === TYPES ===
@@ -241,10 +242,9 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
     const hasImages = (images && images.length > 0) ||
                       conversationHistory.some(msg => msg.images && msg.images.length > 0);
 
-    // Inner LLM + tool loop runs in AgentEngine. http_chat is always
-    // pinned to config.llm (no vision-runtime swap on this surface) so
-    // we pass providerOverride and AgentEngine skips classifyTask
-    // routing entirely.
+    // Inner LLM + tool loop runs in AgentEngine. http_chat resolves its
+    // provider/model through the canonical agent model slot.
+    const runtime = getLLMRuntime('http_chat');
     const agentResult = await runAgent('http_chat', {
       conversationId: conversationId ?? undefined,
       traceId,
@@ -253,7 +253,6 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
       actor: 'assistant',
       triggerReason: 'HTTP /api/chat request',
       messages: messages as UnifiedLLMMessage[],
-      providerOverride: { provider: config.llm.provider, model: config.llm.model },
       payload: { hasImages },
     });
     const promptTokens = agentResult.usage?.promptTokens ?? 0;
@@ -270,8 +269,8 @@ export async function chat(request: ChatRequest): Promise<ChatResponse> {
         completionTokens,
         totalTokens: promptTokens + completionTokens,
       },
-      model: config.llm.model,
-      provider: config.llm.provider,
+      model: runtime.model,
+      provider: runtime.provider,
     };
 
     // Add context metadata if available

@@ -63,7 +63,7 @@ describe('Agent Runtime Registry — registry shape guards (post-Phase-3: commun
   test('telegram: runtime knobs declared by the registry', () => {
     const def = getAgent('telegram');
     assert.equal(def.kind, 'loop_llm');
-    // No forceTier — routing classifies per task in AgentEngine.
+    assert.equal(def.runtimeSlot, 'telegram');
     assert.equal(def.forceTier, undefined);
     assert.equal(def.maxTurns, 200);
     assert.equal(def.sourceLoop, 'telegram');

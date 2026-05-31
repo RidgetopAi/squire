@@ -54,7 +54,8 @@ describe('Agent Runtime Registry — Phase 1 catalog', () => {
   test('commune agent matches current call-site behavior', () => {
     const commune = getAgent('commune');
     assert.equal(commune.kind, 'loop_llm');
-    assert.equal(commune.forceTier, 'fast');
+    assert.equal(commune.runtimeSlot, 'commune');
+    assert.equal(commune.forceTier, undefined);
     assert.equal(commune.maxTurns, 8);
     assert.equal(commune.sourceLoop, 'commune');
     assert.ok(commune.systemPrompt, 'commune must declare a systemPrompt');
@@ -72,6 +73,10 @@ describe('Agent Runtime Registry — Phase 1 catalog', () => {
 
   test('runtime-slotted agents reference real LLMRuntimeIds', () => {
     const expected: Record<string, string> = {
+      socket_chat: 'socket_chat',
+      http_chat: 'http_chat',
+      telegram: 'telegram',
+      commune: 'commune',
       page: 'page',
       scout: 'scout',
       courier_summarizer: 'courier-summarizer',
