@@ -307,10 +307,11 @@ Role:
 
 Current power source:
 
-- Configurable worker runtime.
+- Canonical `worker_agent` runtime.
 - Production `CODING_AGENT_PROVIDER=claude-code`.
 - Effective default model for Claude Code provider: `sonnet`.
 - If switched to Codex, default Codex model is `gpt-5.4`.
+- Preferred env names are now `WORKER_AGENT_PROVIDER`, `WORKER_AGENT_CLAUDE_MODEL`, and `WORKER_AGENT_CODEX_MODEL`.
 
 Relevant files:
 
@@ -319,19 +320,19 @@ Relevant files:
 - `src/services/runtime/index.ts`
 - `src/config/index.ts`
 
-### Sandbox Worker: `sandbox_worker`
+### Sandbox Mode: `sandbox_worker`
 
 Role:
 
-- Ephemeral build/script/artifact worker.
+- Compatibility/policy alias for `worker_agent` sandbox mode.
 - Creates temporary VPS workspace under `/tmp/squire-sandbox-*`.
 - Can install dependencies, write scripts, generate files, and return artifacts/results.
 - Supports sync and async modes.
 
 Current power source:
 
-- Configurable worker runtime.
-- Production `SANDBOX_AGENT_PROVIDER=claude-code`.
+- Uses the shared `worker_agent` provider/model runtime.
+- Production still has legacy `SANDBOX_AGENT_PROVIDER=claude-code`, which remains a fallback if `WORKER_AGENT_*` and `CODING_AGENT_*` are unset.
 - Effective default model for Claude Code provider: `sonnet`.
 - If switched to Codex, default Codex model is `gpt-5.4`.
 
@@ -433,7 +434,7 @@ Important current split:
 - Agent model defaults now live in `src/config/agent-models.ts`.
 - Chat provider/model slots can be configured per surface or through shared `SQUIRE_CHAT_*` env vars.
 - Scout/Vision/Courier/Emotional Synthesis keep their existing runtime env names, with `PAGE_AGENT_*` retained as Scout fallback aliases.
-- Coding and sandbox workers still have worker-specific provider/model env keys, also surfaced through the same agent model config builder.
+- Worker provider/model defaults now use `WORKER_AGENT_*`, with `CODING_AGENT_*` and `SANDBOX_AGENT_*` retained as fallback aliases.
 - Runtime permissions live in `master.ts`, not next to provider/model env parsing.
 
-The remaining cleanup is mostly worker consolidation: worker/sandbox still have separate identities even though their config is easier to reason about now.
+The remaining cleanup is mostly daily brief and optional Codex-chat audit work. `sandbox_worker` still exists as a safety/policy alias, not as a separate provider/model runtime.

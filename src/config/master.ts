@@ -345,6 +345,7 @@ export function buildSquireMasterConfig(env: NodeJS.ProcessEnv = process.env): S
         },
       },
       worker: {
+        worker_agent: agentModels.worker.coding,
         coding: agentModels.worker.coding,
         sandbox: agentModels.worker.sandbox,
       },
@@ -429,7 +430,7 @@ export function buildSquireMasterConfig(env: NodeJS.ProcessEnv = process.env): S
       },
       worker_agent: {
         enabled: envBoolean(env, 'WORKER_AGENT_ENABLED', true),
-        runtime: 'coding',
+        runtime: 'worker_agent',
         allowedCapabilities: ['coding'],
         allowedTools: [],
         externalEffects: ['filesystem_write', 'shell_exec', 'git_operations'],
@@ -437,7 +438,7 @@ export function buildSquireMasterConfig(env: NodeJS.ProcessEnv = process.env): S
       },
       sandbox_worker: {
         enabled: envBoolean(env, 'SANDBOX_WORKER_ENABLED', true),
-        runtime: 'sandbox',
+        runtime: 'worker_agent',
         allowedCapabilities: ['sandbox'],
         allowedTools: [],
         externalEffects: ['sandbox_filesystem_write', 'shell_exec'],

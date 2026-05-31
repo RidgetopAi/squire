@@ -131,10 +131,10 @@ const manifestOverrides: Partial<Record<CapabilityName, Partial<CapabilityManife
     promptGuidance: 'Use for codebase read/write work through explicit coding tool policy.',
   },
   sandbox: {
-    runtimeLoops: ['sandbox_worker'],
+    runtimeLoops: ['worker_agent', 'sandbox_worker'],
     providers: ['claude-code', 'codex'],
     permissions: { externalEffects: ['sandbox_filesystem_write', 'shell_exec'] },
-    promptGuidance: 'Use for isolated experimental worker execution.',
+    promptGuidance: 'Use for isolated experimental worker_agent execution in an ephemeral sandbox.',
   },
   page: {
     runtimeLoops: ['page', 'scout'],

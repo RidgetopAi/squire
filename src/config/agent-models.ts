@@ -210,14 +210,14 @@ function llmSlot(env: Env, spec: LLMEnvSpec): AgentLLMSlotConfig {
 
 function workerSlot(
   env: Env,
-  providerEnv: string,
-  claudeModelEnv: string,
-  codexModelEnv: string
+  providerEnv: string[],
+  claudeModelEnv: string[],
+  codexModelEnv: string[]
 ): AgentWorkerSlotConfig {
   return {
-    provider: envString(env, [providerEnv], 'claude-code') as WorkerRuntimeProvider,
-    claudeModel: envString(env, [claudeModelEnv], 'sonnet'),
-    codexModel: envString(env, [codexModelEnv], 'gpt-5.4'),
+    provider: envString(env, providerEnv, 'claude-code') as WorkerRuntimeProvider,
+    claudeModel: envString(env, claudeModelEnv, 'sonnet'),
+    codexModel: envString(env, codexModelEnv, 'gpt-5.4'),
   };
 }
 
@@ -237,9 +237,17 @@ export function buildAgentModelConfig(env: Env = process.env): AgentModelConfig 
     courierSummarizer: llmSlot(env, AGENT_MODEL_ENV.courierSummarizer),
     vision: llmSlot(env, AGENT_MODEL_ENV.vision),
     expressionEvaluator: llmSlot(env, AGENT_MODEL_ENV.expressionEvaluator),
-    worker: {
-      coding: workerSlot(env, 'CODING_AGENT_PROVIDER', 'CODING_AGENT_CLAUDE_MODEL', 'CODING_AGENT_CODEX_MODEL'),
-      sandbox: workerSlot(env, 'SANDBOX_AGENT_PROVIDER', 'SANDBOX_AGENT_CLAUDE_MODEL', 'SANDBOX_AGENT_CODEX_MODEL'),
-    },
+    worker: (() => {
+      const worker = workerSlot(
+        env,
+        ['WORKER_AGENT_PROVIDER', 'CODING_AGENT_PROVIDER', 'SANDBOX_AGENT_PROVIDER'],
+        ['WORKER_AGENT_CLAUDE_MODEL', 'CODING_AGENT_CLAUDE_MODEL', 'SANDBOX_AGENT_CLAUDE_MODEL'],
+        ['WORKER_AGENT_CODEX_MODEL', 'CODING_AGENT_CODEX_MODEL', 'SANDBOX_AGENT_CODEX_MODEL']
+      );
+      return {
+        coding: { ...worker },
+        sandbox: { ...worker },
+      };
+    })(),
   };
 }

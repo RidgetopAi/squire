@@ -32,8 +32,8 @@ describe('Squire master config', () => {
     assert.strictEqual(config.loops.telegram.runtime, 'telegram');
     assert.strictEqual(config.loops.commune.runtime, 'commune');
     assert.strictEqual(config.loops.page.runtime, 'scout');
-    assert.strictEqual(config.loops.worker_agent.runtime, 'coding');
-    assert.strictEqual(config.loops.sandbox_worker.runtime, 'sandbox');
+    assert.strictEqual(config.loops.worker_agent.runtime, 'worker_agent');
+    assert.strictEqual(config.loops.sandbox_worker.runtime, 'worker_agent');
     assert.ok(config.loops.codex_chat.allowedCapabilities.includes('mandrel'));
     assert.ok(!config.loops.telegram.allowedCapabilities.includes('browser'));
     assert.ok(!config.loops.goal_worker.allowedCapabilities.includes('browser'));

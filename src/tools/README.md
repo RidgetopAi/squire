@@ -92,7 +92,7 @@ Total: 1 new file + 3 small edits. The agent registry picks it up automatically 
 | `telegram` / `commune` / `goal_worker` | Auto-allowed (`agentLoopCapabilities`) |
 | `courier` | **Explicit allowlist** — currently `['email', 'squire_email', 'calendar', 'reminders', 'commitments']`. Edit if your tool should be summarized in the daily brief. |
 | `scout` / `page` | **Explicit allowlist** — read-only file tools only. `page` is a legacy alias for Scout. New capability won't appear here unless you add it. |
-| `worker_agent` / `sandbox_worker` | **No tools** — these are shell-backed workers, not LLM tool loops. |
+| `worker_agent` / `sandbox_worker` | **No tools** — shell-backed worker runtime. `sandbox_worker` is the sandbox-mode policy alias. |
 
 If your tool needs to be callable by a loop with an explicit allowlist, edit that loop's `allowedCapabilities` array. **Never** add a tool to a worker loop's `allowedTools` — workers don't run the LLM tool loop.
 

@@ -91,7 +91,7 @@ function formatSize(bytes: number): string {
 
 // --- Worker dispatch ---
 
-async function runClaudeCodeInSandbox(
+async function runWorkerInSandbox(
   sandboxPath: string,
   prompt: string,
   model: string,
@@ -233,7 +233,7 @@ async function sandboxRun(args: SandboxArgs): Promise<string> {
     });
 
     // Fire in background — don't await
-    runClaudeCodeInSandbox(sandboxPath, task.trim(), effectiveModel, effectiveTimeout)
+    runWorkerInSandbox(sandboxPath, task.trim(), effectiveModel, effectiveTimeout)
       .then(async (ccResult) => {
         const files = await listSandboxFiles(sandboxPath).catch(() => []);
         await completeJob(job.id, ccResult.success ? ccResult.result : (ccResult.error || 'Unknown error'), files);
@@ -259,7 +259,7 @@ async function sandboxRun(args: SandboxArgs): Promise<string> {
   // --- SYNC MODE: block and return results ---
   let ccResult: WorkerAgentResult;
   try {
-    ccResult = await runClaudeCodeInSandbox(sandboxPath, task.trim(), effectiveModel, effectiveTimeout);
+    ccResult = await runWorkerInSandbox(sandboxPath, task.trim(), effectiveModel, effectiveTimeout);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     return `Sandbox error (${runtime.provider} failed): ${msg}\n\nSandbox path: ${sandboxPath}`;
@@ -300,7 +300,7 @@ async function sandboxCleanup(args: SandboxCleanupArgs): Promise<string> {
 export const tools: ToolSpec[] = [
   {
     name: 'sandbox',
-    description: `Create an ephemeral sandbox workspace and dispatch the configured worker agent to build something.
+    description: `Create an ephemeral sandbox workspace and dispatch worker_agent in sandbox mode to build something.
 
 The sandbox is a temporary directory on VPS where the worker agent can:
 - Install packages and dependencies
@@ -313,7 +313,7 @@ Two modes:
 - **async** (async: true): Returns immediately with a job ID, notifies via Telegram when done
 
 After completion you get:
-- The worker agent's response/summary
+- The worker_agent response/summary
 - A manifest of all output files with sizes
 - Small text files read back inline for immediate use
 
