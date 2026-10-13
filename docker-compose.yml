@@ -4,7 +4,7 @@ services:
     container_name: squire-db
     environment:
       POSTGRES_USER: squire
-      POSTGRES_PASSWORD: squire_dev
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}"
       POSTGRES_DB: squire
     ports:
       - "5435:5432"

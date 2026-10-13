@@ -47,9 +47,6 @@ keywords = ["password","passwd","secret","token","apikey","api_key","pass","pwd"
   [rules.allowlist]
   description = "credential-shaped env literals triaged as placeholders / fixtures (squire, 2026-09-08)"
   regexTarget = "match"
-  paths = [
-    '''\.example$''',   # .env.example: key NAMES with your-*-here values
-  ]
   regexes = [
     '''(?i)=['"]?(your|my)[-_.]''',            # docs/SQUIRE-CLI-USER-MANUAL.md GROQ_API_KEY=your_…
     '''=['"]?\*{3}REDACTED\*{3}['"]?$''',
@@ -67,9 +64,9 @@ keywords = ["password","passwd","secret","token","apikey","api_key","pass","pwd"
   description = "compose/YAML mapping literals triaged as published dev defaults (squire, 2026-09-08)"
   regexTarget = "match"
   regexes = [
-    # docker-compose.yml LOCAL dev stack — the file itself says "do NOT use this
-    # compose's creds anywhere else"; both are published dev defaults, enumerated exactly.
-    '''(?i):[ \t]*squire_dev\b''',
+    # docker-compose.yml LOCAL dev stack: the MinIO dev default only. The Postgres
+    # password is now REQUIRED from .env (${POSTGRES_PASSWORD:?}) and is never committed:
+    # its old published default was also the live prod role password (rotated 2026-10-13).
     '''(?i):[ \t]*minio_dev_password\b''',
     # HISTORY-ONLY: the same compose default before the squier->squire rename
     # (commit 998173b); not in the worktree. One exact literal, so a history-aware
@@ -87,9 +84,6 @@ keywords = ["password","passwd"]
   [rules.allowlist]
   description = "SQL password literals that are provably not secrets (squire, 2026-09-08)"
   regexTarget = "match"
-  paths = [
-    '''\.example$''',
-  ]
   regexes = [
     '''\*{3}REDACTED\*{3}''',
     # Documentation placeholders (parity with the JS detector, Inspector 72129bb7 F1).
@@ -108,11 +102,8 @@ keywords = ["postgres://","postgresql://","mysql://","mongodb://","redis://","am
   [rules.allowlist]
   description = "connection-URI literals triaged as documentation / local-test placeholders (squire, 2026-09-08)"
   regexTarget = "match"
-  paths = [
-    '''\.example$''',   # .env.example DATABASE_URL sample
-  ]
   regexes = [
     '''(?i)://user:pass@''',                      # docs/SQUIRE-CLI-USER-MANUAL.md canonical placeholder
     '''(?i)://test:test@''',                      # tests/*.test.ts + README/docs: the local test DB
-    '''(?i)://squire:squire_dev@''',               # the compose dev default above, in URI form
+    '''(?i)://[^\s:/@'"]+:(?:your|my)[-_.]''',    # .env.example placeholder (your-dev-db-password)
   ]
